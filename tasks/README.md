@@ -4,7 +4,7 @@
 
 The completed first plan implemented the scoped `review` capability change. The completed second plan implemented the typed-edge Task graph redesign now folded into `specs/task-graph.md` and `specs/control-plane-supervision.md`.
 
-The current follow-up MVP refines the readable `pithos graph inspect` output as a relationship map. It keeps the existing graph selection and JSON contract, while making edge direction, typed edge labels, gate members, and Supersession history explicit for agents reading the map.
+The graph-map refinement MVP is complete. Readable `pithos graph inspect` is a relationship map that preserves the existing graph selection and JSON contract while making edge direction, typed edge labels, gate members, and Supersession history explicit.
 
 ## Important references
 
@@ -14,23 +14,29 @@ The current follow-up MVP refines the readable `pithos graph inspect` output as 
 - `packages/pithos/src/db.ts` — schema and seeded durable contracts.
 - `packages/pithos/src/chain-policy.ts` — enqueue policy and implicit edge behavior.
 - `packages/pithos/src/engine.ts` and `packages/pithos/src/engine/*` — Task transitions, claim loop, read models, graph inspection, renderers, Repair Alerts, and events.
-- `packages/pithos/test/` — behavior, CLI, render, lifecycle, and graph tests; Task 12 updates readable graph map snapshots.
+- `packages/pithos/test/` — behavior, CLI, render, lifecycle, and graph tests; Task 12 updated readable graph map snapshots.
 - `packages/pdx/src/` and `packages/pdx/test/` — Repair Alert call sites and command-card/supervision integration affected by CLI changes.
 - `packages/spawner/src/` and `resources/data-dir/templates/` — agent prompt/command-card surfaces that must stop using removed flags.
-- `specs/task-graph-map-renderer-diff-spec.md` — VCS source of truth for the approved graph map renderer refinement.
-- Earlier completed review-capability and typed-edge references remain in Tasks 1–11 and the Developer Notes history below.
+- Earlier completed review-capability, typed-edge, and graph-map refinement references remain in the Developer Notes history below.
 
 ## Task strategy
 
 Tasks 1–4 are complete and belong to the previous scoped-review plan. Tasks 5–11 are complete and belong to the typed-edge implementation plan.
 
-The new graph-map refinement plan is split into two AFK slices. Task 12 updates the existing readable graph renderer and snapshots without changing graph selection or JSON contracts. Task 13 follows with small canonical docs/spec wording so future agents keep `graph inspect` focused on relationship topology rather than task handoff or sitrep responsibilities.
+The graph-map refinement plan is complete. Task 12 updated the existing readable graph renderer and snapshots without changing graph selection or JSON contracts. Task 13 folded the boundary language into canonical docs so future agents keep `graph inspect` focused on relationship topology rather than task handoff or sitrep responsibilities.
 
-No HITL slices are required: the user approved the narrowed relationship-map design and the diff spec is captured in `specs/task-graph-map-renderer-diff-spec.md`.
+No HITL slices are required. The narrowed relationship-map design is now represented in `specs/task-graph.md` and `packages/pithos/README.md`.
 
 ## Developer Notes
 
 Append notes here. Do not rewrite earlier notes.
+
+### Task 13 documentation — 2026-05-20
+
+- Folded the graph-map renderer diff spec into canonical Task graph and Pithos package docs.
+- Clarified that readable `graph inspect` is map-oriented; task bodies, Artifacts, next-action hints, and agenda/sitrep summaries remain with `task inspect` / `briefing`.
+- Removed `specs/task-graph-map-renderer-diff-spec.md` and its specs index entry after fold-in.
+- Validation: `pnpm verify` passed.
 
 ### Task 12 implementation — 2026-05-20
 

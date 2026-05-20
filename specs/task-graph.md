@@ -132,13 +132,17 @@ Readable output is the normal Agent handoff for a single Task. It separates dire
 
 ### `pithos graph inspect (--task <id>|--scope <id>|--all) [filters] [--json]`
 
-Graph inspect selects seed Tasks, then returns a closed graph over typed edges and Supersessions. Filters narrow seed selection before closure:
+Graph inspect is the relationship-map surface for Task graph topology, provenance, gates, and Supersession history. It selects seed Tasks, then returns a closed graph over typed edges and Supersessions. Filters narrow seed selection before closure:
 
 - repeatable `--status`: OR over Task statuses
 - repeatable `--search`: AND over case-insensitive Task title/body substrings
 - `--since`: `today`, `<n>h`, `<n>d`, `YYYY-MM-DD`, or ISO timestamp with timezone
 
-Closure may include related Tasks that do not match filters so blockers, attached context, gates, and replacement history remain understandable. Scope graph inspection may include global `about`/`repair` escalation Tasks attached to selected scoped work, and global checkpoint escalations whose `gate` target is in selected scoped closure. Readable output distinguishes branch-membership edges (`after`/`about`/`repair`) from coordination gates (`gate`). JSON includes edge kind and gate state.
+Closure may include related Tasks that do not match filters so blockers, attached context, gates, and replacement history remain understandable. Scope graph inspection may include global `about`/`repair` escalation Tasks attached to selected scoped work, and global checkpoint escalations whose `gate` target is in selected scoped closure.
+
+Readable graph output is map-oriented. It labels typed Task edges (`after`, `about`, `repair`, and `gate [state]`), shows referenced Tasks before incoming owners/follow-ups, renders gate members as computed branch-closure blocks, and renders Supersession as replacement history. It does not own task bodies, Artifacts, next-action hints, or agenda/sitrep summaries; use `task inspect` for single-Task handoff and `briefing` for agenda/attention summaries.
+
+`graph inspect --json` preserves the structured graph output contract for the same selection and closure, including edge kind and gate state.
 
 ### `pithos briefing [--agent pandora] [--json]`
 

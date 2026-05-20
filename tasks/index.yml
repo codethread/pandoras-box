@@ -62,5 +62,5 @@ tasks:
   - id: 13
     description: Document graph map boundary
     task_file: tasks/013-document-graph-map-boundary.md
-    status: pending
+    status: complete
     blocked_by: [12]
