@@ -54,3 +54,13 @@ tasks:
     task_file: tasks/011-verify-typed-edge-integration.md
     status: complete
     blocked_by: [10]
+  - id: 12
+    description: Refine graph map renderer
+    task_file: tasks/012-refine-graph-map-renderer.md
+    status: pending
+    blocked_by: []
+  - id: 13
+    description: Document graph map boundary
+    task_file: tasks/013-document-graph-map-boundary.md
+    status: pending
+    blocked_by: [12]
