@@ -684,11 +684,17 @@ CREATE TABLE repair_alerts (
 
 		expect(graphText).toBe(
 			[
+				"# Task graph map",
+				`selector: scope ${repo}`,
+				"edges: owner/follow-up --kind--> referenced task",
+				"layout: referenced task, then incoming owners",
+				"legend: ↑ already shown · ↻ supersession history",
+				"",
 				`- ${triage} [triage] [queued] (/tmp/pithos-repo) triage root`,
-				`  - ${design} [design] [blocked] (/tmp/pithos-repo) design middle`,
-				`    - ${executeA} [execute] [blocked] (/tmp/pithos-repo) execute fork A`,
-				`      - ${followUp} [execute] [blocked] (/tmp/pithos-repo) execute follow-up`,
-				`    - ${executeB} [execute] [blocked] (/tmp/pithos-repo) execute fork B`,
+				`  - after ← ${design} [design] [blocked] (/tmp/pithos-repo) design middle`,
+				`    - after ← ${executeA} [execute] [blocked] (/tmp/pithos-repo) execute fork A`,
+				`      - after ← ${followUp} [execute] [blocked] (/tmp/pithos-repo) execute follow-up`,
+				`    - after ← ${executeB} [execute] [blocked] (/tmp/pithos-repo) execute fork B`,
 				"",
 			].join("\n"),
 		);
@@ -1137,11 +1143,17 @@ CREATE TABLE repair_alerts (
 
 		expect(graphText).toBe(
 			[
+				"# Task graph map",
+				`selector: scope ${repo}`,
+				"edges: owner/follow-up --kind--> referenced task",
+				"layout: referenced task, then incoming owners",
+				"legend: ↑ already shown · ↻ supersession history",
+				"",
 				`- ${root} [triage] [queued] (/tmp/pithos-repo) root task`,
-				`  - ${branchAlpha} [execute] [blocked] (/tmp/pithos-repo) alpha branch`,
-				`    - ${shared} [execute] [blocked] (/tmp/pithos-repo) shared leaf`,
-				`  - ${branchBeta} [execute] [blocked] (/tmp/pithos-repo) beta branch`,
-				`    - ↑ ${shared} already shown`,
+				`  - after ← ${branchAlpha} [execute] [blocked] (/tmp/pithos-repo) alpha branch`,
+				`    - after ← ${shared} [execute] [blocked] (/tmp/pithos-repo) shared leaf`,
+				`  - after ← ${branchBeta} [execute] [blocked] (/tmp/pithos-repo) beta branch`,
+				`    - after ← ↑ ${shared} already shown`,
 				"",
 			].join("\n"),
 		);
@@ -1203,11 +1215,17 @@ CREATE TABLE repair_alerts (
 		// successor appears under original via ~> AND as a direct dependency child of parent.
 		expect(graphText).toBe(
 			[
+				"# Task graph map",
+				`selector: scope ${repo}`,
+				"edges: owner/follow-up --kind--> referenced task",
+				"layout: referenced task, then incoming owners",
+				"legend: ↑ already shown · ↻ supersession history",
+				"",
 				`- ${parent} [execute] [done] (/tmp/pithos-repo) alpha parent`,
-				`  - ${original} [execute] [failed] (/tmp/pithos-repo) alpha original`,
-				`    - repair ${repairAlert} [escalate] [queued] Investigate failed task ${original}`,
-				`    ~> ${successor} [execute] [queued] (/tmp/pithos-repo) beta successor`,
-				`  - ↑ ${successor} already shown`,
+				`  - after ← ${original} [execute] [failed] (/tmp/pithos-repo) alpha original`,
+				`    - repair ← ${repairAlert} [escalate] [queued] Investigate failed task ${original}`,
+				`    ↻ replaced-by ${successor} [execute] [queued] (/tmp/pithos-repo) beta successor`,
+				`  - after ← ↑ ${successor} already shown`,
 				"",
 			].join("\n"),
 		);

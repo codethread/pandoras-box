@@ -173,6 +173,43 @@ const renderLateGrowthMarker = (marker: LateGrowthMarkerOutput): string =>
 		? `- ${marker.id}: allowed late ${marker.edge_kind} edge ${marker.edge_task_id} -> ${marker.edge_target_task_id} after gate ${marker.gate_task_id} -> ${marker.gate_target_task_id} attempt ${marker.gate_attempt}`
 		: `- ${marker.id}: allowed late supersession ${marker.replacement_task_id} supersedes ${marker.superseded_task_id} after gate ${marker.gate_task_id} -> ${marker.gate_target_task_id} attempt ${marker.gate_attempt}`;
 
+const graphSelectorLabel = (selector: GraphInspectOutput["graph"]["selector"]): string => {
+	switch (selector.kind) {
+		case "all":
+			return "all";
+		case "task":
+			return `task ${selector.value}`;
+		case "scope":
+			return `scope ${selector.value}`;
+	}
+};
+
+const renderGraphHeader = (graph: GraphInspectOutput["graph"]): string[] => [
+	"# Task graph map",
+	`selector: ${graphSelectorLabel(graph.selector)}`,
+	"edges: owner/follow-up --kind--> referenced task",
+	"layout: referenced task, then incoming owners",
+	"legend: ↑ already shown · ↻ supersession history",
+	"",
+];
+
+const renderGateMemberLines = (
+	gate: Pick<GateInspectOutput, "state" | "members">,
+	depth: number,
+): string[] => {
+	const members = gateRelevantMembers(gate);
+	if (gate.state === "clear") return [`${"  ".repeat(depth)}branch members: all clear`];
+	const lines = [`${"  ".repeat(depth)}${gate.state} members:`];
+	for (const member of members) {
+		const canonicalNote =
+			member.canonical_task_id === member.task_id ? "" : ` canonical=${member.canonical_task_id}`;
+		lines.push(
+			`${"  ".repeat(depth + 1)}- member ${member.task_id} [${member.status}]${canonicalNote}`,
+		);
+	}
+	return lines;
+};
+
 export const renderTaskInspectMarkdown = (inspect: TaskInspectOutput): string => {
 	const lineageTasks = new Map(inspect.lineage.map((entry) => [entry.task.id, entry.task]));
 	const recentHistory = [...inspect.lineage]
@@ -315,37 +352,50 @@ export const renderGraphInspectText = (
 			}),
 		);
 	}
-	const lines: string[] = [];
+	const lines: string[] = renderGraphHeader(graph);
 	const written = new Set<string>();
-	const writeNode = (
+	const writeNodeLine = (
 		id: string,
 		depth: number,
-		supersessionChild = false,
-		label: string | undefined = undefined,
-	): void => {
+		label: string | undefined,
+		supersessionChild: boolean,
+	): boolean => {
 		const node = byId.get(id);
-		if (node === undefined) return;
-		const prefix = supersessionChild ? "~> " : `- ${label === undefined ? "" : `${label} `}`;
+		if (node === undefined) return false;
+		const prefix = supersessionChild
+			? "↻ replaced-by "
+			: label === undefined
+				? "- "
+				: `- ${label} ← `;
 		if (written.has(id)) {
 			lines.push(`${"  ".repeat(depth)}${prefix}↑ ${id} already shown`);
-			return;
+			return false;
 		}
 		lines.push(
 			`${"  ".repeat(depth)}${prefix}${graphTaskTitleLineColored(node, colorEnabled, homeDir)}`,
 		);
 		written.add(id);
-		for (const context of contextByTarget.get(id) ?? []) {
-			writeNode(context.taskId, depth + 1, false, context.kind);
-		}
+		return true;
+	};
+	const writeNodeChildren = (id: string, depth: number): void => {
+		for (const context of contextByTarget.get(id) ?? [])
+			writeNode(context.taskId, depth + 1, context.kind);
 		for (const gate of gatesByTarget.get(id) ?? []) {
-			writeNode(gate.taskId, depth + 1, false, `gate [${gate.state}]`);
-			for (const member of gateRelevantMembers(gate)) {
-				lines.push(`${"  ".repeat(depth + 2)}- ${member.task_id} [${member.status}]`);
-			}
+			const firstVisit = writeNodeLine(gate.taskId, depth + 1, `gate [${gate.state}]`, false);
+			lines.push(...renderGateMemberLines(gate, depth + 2));
+			if (firstVisit) writeNodeChildren(gate.taskId, depth + 1);
 		}
-		for (const childId of childrenByParent.get(id) ?? []) writeNode(childId, depth + 1);
+		for (const childId of childrenByParent.get(id) ?? []) writeNode(childId, depth + 1, "after");
 		const successorId = successorBySuperseded.get(id);
-		if (successorId !== undefined) writeNode(successorId, depth + 1, true);
+		if (successorId !== undefined) writeNode(successorId, depth + 1, undefined, true);
+	};
+	const writeNode = (
+		id: string,
+		depth: number,
+		label: string | undefined = undefined,
+		supersessionChild = false,
+	): void => {
+		if (writeNodeLine(id, depth, label, supersessionChild)) writeNodeChildren(id, depth);
 	};
 	for (const node of graph.nodes) {
 		if (!childIds.has(node.id) && !successorIds.has(node.id)) writeNode(node.id, 0);

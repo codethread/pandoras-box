@@ -2,38 +2,102 @@
 
 exports[`engine render helpers > snapshots typed-edge graph display variations 1`] = `
 "## plain after chain
+# Task graph map
+selector: all
+edges: owner/follow-up --kind--> referenced task
+layout: referenced task, then incoming owners
+legend: ↑ already shown · ↻ supersession history
+
 - task_a [execute] [queued] (~) A
-  - task_b [execute] [blocked] (~) B
+  - after ← task_b [execute] [blocked] (~) B
 
 ## open gate
+# Task graph map
+selector: all
+edges: owner/follow-up --kind--> referenced task
+layout: referenced task, then incoming owners
+legend: ↑ already shown · ↻ supersession history
+
 - task_branch [execute] [queued] (~) Branch
-  - gate [open] task_gate [escalate] [queued] (~) Checkpoint
-    - task_branch [queued]
+  - gate [open] ← task_gate [escalate] [queued] (~) Checkpoint
+    open members:
+      - member task_branch [queued]
+      - member task_old [queued] canonical=task_new
 
 ## clear gate
+# Task graph map
+selector: all
+edges: owner/follow-up --kind--> referenced task
+layout: referenced task, then incoming owners
+legend: ↑ already shown · ↻ supersession history
+
 - task_branch [execute] [done] (~) Branch
-  - gate [clear] task_gate [escalate] [queued] (~) Checkpoint
+  - gate [clear] ← task_gate [escalate] [queued] (~) Checkpoint
+    branch members: all clear
 
 ## broken gate
+# Task graph map
+selector: all
+edges: owner/follow-up --kind--> referenced task
+layout: referenced task, then incoming owners
+legend: ↑ already shown · ↻ supersession history
+
 - task_branch [execute] [failed] (~) Branch
-  - gate [broken] task_gate [escalate] [queued] (~) Checkpoint
-    - task_branch [failed]
+  - gate [broken] ← task_gate [escalate] [queued] (~) Checkpoint
+    broken members:
+      - member task_branch [failed]
 
 ## about escalation
+# Task graph map
+selector: all
+edges: owner/follow-up --kind--> referenced task
+layout: referenced task, then incoming owners
+legend: ↑ already shown · ↻ supersession history
+
 - task_branch [execute] [queued] (~) Branch
-  - about task_about [escalate] [queued] Needs attention
+  - about ← task_about [escalate] [queued] Needs attention
 
 ## repair alert
+# Task graph map
+selector: all
+edges: owner/follow-up --kind--> referenced task
+layout: referenced task, then incoming owners
+legend: ↑ already shown · ↻ supersession history
+
 - task_branch [execute] [failed] (~) Branch
-  - repair task_repair [escalate] [queued] Repair
+  - repair ← task_repair [escalate] [queued] Repair
 
 ## supersession
+# Task graph map
+selector: all
+edges: owner/follow-up --kind--> referenced task
+layout: referenced task, then incoming owners
+legend: ↑ already shown · ↻ supersession history
+
 - task_old [execute] [cancelled] (~) Old
-  ~> task_new [execute] [queued] (~) New
+  ↻ replaced-by task_new [execute] [queued] (~) New
+
+## repeated supersession successor
+# Task graph map
+selector: all
+edges: owner/follow-up --kind--> referenced task
+layout: referenced task, then incoming owners
+legend: ↑ already shown · ↻ supersession history
+
+- task_old [execute] [cancelled] (~) Old
+  - after ← task_new [execute] [queued] (~) New
+  ↻ replaced-by ↑ task_new already shown
 
 ## allowed late growth
+# Task graph map
+selector: all
+edges: owner/follow-up --kind--> referenced task
+layout: referenced task, then incoming owners
+legend: ↑ already shown · ↻ supersession history
+
 - task_branch [execute] [done] (~) Branch
-  - gate [clear] task_gate [execute] [done] (~) Checkpoint
+  - gate [clear] ← task_gate [execute] [done] (~) Checkpoint
+    branch members: all clear
 Allowed late branch growth:
 - marker_1: allowed late after edge task_late -> task_branch after gate task_gate -> task_branch attempt 1
 "

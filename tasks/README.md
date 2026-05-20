@@ -32,6 +32,13 @@ No HITL slices are required: the user approved the narrowed relationship-map des
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 12 implementation — 2026-05-20
+
+- Refined readable `pithos graph inspect` output with the graph-map header, selector label, durable edge-direction/layout notes, and legend.
+- Incoming map rows now label `after`, `about`, `repair`, and `gate [state]` edges with `←`; Supersession renders separately as `↻ replaced-by` history.
+- Gate rows now render explicit member blocks (`branch members: all clear`, `open members:`, `broken members:`) with canonical member notes only when ids differ.
+- Updated renderer, CLI, lifecycle snapshots/expectations; validation passed with `pnpm verify`.
+
 ### Graph map refinement task plan amendment — 2026-05-20
 
 - Added Tasks 12–13 for the approved `pithos graph inspect` relationship-map refinement.

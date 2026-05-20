@@ -57,7 +57,7 @@ tasks:
   - id: 12
     description: Refine graph map renderer
     task_file: tasks/012-refine-graph-map-renderer.md
-    status: pending
+    status: complete
     blocked_by: []
   - id: 13
     description: Document graph map boundary

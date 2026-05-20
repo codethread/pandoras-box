@@ -70,7 +70,17 @@ describe("engine render helpers", () => {
 		);
 
 		expect(renderGraphInspectText(output, { homeDir: "/work" })).toBe(
-			"- task_parent [execute] [queued] (~) Parent\n  - task_child [execute] [queued] (~) Child\n",
+			[
+				"# Task graph map",
+				"selector: all",
+				"edges: owner/follow-up --kind--> referenced task",
+				"layout: referenced task, then incoming owners",
+				"legend: ↑ already shown · ↻ supersession history",
+				"",
+				"- task_parent [execute] [queued] (~) Parent",
+				"  - after ← task_child [execute] [queued] (~) Child",
+				"",
+			].join("\n"),
 		);
 	});
 
@@ -92,7 +102,16 @@ describe("engine render helpers", () => {
 		);
 
 		expect(renderGraphInspectText(output, { homeDir: "/work" })).toBe(
-			"- task_global [execute] [queued] Global\n",
+			[
+				"# Task graph map",
+				"selector: all",
+				"edges: owner/follow-up --kind--> referenced task",
+				"layout: referenced task, then incoming owners",
+				"legend: ↑ already shown · ↻ supersession history",
+				"",
+				"- task_global [execute] [queued] Global",
+				"",
+			].join("\n"),
 		);
 	});
 
@@ -124,6 +143,7 @@ describe("engine render helpers", () => {
 							state: "open",
 							members: [
 								{ task_id: "task_branch", canonical_task_id: "task_branch", status: "queued" },
+								{ task_id: "task_old", canonical_task_id: "task_new", status: "queued" },
 							],
 						},
 					],
@@ -225,6 +245,25 @@ describe("engine render helpers", () => {
 						{ ...base, id: "task_new", title: "New", supersedes_task_id: "task_old" },
 					],
 					[{ kind: "supersedes", from_task_id: "task_new", to_task_id: "task_old" }],
+				),
+			],
+			[
+				"repeated supersession successor",
+				graph(
+					[
+						{
+							...base,
+							id: "task_old",
+							title: "Old",
+							status: "cancelled",
+							superseded_by_task_id: "task_new",
+						},
+						{ ...base, id: "task_new", title: "New", supersedes_task_id: "task_old" },
+					],
+					[
+						{ kind: "after", from_task_id: "task_new", to_task_id: "task_old", satisfied: false },
+						{ kind: "supersedes", from_task_id: "task_new", to_task_id: "task_old" },
+					],
 				),
 			],
 			[
