@@ -197,6 +197,7 @@ describe("pithos foundation", () => {
 					description: null,
 					task_count: 0,
 					run_count: 0,
+					path_missing: false,
 				},
 				{
 					id: repo.scope.id,
@@ -207,6 +208,7 @@ describe("pithos foundation", () => {
 					description: null,
 					task_count: 0,
 					run_count: 0,
+					path_missing: false,
 				},
 			],
 		});
@@ -263,6 +265,7 @@ describe("pithos foundation", () => {
 					description: null,
 					task_count: 0,
 					run_count: 0,
+					path_missing: false,
 				},
 				{
 					id: repo.scope.id,
@@ -273,6 +276,7 @@ describe("pithos foundation", () => {
 					description: null,
 					task_count: 0,
 					run_count: 1,
+					path_missing: false,
 				},
 			],
 		});
@@ -478,6 +482,7 @@ describe("pithos foundation", () => {
 				description: null,
 				task_count: 0,
 				run_count: 0,
+				path_missing: false,
 			},
 		});
 		expect(engine.scopeList({ all: true }).scopes.map((scope) => scope.id)).toEqual(["global"]);

@@ -452,7 +452,14 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 					ORDER BY s.archived_at IS NOT NULL ASC, s.kind ASC, s.canonical_path ASC, s.id ASC
 				`)
 				.all()
-				.map((row) => parseScopeOutput(row, "malformed scope row")),
+				.map((row) => parseScopeOutput(row, "malformed scope row"))
+				.map((scope) => ({
+					...scope,
+					path_missing:
+						(scope.kind === "repo" || scope.kind === "worktree") &&
+						scope.canonical_path !== null &&
+						!Effect.runSync(ctx.services.fs.existsDirectory(scope.canonical_path)),
+				})),
 		})),
 	scopeArchive: ({ scopeId }) =>
 		withDb(ctx, (db) =>
@@ -503,7 +510,18 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 					if (scope.task_count === 0 && scope.run_count === 0) {
 						const deleted = db.prepare(sql`DELETE FROM scopes WHERE id=?`).run(scopeId);
 						if (deleted.changes === 0) fail("STALE_TOKEN_RACE", "scope changed before archive");
-						return { ok: true, action: "deleted" as const, scope: toScopeOutput(scope) };
+						const deletedScope = toScopeOutput(scope);
+						return {
+							ok: true,
+							action: "deleted" as const,
+							scope: {
+								...deletedScope,
+								path_missing:
+									(deletedScope.kind === "repo" || deletedScope.kind === "worktree") &&
+									deletedScope.canonical_path !== null &&
+									!Effect.runSync(ctx.services.fs.existsDirectory(deletedScope.canonical_path)),
+							},
+						};
 					}
 					const archivedScope = parseScopeIdentity(
 						db
@@ -520,6 +538,10 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 							...archivedScope,
 							task_count: scope.task_count,
 							run_count: scope.run_count,
+							path_missing:
+								(archivedScope.kind === "repo" || archivedScope.kind === "worktree") &&
+								archivedScope.canonical_path !== null &&
+								!Effect.runSync(ctx.services.fs.existsDirectory(archivedScope.canonical_path)),
 						},
 					};
 				},

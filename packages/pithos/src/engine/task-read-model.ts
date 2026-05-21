@@ -232,6 +232,7 @@ export const toScopeOutput = (row: ScopeListRow): ScopeOutput => ({
 	...toScopeIdentityOutput(row),
 	task_count: row.task_count,
 	run_count: row.run_count,
+	path_missing: false,
 });
 
 export const parseScopeOutput = (value: unknown, message: string): ScopeOutput =>

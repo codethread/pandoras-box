@@ -415,6 +415,7 @@ export interface ScopeIdentityOutput {
 export interface ScopeOutput extends ScopeIdentityOutput {
 	readonly task_count: number;
 	readonly run_count: number;
+	readonly path_missing: boolean;
 }
 
 export interface RunOutput {

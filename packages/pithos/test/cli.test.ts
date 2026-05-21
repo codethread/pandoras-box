@@ -250,6 +250,7 @@ describe("pithos cli", () => {
 					description: null,
 					task_count: 0,
 					run_count: 0,
+					path_missing: false,
 				},
 				{
 					id: "repo:/tmp/pithos-cli",
@@ -260,6 +261,7 @@ describe("pithos cli", () => {
 					description: null,
 					task_count: 0,
 					run_count: 0,
+					path_missing: false,
 				},
 			],
 		});
@@ -331,6 +333,7 @@ describe("pithos cli", () => {
 				description: null,
 				task_count: 0,
 				run_count: 0,
+				path_missing: false,
 			},
 		});
 		const listed = await runCli(["scope", "list"], dbPath);
@@ -346,6 +349,7 @@ describe("pithos cli", () => {
 					description: null,
 					task_count: 0,
 					run_count: 0,
+					path_missing: false,
 				},
 			],
 		});
@@ -387,6 +391,49 @@ describe("pithos cli", () => {
 			scope: { description: string | null };
 		};
 		expect(reBody.scope.description).toBe("my repo description");
+	});
+
+	it("sets path_missing for repo/worktree scopes whose canonical_path no longer exists", async () => {
+		const dbPath = tempDb();
+		await runCli(["init", "--fresh"], dbPath);
+		await runCli(
+			["scope", "upsert", "--kind", "repo", "--path", "/tmp/pithos-stale-path-cli"],
+			dbPath,
+		);
+
+		// List with the registered directory now missing from disk
+		const stdout: string[] = [];
+		const svc = services();
+		process.exitCode = undefined;
+		await Effect.runPromise(
+			runPithosCli(
+				{
+					config: () => ({ dbPath }),
+					services: {
+						...svc,
+						fs: {
+							readText: () => Effect.succeed("body"),
+							removeFile: (path) => Effect.sync(() => rmSync(path, { force: true })),
+							existsDirectory: (path) => Effect.succeed(path !== "/tmp/pithos-stale-path-cli"),
+						},
+						output: {
+							write: (text) => Effect.sync(() => void stdout.push(text)),
+							writeError: () => Effect.sync(() => void 0),
+							isTty: () => false,
+						},
+					},
+				},
+				["node", "pithos", "scope", "list"],
+			),
+		);
+
+		const body = JSON.parse(stdout[0] ?? "") as {
+			scopes: { id: string; path_missing: boolean }[];
+		};
+		expect(body.scopes.find((s) => s.id === "global")?.path_missing).toBe(false);
+		expect(body.scopes.find((s) => s.id === "repo:/tmp/pithos-stale-path-cli")?.path_missing).toBe(
+			true,
+		);
 	});
 
 	it("lists archived scopes only with --all through the CLI", async () => {
