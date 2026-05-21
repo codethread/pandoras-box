@@ -894,9 +894,7 @@ export const makePithosCommand = (ctx: CliContext) => {
 		},
 		(o) => runCommand(ctx, { command: "task.inspect", taskId: o.taskId, json: o.json }),
 	).pipe(
-		Command.withDescription(
-			"Show an agent-readable task handoff; pass --json for structured metadata.",
-		),
+		Command.withDescription("Show a single-task dossier; pass --json for structured metadata."),
 	);
 	const taskCancel = Command.make(
 		"cancel",

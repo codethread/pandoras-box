@@ -271,10 +271,13 @@ export interface TaskInspectOutput {
 	readonly late_growth_markers: readonly LateGrowthMarkerOutput[];
 }
 
-export interface ArtifactOutput {
+export interface ArtifactReferenceOutput {
 	readonly id: string;
 	readonly kind: string;
 	readonly title: string;
+}
+
+export interface ArtifactOutput extends ArtifactReferenceOutput {
 	readonly body: string;
 	readonly created_at: string;
 }
@@ -289,6 +292,8 @@ export interface GraphNodeOutput extends TaskSummaryOutput {
 	readonly unresolved_dependency_ids: readonly string[];
 	readonly supersedes_task_id: string | null;
 	readonly superseded_by_task_id: string | null;
+	readonly preview: string | null;
+	readonly artifact_refs: readonly ArtifactReferenceOutput[];
 }
 
 export type GraphEdgeOutput =

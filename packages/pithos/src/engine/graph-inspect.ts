@@ -3,8 +3,11 @@ import { sql, type TaskStatus } from "../db.js";
 import { fail } from "../errors.js";
 import {
 	canonicalTaskId,
+	firstMeaningfulBodyLine,
 	gateStateForTarget,
 	isClaimable,
+	taskArtifactReferences,
+	taskDetail,
 	taskEdges,
 	taskGateLateGrowthMarkers,
 	taskSourceEdges,
@@ -168,7 +171,7 @@ const graphForIds = (
 		}
 	}
 	const nodes = [...ids]
-		.map((id) => taskSummary(db, id))
+		.map((id) => taskDetail(db, id))
 		.sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
 		.map((task) => ({
 			id: task.id,
@@ -194,6 +197,8 @@ const graphForIds = (
 					.prepare(sql`SELECT new_task_id FROM task_supersessions WHERE old_task_id=?`)
 					.pluck()
 					.get(task.id) as string | undefined) ?? null,
+			preview: firstMeaningfulBodyLine(task.body),
+			artifact_refs: taskArtifactReferences(db, task.id),
 		}));
 	const edges = [
 		...taskEdges(db)

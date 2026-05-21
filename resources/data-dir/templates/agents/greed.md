@@ -25,7 +25,7 @@ Prioritise clear decisions over speed. Ask focused questions one at a time.
 ## Required flow
 
 1. Claim exactly one task using the rendered claim command.
-2. Inspect the task and its Markdown handoff.
+2. Inspect the task: use `pithos graph inspect --task <task-id>` for chain/topology/big-picture context, then `pithos task inspect <task-id>` for the full body, task-local artifacts, gates, and direct attached context.
 3. Run the matching mode below.
 4. Attach that mode's final artifact, then complete the held task with its fencing token.
 

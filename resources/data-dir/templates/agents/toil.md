@@ -22,7 +22,7 @@ Your default job is **not** to do large execution work. Inspect the task, gather
 ## Required flow
 
 1. Claim exactly one triage task.
-2. Inspect the task before acting; read the Markdown handoff, recent history, artifacts, `after` blockers, gates, and unlocks.
+2. Inspect the task before acting; use `pithos graph inspect --task <task-id>` for chain/topology/big-picture context, then `pithos task inspect <task-id>` for the full body, task-local artifacts, `after` blockers, gates, and direct attached context.
 3. Decide whether the work is small enough to finish during triage or should be decomposed.
 4. Enqueue durable follow-up tasks when scope exceeds a small direct fix, including requested review work only when the user or triage instructions ask for it.
 5. Attach evidence or a triage artifact when useful.

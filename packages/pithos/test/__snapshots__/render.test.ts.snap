@@ -8,8 +8,14 @@ edges: owner/follow-up --kind--> referenced task
 layout: referenced task, then incoming owners
 legend: ↑ already shown · ↻ supersession history
 
-- task_a [execute] [queued] (~) A
-  - after ← task_b [execute] [blocked] (~) B
+- task_a [execute] [queued] A
+  scope: repo:/work
+  preview: Task preview
+  artifacts: none
+  - after ← task_b [execute] [blocked] B
+    scope: repo:/work
+    preview: Task preview
+    artifacts: none
 
 ## open gate
 # Task graph map
@@ -18,8 +24,14 @@ edges: owner/follow-up --kind--> referenced task
 layout: referenced task, then incoming owners
 legend: ↑ already shown · ↻ supersession history
 
-- task_branch [execute] [queued] (~) Branch
-  - gate [open] ← task_gate [escalate] [queued] (~) Checkpoint
+- task_branch [execute] [queued] Branch
+  scope: repo:/work
+  preview: Task preview
+  artifacts: none
+  - gate [open] ← task_gate [escalate] [queued] Checkpoint
+    scope: repo:/work
+    preview: Task preview
+    artifacts: none
     open members:
       - member task_branch [queued]
       - member task_old [queued] canonical=task_new
@@ -31,8 +43,14 @@ edges: owner/follow-up --kind--> referenced task
 layout: referenced task, then incoming owners
 legend: ↑ already shown · ↻ supersession history
 
-- task_branch [execute] [done] (~) Branch
-  - gate [clear] ← task_gate [escalate] [queued] (~) Checkpoint
+- task_branch [execute] [done] Branch
+  scope: repo:/work
+  preview: Task preview
+  artifacts: none
+  - gate [clear] ← task_gate [escalate] [queued] Checkpoint
+    scope: repo:/work
+    preview: Task preview
+    artifacts: none
     branch members: all clear
 
 ## broken gate
@@ -42,8 +60,14 @@ edges: owner/follow-up --kind--> referenced task
 layout: referenced task, then incoming owners
 legend: ↑ already shown · ↻ supersession history
 
-- task_branch [execute] [failed] (~) Branch
-  - gate [broken] ← task_gate [escalate] [queued] (~) Checkpoint
+- task_branch [execute] [failed] Branch
+  scope: repo:/work
+  preview: Task preview
+  artifacts: none
+  - gate [broken] ← task_gate [escalate] [queued] Checkpoint
+    scope: repo:/work
+    preview: Task preview
+    artifacts: none
     broken members:
       - member task_branch [failed]
 
@@ -54,8 +78,14 @@ edges: owner/follow-up --kind--> referenced task
 layout: referenced task, then incoming owners
 legend: ↑ already shown · ↻ supersession history
 
-- task_branch [execute] [queued] (~) Branch
+- task_branch [execute] [queued] Branch
+  scope: repo:/work
+  preview: Task preview
+  artifacts: none
   - about ← task_about [escalate] [queued] Needs attention
+    scope: global
+    preview: Task preview
+    artifacts: none
 
 ## repair alert
 # Task graph map
@@ -64,8 +94,14 @@ edges: owner/follow-up --kind--> referenced task
 layout: referenced task, then incoming owners
 legend: ↑ already shown · ↻ supersession history
 
-- task_branch [execute] [failed] (~) Branch
+- task_branch [execute] [failed] Branch
+  scope: repo:/work
+  preview: Task preview
+  artifacts: none
   - repair ← task_repair [escalate] [queued] Repair
+    scope: global
+    preview: Task preview
+    artifacts: none
 
 ## supersession
 # Task graph map
@@ -74,8 +110,14 @@ edges: owner/follow-up --kind--> referenced task
 layout: referenced task, then incoming owners
 legend: ↑ already shown · ↻ supersession history
 
-- task_old [execute] [cancelled] (~) Old
-  ↻ replaced-by task_new [execute] [queued] (~) New
+- task_old [execute] [cancelled] Old
+  scope: repo:/work
+  preview: Task preview
+  artifacts: none
+  ↻ replaced-by task_new [execute] [queued] New
+    scope: repo:/work
+    preview: Task preview
+    artifacts: none
 
 ## repeated supersession successor
 # Task graph map
@@ -84,9 +126,28 @@ edges: owner/follow-up --kind--> referenced task
 layout: referenced task, then incoming owners
 legend: ↑ already shown · ↻ supersession history
 
-- task_old [execute] [cancelled] (~) Old
-  - after ← task_new [execute] [queued] (~) New
+- task_old [execute] [cancelled] Old
+  scope: repo:/work
+  preview: Task preview
+  artifacts: none
+  - after ← task_new [execute] [queued] New
+    scope: repo:/work
+    preview: Task preview
+    artifacts: none
   ↻ replaced-by ↑ task_new already shown
+
+## artifact refs
+# Task graph map
+selector: all
+edges: owner/follow-up --kind--> referenced task
+layout: referenced task, then incoming owners
+legend: ↑ already shown · ↻ supersession history
+
+- task_artifact [execute] [queued] Artifact task
+  scope: repo:/work
+  preview: Task preview
+  artifacts:
+    - artifact_note [note] evidence
 
 ## allowed late growth
 # Task graph map
@@ -95,8 +156,14 @@ edges: owner/follow-up --kind--> referenced task
 layout: referenced task, then incoming owners
 legend: ↑ already shown · ↻ supersession history
 
-- task_branch [execute] [done] (~) Branch
-  - gate [clear] ← task_gate [execute] [done] (~) Checkpoint
+- task_branch [execute] [done] Branch
+  scope: repo:/work
+  preview: Task preview
+  artifacts: none
+  - gate [clear] ← task_gate [execute] [done] Checkpoint
+    scope: repo:/work
+    preview: Task preview
+    artifacts: none
     branch members: all clear
 Allowed late branch growth:
 - marker_1: allowed late after edge task_late -> task_branch after gate task_gate -> task_branch attempt 1

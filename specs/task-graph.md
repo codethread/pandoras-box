@@ -128,7 +128,7 @@ The CLI reads stdin only when `--stdin` is present. Missing redirected stdin, em
 
 ### `pithos task inspect <task-id> [--json]`
 
-Readable output is the normal Agent handoff for a single Task. It separates direct `after` blockers/dependents, `gate` coordination state and branch members, attached `about`/`repair` context, Supersession context, late-growth markers, Artifacts, and computed claimability. JSON returns the structured version of the same durable context.
+Readable output is the normal Agent handoff for a single Task dossier: full task body, full bodies of Artifacts attached to that Task, direct `after` blockers/dependents, direct `gate` coordination state and branch members, directly attached `about`/`repair` context, Supersession context, and late-growth markers. It does not recursively expand upstream lineage in readable mode. JSON remains the full structured inspect object, including lineage and other exact fields for tooling.
 
 ### `pithos graph inspect (--task <id>|--scope <id>|--all) [filters] [--json]`
 
@@ -140,9 +140,9 @@ Graph inspect is the relationship-map surface for Task graph topology, provenanc
 
 Closure may include related Tasks that do not match filters so blockers, attached context, gates, and replacement history remain understandable. Scope graph inspection may include global `about`/`repair` escalation Tasks attached to selected scoped work, and global checkpoint escalations whose `gate` target is in selected scoped closure.
 
-Readable graph output is map-oriented. It labels typed Task edges (`after`, `about`, `repair`, and `gate [state]`), shows referenced Tasks before incoming owners/follow-ups, renders gate members as computed branch-closure blocks, and renders Supersession as replacement history. It does not own task bodies, Artifacts, next-action hints, or agenda/sitrep summaries; use `task inspect` for single-Task handoff and `briefing` for agenda/attention summaries.
+Readable graph output is map-oriented. It labels typed Task edges (`after`, `about`, `repair`, and `gate [state]`), shows referenced Tasks before incoming owners/follow-ups, and renders each Task as a compact card with id/capability/status/title, scope, `preview:` from the first meaningful non-heading body line, and `artifacts:` refs (`artifact_id [kind] title`). Gate members render as computed branch-closure blocks and Supersession renders as replacement history. It does not own full task bodies, full Artifact bodies, next-action hints, or agenda/sitrep summaries; use `task inspect` for single-Task drill-down and `briefing` for agenda/attention summaries.
 
-`graph inspect --json` preserves the structured graph output contract for the same selection and closure, including edge kind and gate state.
+`graph inspect --json` preserves the structured graph output contract for the same selection and closure, including edge kind, gate state, per-node preview, and artifact refs.
 
 ### `pithos briefing [--agent pandora] [--json]`
 

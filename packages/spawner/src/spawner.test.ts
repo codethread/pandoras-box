@@ -104,7 +104,7 @@ const pithosHelpTree = {
 					name: "inspect",
 					path: "pithos task inspect",
 					usage: "inspect [--json] <task-id>",
-					description: "Show an agent-readable task handoff.",
+					description: "Show a single-task dossier.",
 					subcommands: [],
 				},
 				{
@@ -619,7 +619,9 @@ describe("bundled agent templates", () => {
 		expect(templateText).toContain("<<'EOF'");
 		expect(templateText).toContain("Resolving a held `about` or `gate` escalation: omit `--chain`");
 		expect(templateText).toContain("pass `--chain none --after task_X`");
-		expect(templateText).toContain("`task inspect` renders a Markdown handoff by default");
+		expect(templateText).toContain(
+			"`task inspect` renders a single-task Markdown dossier by default",
+		);
 		expect(templateText).toContain("Use the fencing token returned by claim");
 		expect(templateText).toContain(
 			"A task chain is the inspectable history the user will review later",
@@ -921,7 +923,9 @@ describe("renderAgent", () => {
 		expect(rendered.prompt).toContain(
 			"- Use the rendered claim command above instead of reconstructing it by hand.",
 		);
-		expect(rendered.prompt).toContain("- Readable Markdown is the normal task context.");
+		expect(rendered.prompt).toContain(
+			"- Readable Markdown is a single-task dossier: full body, attached artifact bodies, and direct local context only.",
+		);
 		expect(rendered.prompt).toContain(
 			"- Use `--stdin` with a quoted heredoc (`<<'EOF'`) for artifact body content.",
 		);
@@ -935,11 +939,23 @@ describe("renderAgent", () => {
 		expect(enqueueSection).toContain("--gate-on text");
 		expect(enqueueSection).toContain("--repair text");
 		const inspectSection = commandSection(rendered.prompt, "pithos task inspect");
-		expect(inspectSection).toContain("- Readable Markdown is the normal task context.");
+		expect(inspectSection).toContain(
+			"- Readable Markdown is a single-task dossier: full body, attached artifact bodies, and direct local context only.",
+		);
+		expect(inspectSection).toContain(
+			"- Use `pithos graph inspect --task <id>` first when you need chain topology, previews, artifact refs, gates, supersessions, or other drill-down task ids.",
+		);
 		expect(inspectSection).toContain(
 			"- Use `--json` only for exact fields, scripting, or lost-token recovery.",
 		);
 		expect(inspectSection).not.toContain("- Default completion sends no stdin");
+		const graphSection = commandSection(rendered.prompt, "pithos graph inspect");
+		expect(graphSection).toContain(
+			"- Readable output renders threaded task cards with preview lines and artifact refs per task.",
+		);
+		expect(graphSection).toContain(
+			"- Use `--task <id>` when you want the big-picture map for one task before drilling into `pithos task inspect <id>`.",
+		);
 		const supersedeSection = commandSection(rendered.prompt, "pithos task supersede");
 		expect(supersedeSection).toContain(
 			"- Use for graph repair/replacement, not normal successful completion.",
@@ -958,8 +974,8 @@ describe("renderAgent", () => {
 		expect(rendered.prompt).toContain(
 			"pithos task claim --run run_test --scope scope_repo --capability execute",
 		);
+		expect(rendered.prompt).toContain("#### `pithos graph inspect`");
 		expect(rendered.prompt).not.toContain("pithos scope list");
-		expect(rendered.prompt).not.toContain("pithos graph inspect");
 		expect(rendered.prompt).not.toContain("pithos events tail");
 		expect(rendered.prompt).not.toContain("pithos briefing");
 		expect(rendered.prompt).not.toContain("### Pithos help JSON");
@@ -987,7 +1003,7 @@ describe("renderAgent", () => {
 			expect(rendered.prompt).toContain("#### `pithos scope list`");
 			expect(rendered.prompt).toContain("#### `pithos scope upsert`");
 			expect(rendered.prompt).toContain("#### `pithos task claim`");
-			expect(rendered.prompt).not.toContain("#### `pithos graph inspect`");
+			expect(rendered.prompt.includes("#### `pithos graph inspect`")).toBe(agent !== "envy");
 			expect(rendered.prompt).not.toContain("#### `pithos events tail`");
 			expect(rendered.prompt).not.toContain("#### `pithos briefing`");
 			expect(rendered.prompt).not.toContain("### Pithos help JSON");

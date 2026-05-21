@@ -41,6 +41,8 @@ const graphNode = {
 	unresolved_dependency_ids: [] as readonly string[],
 	supersedes_task_id: null,
 	superseded_by_task_id: null,
+	preview: "Task preview",
+	artifact_refs: [] as const,
 };
 
 const graph = (
@@ -77,8 +79,14 @@ describe("engine render helpers", () => {
 				"layout: referenced task, then incoming owners",
 				"legend: ↑ already shown · ↻ supersession history",
 				"",
-				"- task_parent [execute] [queued] (~) Parent",
-				"  - after ← task_child [execute] [queued] (~) Child",
+				"- task_parent [execute] [queued] Parent",
+				"  scope: repo:/work",
+				"  preview: Task preview",
+				"  artifacts: none",
+				"  - after ← task_child [execute] [queued] Child",
+				"    scope: repo:/work",
+				"    preview: Task preview",
+				"    artifacts: none",
 				"",
 			].join("\n"),
 		);
@@ -110,6 +118,9 @@ describe("engine render helpers", () => {
 				"legend: ↑ already shown · ↻ supersession history",
 				"",
 				"- task_global [execute] [queued] Global",
+				"  scope: global",
+				"  preview: Task preview",
+				"  artifacts: none",
 				"",
 			].join("\n"),
 		);
@@ -267,6 +278,20 @@ describe("engine render helpers", () => {
 				),
 			],
 			[
+				"artifact refs",
+				graph(
+					[
+						{
+							...base,
+							id: "task_artifact",
+							title: "Artifact task",
+							artifact_refs: [{ id: "artifact_note", kind: "note", title: "evidence" }],
+						},
+					],
+					[],
+				),
+			],
+			[
 				"allowed late growth",
 				graph(
 					[
@@ -357,5 +382,6 @@ describe("engine render helpers", () => {
 		expect(renderTaskInspectMarkdown(inspect)).toContain(
 			"# task_alpha [execute] [queued] Alpha work",
 		);
+		expect(renderTaskInspectMarkdown(inspect)).not.toContain("Recent history");
 	});
 });

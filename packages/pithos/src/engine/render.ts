@@ -7,7 +7,6 @@ import type {
 	LateGrowthMarkerOutput,
 	TaskDetailOutput,
 	TaskInspectOutput,
-	TaskInspectTaskOutput,
 	TaskSourceSummaryOutput,
 	TaskSummaryOutput,
 } from "./types.js";
@@ -28,30 +27,13 @@ const taskTitleLine = (task: {
 	readonly unresolved_dependency_ids?: readonly string[];
 }): string => `${task.id} [${task.capability}] [${effectiveTaskStatus(task)}] ${task.title}`;
 
-const displayScopePath = (canonicalPath: string, homeDir: string | undefined): string => {
-	if (homeDir === undefined) return canonicalPath;
-	const normalizedHome = homeDir.replace(/\/+$/, "");
-	if (canonicalPath === normalizedHome) return "~";
-	return canonicalPath.startsWith(`${normalizedHome}/`)
-		? `~/${canonicalPath.slice(normalizedHome.length + 1)}`
-		: canonicalPath;
-};
-
-const graphTaskTitleLine = (
-	task: {
-		readonly id: string;
-		readonly capability: Capability;
-		readonly status: TaskStatus;
-		readonly title: string;
-		readonly canonical_path: string | null;
-		readonly unresolved_dependency_ids?: readonly string[];
-	},
-	homeDir: string | undefined,
-): string => {
-	const scopeNote =
-		task.canonical_path === null ? "" : ` (${displayScopePath(task.canonical_path, homeDir)})`;
-	return `${task.id} [${task.capability}] [${effectiveTaskStatus(task)}]${scopeNote} ${task.title}`;
-};
+const graphTaskTitleLine = (task: {
+	readonly id: string;
+	readonly capability: Capability;
+	readonly status: TaskStatus;
+	readonly title: string;
+	readonly unresolved_dependency_ids?: readonly string[];
+}): string => `${task.id} [${task.capability}] [${effectiveTaskStatus(task)}] ${task.title}`;
 
 const ansi = {
 	reset: "\u001b[0m",
@@ -93,17 +75,13 @@ const graphTaskTitleLineColored = (
 		readonly capability: Capability;
 		readonly status: TaskStatus;
 		readonly title: string;
-		readonly canonical_path: string | null;
 		readonly unresolved_dependency_ids?: readonly string[];
 	},
 	enabled: boolean,
-	homeDir: string | undefined,
 ): string => {
-	if (!enabled) return graphTaskTitleLine(task, homeDir);
+	if (!enabled) return graphTaskTitleLine(task);
 	const status = effectiveTaskStatus(task);
-	const scopeNote =
-		task.canonical_path === null ? "" : ` (${displayScopePath(task.canonical_path, homeDir)})`;
-	return `${color(enabled, taskStatusColor(task.status), task.id)} ${color(enabled, capabilityColor(), `[${task.capability}]`)} [${status}]${scopeNote} ${task.title}`;
+	return `${color(enabled, taskStatusColor(task.status), task.id)} ${color(enabled, capabilityColor(), `[${task.capability}]`)} [${status}] ${task.title}`;
 };
 
 const fencedMarkdown = (body: string): string => {
@@ -117,15 +95,6 @@ const fencedMarkdown = (body: string): string => {
 
 const renderArtifactMarkdown = (artifact: ArtifactOutput): string =>
 	`Artifact ${artifact.id} [${artifact.kind}] ${artifact.title}:\n\n${fencedMarkdown(artifact.body)}`;
-
-const renderExpandedTaskMarkdown = (
-	task: TaskInspectTaskOutput,
-	artifacts: readonly ArtifactOutput[],
-): string => {
-	const parts = [`### ${taskTitleLine(task)}`, `Body:\n\n${fencedMarkdown(task.body)}`];
-	parts.push(...artifacts.map(renderArtifactMarkdown));
-	return parts.join("\n\n");
-};
 
 const renderTaskBullet = (
 	task: TaskDetailOutput,
@@ -173,6 +142,22 @@ const renderLateGrowthMarker = (marker: LateGrowthMarkerOutput): string =>
 		? `- ${marker.id}: allowed late ${marker.edge_kind} edge ${marker.edge_task_id} -> ${marker.edge_target_task_id} after gate ${marker.gate_task_id} -> ${marker.gate_target_task_id} attempt ${marker.gate_attempt}`
 		: `- ${marker.id}: allowed late supersession ${marker.replacement_task_id} supersedes ${marker.superseded_task_id} after gate ${marker.gate_task_id} -> ${marker.gate_target_task_id} attempt ${marker.gate_attempt}`;
 
+const graphScopeLabel = (task: { readonly scope_id: string }): string => task.scope_id;
+
+const renderGraphArtifactLines = (
+	artifactRefs: readonly { readonly id: string; readonly kind: string; readonly title: string }[],
+	depth: number,
+): readonly string[] =>
+	artifactRefs.length === 0
+		? [`${"  ".repeat(depth)}artifacts: none`]
+		: [
+				`${"  ".repeat(depth)}artifacts:`,
+				...artifactRefs.map(
+					(artifact) =>
+						`${"  ".repeat(depth + 1)}- ${artifact.id} [${artifact.kind}] ${artifact.title}`,
+				),
+			];
+
 const graphSelectorLabel = (selector: GraphInspectOutput["graph"]["selector"]): string => {
 	switch (selector.kind) {
 		case "all":
@@ -211,32 +196,22 @@ const renderGateMemberLines = (
 };
 
 export const renderTaskInspectMarkdown = (inspect: TaskInspectOutput): string => {
-	const lineageTasks = new Map(inspect.lineage.map((entry) => [entry.task.id, entry.task]));
-	const recentHistory = [...inspect.lineage]
-		.sort(
-			(left, right) =>
-				left.depth - right.depth ||
-				left.task.created_at.localeCompare(right.task.created_at) ||
-				left.task.id.localeCompare(right.task.id),
-		)
-		.slice(0, 2)
-		.sort(
-			(left, right) =>
-				right.depth - left.depth ||
-				left.task.created_at.localeCompare(right.task.created_at) ||
-				left.task.id.localeCompare(right.task.id),
-		)
-		.map((entry) => renderExpandedTaskMarkdown(entry.task, entry.artifacts));
-	const currentParts = [
-		renderExpandedTaskMarkdown(inspect.task, inspect.artifacts),
+	const sections = [`# ${taskTitleLine(inspect.task)}`];
+	if (inspect.superseded_by !== null) {
+		sections.push(`> ⚠️ This task has been superseded by ${inspect.superseded_by}`);
+	}
+	if (inspect.supersedes !== null) {
+		sections.push(`> This task supersedes ${inspect.supersedes}`);
+	}
+	sections.push(`Body:\n\n${fencedMarkdown(inspect.task.body)}`);
+	if (inspect.artifacts.length > 0) {
+		sections.push("Artifacts:", inspect.artifacts.map(renderArtifactMarkdown).join("\n\n"));
+	}
+	sections.push(
 		"Direct after dependencies:",
 		inspect.dependencies.length === 0
 			? "- none"
-			: inspect.dependencies
-					.map((task) =>
-						renderTaskBullet(task, lineageTasks.get(task.id)?.unresolved_dependency_ids),
-					)
-					.join("\n"),
+			: inspect.dependencies.map((task) => renderTaskBullet(task)).join("\n"),
 		"Direct after dependents:",
 		inspect.dependents.length === 0
 			? "- none"
@@ -245,14 +220,10 @@ export const renderTaskInspectMarkdown = (inspect: TaskInspectOutput): string =>
 						renderTaskBullet(task, inspect.task.status === "done" ? [] : [inspect.task.id]),
 					)
 					.join("\n"),
-	];
-	currentParts.push(
 		"Coordination gates:",
 		inspect.task.gates.length === 0
 			? "- none"
 			: inspect.task.gates.map(renderGateMarkdown).join("\n"),
-	);
-	currentParts.push(
 		"Attached context:",
 		[
 			...(inspect.source === null ? [] : [renderSourceBullet(inspect.source)]),
@@ -260,27 +231,14 @@ export const renderTaskInspectMarkdown = (inspect: TaskInspectOutput): string =>
 		].join("\n") || "- none",
 	);
 	if (inspect.repair_alert_kind !== null) {
-		currentParts.push(`Repair Alert kind: ${inspect.repair_alert_kind}`);
+		sections.push(`Repair Alert kind: ${inspect.repair_alert_kind}`);
 	}
 	if (inspect.late_growth_markers.length > 0) {
-		currentParts.push(
+		sections.push(
 			"Allowed late branch growth:",
 			inspect.late_growth_markers.map(renderLateGrowthMarker).join("\n"),
 		);
 	}
-	const sections = [`# ${taskTitleLine(inspect.task)}`];
-	if (inspect.superseded_by !== null) {
-		sections.push(`> ⚠️ This task has been superseded by ${inspect.superseded_by}`);
-	}
-	if (inspect.supersedes !== null) {
-		sections.push(`> This task supersedes ${inspect.supersedes}`);
-	}
-	sections.push(
-		"## Recent history",
-		recentHistory.length === 0 ? "No upstream history." : recentHistory.join("\n\n"),
-		"## Current task",
-		currentParts.join("\n\n"),
-	);
 	return sections.join("\n\n") + "\n";
 };
 
@@ -289,7 +247,6 @@ export const renderGraphInspectText = (
 	options: { readonly color?: boolean; readonly homeDir?: string | undefined } = {},
 ): string => {
 	const colorEnabled = options.color ?? false;
-	const homeDir = options.homeDir;
 	const byId = new Map(graph.nodes.map((node) => [node.id, node]));
 	const childrenByParent = new Map<string, string[]>();
 	const childIds = new Set<string>();
@@ -371,9 +328,10 @@ export const renderGraphInspectText = (
 			lines.push(`${"  ".repeat(depth)}${prefix}↑ ${id} already shown`);
 			return false;
 		}
-		lines.push(
-			`${"  ".repeat(depth)}${prefix}${graphTaskTitleLineColored(node, colorEnabled, homeDir)}`,
-		);
+		lines.push(`${"  ".repeat(depth)}${prefix}${graphTaskTitleLineColored(node, colorEnabled)}`);
+		lines.push(`${"  ".repeat(depth + 1)}scope: ${graphScopeLabel(node)}`);
+		lines.push(`${"  ".repeat(depth + 1)}preview: ${node.preview ?? "none"}`);
+		lines.push(...renderGraphArtifactLines(node.artifact_refs, depth + 1));
 		written.add(id);
 		return true;
 	};

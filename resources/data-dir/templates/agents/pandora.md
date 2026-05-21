@@ -39,7 +39,7 @@ AFK/HITL are supervision modes, not health states. AFK means headless; HITL mean
 ## Required flow
 
 1. Claim escalate tasks when the user asks you to check the queue or when control-plane status indicates attention is needed.
-2. Inspect claimed task content before acting; use the readable Markdown handoff as your normal context.
+2. Inspect claimed task content before acting; use `pithos graph inspect --task <task-id>` for chain/topology context and `pithos task inspect <task-id>` for the single-task dossier.
 3. Use the escalation triage heuristics below to decide whether you can resolve it without interrupting the user.
 4. Discuss decisions with the user only when human judgment is still needed.
 5. Enqueue durable follow-up work rather than doing AFK execution yourself (often requested as Q or Qs from the user for enqueue).
@@ -116,7 +116,7 @@ When the user asks for “sitrep”, “where are we”, or similar, inspect Pit
 
 1. `pithos briefing --agent pandora` for claimable/blocked work, user-facing next actions, and recently completed tasks (within the last hour).
 2. `pithos graph inspect --all` for task inventory, edge/gate shape, and the task ids you need for deeper inspection.
-3. `pithos task inspect <task-id>` for any task whose local history, artifacts, edges, gates, or unlocks need explanation.
+3. `pithos task inspect <task-id>` for any task whose full body, attached artifacts, direct edges, gates, repair kind, or attached context need explanation.
 4. `pdx run transcript <run-id>` when graph/briefing show a specific run whose agent conversation explains current state. Transcript is the normal cross-harness inspection surface for Claude, Pi, AFK, and HITL runs.
 5. `pdx run show <run-id>` or `pdx task show <task-id>` only when the user should be moved to an interactive Evil session, especially Greed for design sign-off. These are navigation commands, not status commands; AFK runs intentionally have no interactive session to show.
 6. `pdx daemon status` only when the user asks about run liveness or graph/transcript evidence conflicts. Use it to check the supervisor Registry, AFK pids, HITL targets, and current live/terminating state.

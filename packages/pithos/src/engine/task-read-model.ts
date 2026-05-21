@@ -14,6 +14,7 @@ import {
 } from "../rows.js";
 import type {
 	ArtifactOutput,
+	ArtifactReferenceOutput,
 	LineageEntryOutput,
 	ScopeIdentityOutput,
 	ScopeOutput,
@@ -291,6 +292,22 @@ export const taskArtifacts = (db: Db, taskId: string): readonly ArtifactOutput[]
 		)
 		.all(taskId)
 		.map(parseArtifact);
+
+export const taskArtifactReferences = (
+	db: Db,
+	taskId: string,
+): readonly ArtifactReferenceOutput[] =>
+	taskArtifacts(db, taskId).map(({ id, kind, title }) => ({ id, kind, title }));
+
+export const firstMeaningfulBodyLine = (body: string): string | null => {
+	for (const line of body.split(/\r?\n/u)) {
+		const trimmed = line.trim();
+		if (trimmed.length === 0) continue;
+		if (/^#+(?:\s|$)/u.test(trimmed)) continue;
+		return trimmed;
+	}
+	return null;
+};
 
 export const taskSupersessionLinks = (
 	db: Db,

@@ -84,7 +84,7 @@ This reference is generated from CLI metadata. Use the rendered claim command ab
 
 #### `pithos task inspect`
 
-Show an agent-readable task handoff; pass `--json` for structured metadata.
+Show a single-task dossier; pass `--json` for structured metadata.
 
 Usage:
 
@@ -94,11 +94,11 @@ pithos task inspect [--json] <task-id>
 
 Notes:
 
-- Default output is readable Markdown and should be your normal context.
+- Default output is readable Markdown for one task: full body, attached artifact bodies, and direct local context only.
 - Use `--json` only for exact fields, scripting, or token recovery.
 ````
 
-Pandora's `pithos graph inspect` annotations summarize the implemented graph contract: graph inspect is for inventory/provenance/audit, briefing is for ready/blocked agenda, filters narrow seeds before closure, readable output is normal, JSON is for exact typed-edge fields, and scope graph views include attached global `about`/`repair`/checkpoint context when closure reaches it.
+Pandora's `pithos graph inspect` annotations summarize the implemented graph contract: graph inspect is for inventory/provenance/audit, briefing is for ready/blocked agenda, readable output is threaded task cards with preview lines and artifact refs, filters narrow seeds before closure, JSON is for exact typed-edge fields, and scope graph views include attached global `about`/`repair`/checkpoint context when closure reaches it.
 
 ## 6. Template and Preview Interface
 

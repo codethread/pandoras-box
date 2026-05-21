@@ -232,7 +232,8 @@ const PITHOS_COMMAND_ANNOTATIONS: Readonly<Record<string, readonly string[]>> = 
 		"Use the rendered claim command above instead of reconstructing it by hand.",
 	],
 	"pithos task inspect": [
-		"Readable Markdown is the normal task context.",
+		"Readable Markdown is a single-task dossier: full body, attached artifact bodies, and direct local context only.",
+		"Use `pithos graph inspect --task <id>` first when you need chain topology, previews, artifact refs, gates, supersessions, or other drill-down task ids.",
 		"Use `--json` only for exact fields, scripting, or lost-token recovery.",
 	],
 	"pithos task artifact add": [
@@ -257,6 +258,8 @@ const PITHOS_COMMAND_ANNOTATIONS: Readonly<Record<string, readonly string[]>> = 
 	],
 	"pithos graph inspect": [
 		"Use for task inventory, edge/gate shape, provenance, audit questions, and drill-down task ids.",
+		"Readable output renders threaded task cards with preview lines and artifact refs per task.",
+		"Use `--task <id>` when you want the big-picture map for one task before drilling into `pithos task inspect <id>`.",
 		"`--task`, `--scope`, and `--all` are mutually exclusive selectors.",
 		"Repeat `--status` to OR literal task statuses; repeat `--search` to AND terms over task title/body only.",
 		"`--since` accepts `today`, `<n>h`, `<n>d`, `YYYY-MM-DD`, and ISO timestamps with timezone.",
@@ -287,9 +290,9 @@ const PDX_COMMAND_ANNOTATIONS: Readonly<Record<string, readonly string[]>> = {
 };
 
 const PITHOS_TOP_LEVEL_PATHS: Record<SpawnableAgentKind, readonly string[]> = {
-	war: ["pithos task"],
-	toil: ["pithos scope", "pithos task"],
-	greed: ["pithos scope", "pithos task"],
+	war: ["pithos task", "pithos graph"],
+	toil: ["pithos scope", "pithos task", "pithos graph"],
+	greed: ["pithos scope", "pithos task", "pithos graph"],
 	pandora: ["pithos scope", "pithos task", "pithos graph", "pithos events", "pithos briefing"],
 	envy: ["pithos scope", "pithos task"],
 };

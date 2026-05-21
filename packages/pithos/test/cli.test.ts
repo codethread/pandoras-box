@@ -580,7 +580,7 @@ describe("pithos cli", () => {
 		expect(taskBody(dbPath, taskId)).toBe("line 1\nline 2\n");
 	});
 
-	it("renders task inspect as a markdown handoff with nested history and artifacts by default", async () => {
+	it("renders task inspect as a single-task markdown dossier by default", async () => {
 		const dbPath = tempDb();
 		await runCli(["init", "--fresh"], dbPath);
 		await upsertRun(dbPath, "run_toil");
@@ -693,45 +693,13 @@ describe("pithos cli", () => {
 		expect(normalizeGeneratedIds(output)).toMatchInlineSnapshot(`
 			"# task_cli_N [triage] [blocked] Current handoff
 
-			## Recent history
-
-			### task_cli_N [triage] [blocked] Ancestor decision
-
-			Body:
-
-			\`\`\`md
-			ancestor body
-			\`\`\`
-
-			Artifact artifact_cli_N [note] evidence:
-
-			\`\`\`md
-			ancestor artifact
-			\`\`\`
-
-			### task_cli_N [triage] [blocked] Parent plan
-
-			Body:
-
-			\`\`\`md
-			parent body
-			\`\`\`
-
-			Artifact artifact_cli_N [note] evidence:
-
-			\`\`\`md
-			parent artifact
-			\`\`\`
-
-			## Current task
-
-			### task_cli_N [triage] [blocked] Current handoff
-
 			Body:
 
 			\`\`\`md
 			current body
 			\`\`\`
+
+			Artifacts:
 
 			Artifact artifact_cli_N [note] evidence:
 
@@ -741,7 +709,7 @@ describe("pithos cli", () => {
 
 			Direct after dependencies:
 
-			- task_cli_N [triage] [blocked] Parent plan
+			- task_cli_N [triage] [queued] Parent plan
 
 			Direct after dependents:
 
@@ -758,7 +726,7 @@ describe("pithos cli", () => {
 		`);
 	});
 
-	it("snapshots task inspect markdown for a deep chain window", async () => {
+	it("snapshots task inspect markdown for single-task drill-down", async () => {
 		const dbPath = tempDb();
 		await runCli(["init", "--fresh"], dbPath);
 		await upsertRun(dbPath, "run_toil");
@@ -862,42 +830,6 @@ describe("pithos cli", () => {
 		expect(normalizeGeneratedIds(inspect.stdout[0] ?? "")).toMatchInlineSnapshot(`
 			"# task_cli_N [triage] [blocked] Follow-up verification
 
-			## Recent history
-
-			### task_cli_N [triage] [blocked] Design output mode
-
-			Body:
-
-			\`\`\`md
-			design body
-			\`\`\`
-
-			Artifact artifact_cli_N [note] evidence:
-
-			\`\`\`md
-			## Design artifact
-
-			Use Markdown defaults and --json for machines.
-			\`\`\`
-
-			### task_cli_N [triage] [blocked] Execute renderer
-
-			Body:
-
-			\`\`\`md
-			execute body
-			\`\`\`
-
-			Artifact artifact_cli_N [note] evidence:
-
-			\`\`\`md
-			execution evidence
-			\`\`\`
-
-			## Current task
-
-			### task_cli_N [triage] [blocked] Follow-up verification
-
 			Body:
 
 			\`\`\`md
@@ -906,7 +838,7 @@ describe("pithos cli", () => {
 
 			Direct after dependencies:
 
-			- task_cli_N [triage] [blocked] Execute renderer
+			- task_cli_N [triage] [queued] Execute renderer
 
 			Direct after dependents:
 
@@ -991,12 +923,30 @@ describe("pithos cli", () => {
 			layout: referenced task, then incoming owners
 			legend: ↑ already shown · ↻ supersession history
 
-			- task_cli_N [triage] [queued] (/tmp/pithos-cli) Triage readable inspect API
-			  - after ← task_cli_N [design] [blocked] (/tmp/pithos-cli) Design output mode contract
-			    - after ← task_cli_N [execute] [blocked] (/tmp/pithos-cli) Execute A task inspect renderer
-			      - after ← task_cli_N [execute] [blocked] (/tmp/pithos-cli) Follow-up A docs for inspect
-			    - after ← task_cli_N [execute] [blocked] (/tmp/pithos-cli) Execute B graph briefing help
-			      - after ← task_cli_N [execute] [blocked] (/tmp/pithos-cli) Follow-up B prompt verification
+			- task_cli_N [triage] [queued] Triage readable inspect API
+			  scope: repo:/tmp/pithos-cli
+			  preview: Triage readable inspect API body
+			  artifacts: none
+			  - after ← task_cli_N [design] [blocked] Design output mode contract
+			    scope: repo:/tmp/pithos-cli
+			    preview: Design output mode contract body
+			    artifacts: none
+			    - after ← task_cli_N [execute] [blocked] Execute A task inspect renderer
+			      scope: repo:/tmp/pithos-cli
+			      preview: Execute A task inspect renderer body
+			      artifacts: none
+			      - after ← task_cli_N [execute] [blocked] Follow-up A docs for inspect
+			        scope: repo:/tmp/pithos-cli
+			        preview: Follow-up A docs for inspect body
+			        artifacts: none
+			    - after ← task_cli_N [execute] [blocked] Execute B graph briefing help
+			      scope: repo:/tmp/pithos-cli
+			      preview: Execute B graph briefing help body
+			      artifacts: none
+			      - after ← task_cli_N [execute] [blocked] Follow-up B prompt verification
+			        scope: repo:/tmp/pithos-cli
+			        preview: Follow-up B prompt verification body
+			        artifacts: none
 			"
 		`);
 	});
@@ -1040,7 +990,13 @@ describe("pithos cli", () => {
 			legend: ↑ already shown · ↻ supersession history
 
 			- task_cli_N [triage] [queued] Ready triage
+			  scope: global
+			  preview: ready body
+			  artifacts: none
 			  - after ← task_cli_N [triage] [blocked] Blocked triage
+			    scope: global
+			    preview: blocked body
+			    artifacts: none
 			"
 		`);
 
