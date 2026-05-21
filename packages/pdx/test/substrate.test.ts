@@ -58,6 +58,7 @@ import {
 	runShowPdx,
 	statusPdx,
 	taskShowPdx,
+	terminateHookChild,
 } from "../src/controller.js";
 import { type PdxConfig } from "../src/config.js";
 
@@ -4688,6 +4689,89 @@ describe("runInputHookSupervisor", () => {
 
 		// Supervision must have continued past the crash limit (spawned more than 5 times).
 		expect(getSpawnCount()).toBeGreaterThan(5);
+	});
+});
+
+describe("terminateHookChild", () => {
+	const makeControlledExec = (input: {
+		readonly dieAfterKillCount: number;
+		readonly transientAlivePollsAfterKill?: number;
+	}): { exec: HookExecutorService; kills: { pid: number; signal: string }[] } => {
+		const kills: { pid: number; signal: string }[] = [];
+		let isAliveCallsAfterFinalKill = 0;
+		const exec: HookExecutorService = {
+			spawn: () => Effect.die("unexpected"),
+			kill: (pid, signal) =>
+				Effect.sync(() => {
+					kills.push({ pid, signal });
+				}),
+			isAlive: () =>
+				Effect.sync(() => {
+					if (kills.length < input.dieAfterKillCount) return true;
+					isAliveCallsAfterFinalKill++;
+					return isAliveCallsAfterFinalKill <= (input.transientAlivePollsAfterKill ?? 0);
+				}),
+		};
+		return { exec, kills };
+	};
+
+	it("returns immediately when hook is already dead", async () => {
+		const { exec, kills } = makeControlledExec({ dieAfterKillCount: 0 });
+		await run(terminateHookChild(exec, 12345));
+		expect(kills).toHaveLength(0);
+	});
+
+	it("sends SIGTERM and returns when hook dies before SIGKILL", async () => {
+		const { exec, kills } = makeControlledExec({ dieAfterKillCount: 1 });
+		await run(terminateHookChild(exec, 12345));
+		expect(kills).toEqual([{ pid: 12345, signal: "SIGTERM" }]);
+	});
+
+	it("retries after SIGKILL and succeeds when hook exits within the retry window", async () => {
+		// Simulates hook that survives SIGTERM, then appears transiently alive on the
+		// first post-SIGKILL poll but is gone by the second — the race that caused IPC_ERROR.
+		const { exec, kills } = makeControlledExec({
+			dieAfterKillCount: 2,
+			transientAlivePollsAfterKill: 1,
+		});
+
+		const program = Effect.gen(function* () {
+			const fiber = yield* Effect.fork(terminateHookChild(exec, 12345));
+			yield* Effect.yieldNow();
+			yield* Effect.yieldNow();
+			yield* TestClock.adjust("600 millis");
+			yield* Effect.yieldNow();
+			yield* Effect.yieldNow();
+			yield* Effect.yieldNow();
+			return yield* Fiber.join(fiber);
+		}).pipe(Effect.provide(TestContext.TestContext));
+
+		await Effect.runPromise(program);
+		expect(kills).toEqual([
+			{ pid: 12345, signal: "SIGTERM" },
+			{ pid: 12345, signal: "SIGKILL" },
+		]);
+	});
+
+	it("fails loudly when hook remains alive after all post-SIGKILL retries", async () => {
+		const exec: HookExecutorService = {
+			spawn: () => Effect.die("unexpected"),
+			kill: () => Effect.void,
+			isAlive: () => Effect.succeed(true),
+		};
+
+		const program = Effect.gen(function* () {
+			const fiber = yield* Effect.fork(terminateHookChild(exec, 99999));
+			yield* Effect.yieldNow();
+			yield* Effect.yieldNow();
+			yield* TestClock.adjust("1000 millis");
+			yield* Effect.yieldNow();
+			yield* Effect.yieldNow();
+			yield* Effect.yieldNow();
+			return yield* Fiber.join(fiber);
+		}).pipe(Effect.provide(TestContext.TestContext));
+
+		await expect(Effect.runPromise(program)).rejects.toThrow("still alive after SIGKILL");
 	});
 });
 

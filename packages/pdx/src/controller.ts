@@ -1233,20 +1233,28 @@ const killHookIfPresent = (
 			Effect.catchAll((error) => (isMissingProcessError(error) ? Effect.void : Effect.fail(error))),
 		);
 
-const terminateHookChild = (hookExec: HookExecutorService, pid: number) =>
+// Post-SIGKILL poll: the kernel may not have reaped the process yet when we
+// check immediately. A bounded retry avoids a spurious close failure caused by
+// a zombie that exits within a few milliseconds.
+const HOOK_KILL_POLL_MAX = 10;
+const HOOK_KILL_POLL_MILLIS = 50;
+
+export const terminateHookChild = (hookExec: HookExecutorService, pid: number) =>
 	Effect.gen(function* () {
 		if (!(yield* hookExec.isAlive(pid))) return;
 		yield* killHookIfPresent(hookExec, pid, "SIGTERM");
 		if (!(yield* hookExec.isAlive(pid))) return;
 		yield* killHookIfPresent(hookExec, pid, "SIGKILL");
-		if (yield* hookExec.isAlive(pid)) {
-			yield* Effect.fail(
-				new PdxError({
-					code: "PROCESS_ERROR",
-					message: `hook process ${pid} still alive after SIGKILL`,
-				}),
-			);
+		for (let attempt = 0; attempt < HOOK_KILL_POLL_MAX; attempt++) {
+			yield* Effect.sleep(`${HOOK_KILL_POLL_MILLIS} millis`);
+			if (!(yield* hookExec.isAlive(pid))) return;
 		}
+		yield* Effect.fail(
+			new PdxError({
+				code: "PROCESS_ERROR",
+				message: `hook process ${pid} still alive after SIGKILL`,
+			}),
+		);
 	});
 
 export const runInputHookSupervisor = (

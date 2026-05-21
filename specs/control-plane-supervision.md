@@ -214,7 +214,7 @@ pdx supervises the hook independently:
 - exits restart with exponential backoff capped at 30 seconds
 - backoff resets after stable uptime
 - repeated crashes create an `input_hook_stuck` Repair Alert and stop restarting until pdx is restarted
-- `pdx close` sends SIGTERM
+- `pdx close` sends SIGTERM; if the hook does not exit it escalates to SIGKILL and polls briefly before treating the process as stuck
 
 ## 10. Operator and Pandora Interfaces
 
