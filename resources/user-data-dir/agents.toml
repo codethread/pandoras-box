@@ -7,3 +7,5 @@
 # add = ["edit", "write"]
 #
 # Validate rendering with `pandora-spawn preview` before reopening the box.
+# harness.argv expansion: $PDX_DATA_DIR, ${PDX_DATA_DIR},
+# $PDX_USER_DATA_DIR, ${PDX_USER_DATA_DIR}, ~, ~/... only; no shell eval.

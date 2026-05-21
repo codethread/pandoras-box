@@ -80,6 +80,14 @@ Supported list fields:
 - `agents.<kind>.harness.tools`
 - `agents.<kind>.harness.argv`
 
+`harness.argv` is an argv array, not a shell string. Supported expansion is terse and path-oriented only:
+
+- `$PDX_DATA_DIR` / `${PDX_DATA_DIR}`
+- `$PDX_USER_DATA_DIR` / `${PDX_USER_DATA_DIR}`
+- `~` / `~/...`
+
+Other `$VARS` fail render; no shell eval, globbing, or quote parsing.
+
 Example:
 
 ```toml

@@ -97,7 +97,7 @@ Use that doc for:
 
 Read `src/spawner.ts` for exact argv construction. Stable behavior worth knowing before editing:
 
-- `harness.argv` in `agents.toml` is an optional escape hatch: tokens are inserted verbatim after the binary name and before all Spawner-managed flags. See [`resources/README.md`](../../resources/README.md) for the full contract.
+- `harness.argv` in `agents.toml` is an optional escape hatch: tokens are inserted after the binary name and before all Spawner-managed flags. Spawner applies only the documented `$PDX_DATA_DIR`, `$PDX_USER_DATA_DIR`, and leading-`~` path expansion; there is no shell evaluation. See [`resources/README.md`](../../resources/README.md) for the full contract.
 - AFK mode uses Harness print mode with the message `Claim and process one task, then exit.`
 - HITL mode launches under tmux.
 - HITL prompt delivery uses a temp-file shell wrapper for every Harness to keep rendered prompts out of the `tmux new-session` argv.

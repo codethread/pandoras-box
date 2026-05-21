@@ -168,6 +168,20 @@ generated Markdown reference content. User extension templates that parsed the
 old raw JSON must treat `command_cards` as prose/reference content instead, or
 replace the affected template wholesale with their own command-reference source.
 
+## Harness argv expansion
+
+`agents.<kind>.harness.argv` is an argv array, not a shell string. Spawner does
+not run shell parsing, globbing, command substitution, or general environment
+expansion. Before launch it applies this small path-oriented expansion to each
+argv token:
+
+- `$PDX_DATA_DIR` or `${PDX_DATA_DIR}` → rendered `PDX_DATA_DIR`
+- `$PDX_USER_DATA_DIR` or `${PDX_USER_DATA_DIR}` → rendered `PDX_USER_DATA_DIR`
+- `~` and `~/...` → current user's home directory
+
+Unsupported or unset `$VARS` fail render loudly. Use absolute paths for anything
+outside this subset.
+
 ## `hooks` field
 
 `agents.toml` may contain an optional top-level `hooks` block to configure

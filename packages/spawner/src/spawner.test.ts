@@ -1327,6 +1327,44 @@ describe("renderAgent", () => {
 		expect(toolsIndex).toBeGreaterThan(pluginIndex);
 	});
 
+	it("expands the supported path subset in user argv without shell evaluation", () => {
+		const rendered = renderAgent(
+			{ ...base, agent: "war", mode: "afk" },
+			fakeRenderServices(
+				agentsFile({
+					agent: "war",
+					mode: "afk",
+					harnessKind: "pi",
+					argv: [
+						"--data-plugin=$PDX_DATA_DIR/plugin",
+						"--user-plugin",
+						"${PDX_USER_DATA_DIR}/claude-plugin",
+						"~/agent-plugin",
+					],
+				}),
+			),
+		);
+		expect(rendered.harness.argv).toContain("--data-plugin=/tmp/pdx-data/plugin");
+		expect(rendered.harness.argv).toContain("/tmp/pdx-data/config/claude-plugin");
+		expect(rendered.harness.argv).toContain(`${homedir()}/agent-plugin`);
+	});
+
+	it("fails loudly on unsupported user argv variables", () => {
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				fakeRenderServices(
+					agentsFile({
+						agent: "war",
+						mode: "afk",
+						harnessKind: "pi",
+						argv: ["--plugin-dir", "$HOME/plugin"],
+					}),
+				),
+			),
+		).toThrow("Unsupported or unset harness argv variable $HOME");
+	});
+
 	it("afk argv preserves shell metacharacters verbatim", () => {
 		const rendered = renderAgent(
 			{ ...base, agent: "war", mode: "afk" },

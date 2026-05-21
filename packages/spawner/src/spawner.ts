@@ -588,9 +588,37 @@ const templateProvenance = (asset: ResolvedTemplateAsset): TemplateProvenance =>
 	source: asset.layer,
 });
 
+const expandHarnessArgvToken = (token: string, config: SpawnerConfig): string => {
+	const homeExpanded =
+		token === "~" ? homedir() : token.startsWith("~/") ? `${homedir()}/${token.slice(2)}` : token;
+	return homeExpanded.replace(
+		/\$\{([A-Z_][A-Z0-9_]*)\}|\$([A-Z_][A-Z0-9_]*)/g,
+		(match, bracedName: string | undefined, bareName: string | undefined) => {
+			const name = bracedName ?? bareName;
+			const value =
+				name === "PDX_DATA_DIR"
+					? config.pdxDataDir
+					: name === "PDX_USER_DATA_DIR"
+						? config.pdxUserDataDir
+						: undefined;
+			if (value === undefined) {
+				throw new SpawnerError({
+					code: "VALIDATION_ERROR",
+					message: `Unsupported or unset harness argv variable ${match}`,
+				});
+			}
+			return value;
+		},
+	);
+};
+
+const expandHarnessArgv = (argv: readonly string[], config: SpawnerConfig): readonly string[] =>
+	argv.map((token) => expandHarnessArgvToken(token, config));
+
 const harnessArgv = (
 	input: RenderAgentInput,
 	manifest: ResolvedAgentManifest,
+	config: SpawnerConfig,
 	sessionLogPath: string,
 	prompt: string,
 ): readonly string[] => {
@@ -607,10 +635,11 @@ const harnessArgv = (
 			: manifest.harness.tools === undefined || manifest.harness.tools.length === 0
 				? []
 				: ["--tools", manifest.harness.tools.join(",")];
+	const userArgv = expandHarnessArgv(manifest.harness.argv, config);
 	if (manifest.harness.kind === "claude") {
 		const base = [
 			"claude",
-			...manifest.harness.argv,
+			...userArgv,
 			"--dangerously-skip-permissions",
 			"--session-id",
 			input.sessionId,
@@ -626,7 +655,7 @@ const harnessArgv = (
 	}
 	const base = [
 		"pi",
-		...manifest.harness.argv,
+		...userArgv,
 		"--session",
 		sessionLogPath,
 		"--model",
@@ -711,7 +740,7 @@ export const renderAgent = (
 		logicalName: logicalName(input),
 		harness: {
 			kind: manifest.harness.kind,
-			argv: harnessArgv(input, manifest, sessionLogPath, prompt),
+			argv: harnessArgv(input, manifest, config, sessionLogPath, prompt),
 			env,
 		},
 		sessionLogPath,

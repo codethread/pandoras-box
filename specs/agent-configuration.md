@@ -305,7 +305,7 @@ Within one layer and field:
 
 Across layers, operations apply in layer order. For unique-list fields, `remove` of an absent item fails loudly because it usually means bundled config changed and the user partial needs review; `add` of an already-present item also fails loudly. Unique-list fields are `includes`, `appends`, and `harness.tools`.
 
-`harness.argv` preserves verbatim argv behavior. It supports `replace` and `add`, does not support `remove`, and allows duplicate tokens.
+`harness.argv` preserves argv-array behavior. It supports `replace` and `add`, does not support `remove`, and allows duplicate tokens. Spawner applies only path-oriented expansion for `$PDX_DATA_DIR`, `${PDX_DATA_DIR}`, `$PDX_USER_DATA_DIR`, `${PDX_USER_DATA_DIR}`, `~`, and `~/...`; unsupported or unset `$VARS` fail render loudly. No shell evaluation, globbing, command substitution, or quote parsing is performed.
 
 ### Hook merge semantics
 
