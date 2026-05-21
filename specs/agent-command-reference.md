@@ -59,13 +59,13 @@ Templates receive launch/self-claim context only. They do not receive Task bodie
 
 ## 4. Role Filters
 
-| Agent kind | Pithos command paths                                                              | pdx command paths                                                                             |
-| ---------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `war`      | `pithos task`                                                                     | none                                                                                          |
-| `envy`     | `pithos scope`, `pithos task`                                                     | none                                                                                          |
-| `toil`     | `pithos scope`, `pithos task`                                                     | none                                                                                          |
-| `greed`    | `pithos scope`, `pithos task`                                                     | none                                                                                          |
-| `pandora`  | `pithos scope`, `pithos task`, `pithos graph`, `pithos events`, `pithos briefing` | `pdx daemon status`, `pdx daemon logs`, `pdx run transcript`, `pdx run show`, `pdx task show` |
+| Agent kind | Pithos command paths                                                              | pdx command paths                                                                                                                  |
+| ---------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `war`      | `pithos task`                                                                     | none                                                                                                                               |
+| `envy`     | `pithos scope`, `pithos task`                                                     | none                                                                                                                               |
+| `toil`     | `pithos scope`, `pithos task`                                                     | none                                                                                                                               |
+| `greed`    | `pithos scope`, `pithos task`                                                     | none                                                                                                                               |
+| `pandora`  | `pithos scope`, `pithos task`, `pithos graph`, `pithos events`, `pithos briefing` | `pdx daemon status`, `pdx daemon logs`, `pdx run transcript`, `pdx run show`, `pdx task show`, `pdx hook stop`, `pdx hook restart` |
 
 Pandora receives daemon status/log cards as debug-only inspection surfaces. Her template keeps normal sitrep on Pithos graph/briefing/task inspect and `pdx run transcript`; daemon status is for liveness questions or conflicting evidence, and daemon logs are for supervisor anomalies.
 

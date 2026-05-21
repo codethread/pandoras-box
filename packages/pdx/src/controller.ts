@@ -10,6 +10,7 @@ import {
 	FileSystem,
 	HookExecutor,
 	Ids,
+	LifecycleReporter,
 	PithosClient,
 	Process,
 	Registry,
@@ -26,6 +27,7 @@ import { reportLifecycle } from "./lifecycle.js";
 
 export const DAEMON_TARGET = "pdx--daemon";
 export const PANDORA_TARGET = "pdx--pandora";
+export const HOOKS_TARGET = "pdx--hooks";
 export { PDX_SYSTEM_RUN_ID };
 const NO_CLAIM_TIMEOUT_MILLIS = 30_000;
 const MAX_CONSECUTIVE_RECONCILE_FAILURES = 3;
@@ -1183,6 +1185,7 @@ const HOOK_UPTIME_RESET_MILLIS = 60_000;
 const HOOK_BACKOFF_CAP_SECONDS = 30;
 
 const hookStderrPath = (config: PdxConfig): string => `${config.runsDir}/hook.stderr.log`;
+const hookStdoutPath = (config: PdxConfig): string => `${config.runsDir}/hook.stdout.log`;
 
 const nowMillis = Clock.pipe(
 	Effect.flatMap((clock) => clock.nowIso),
@@ -1266,6 +1269,7 @@ export const runInputHookSupervisor = (
 		const hookExec = yield* HookExecutor;
 		const pithos = yield* PithosClient;
 		const log = yield* SupervisorLog;
+		const fs = yield* FileSystem;
 
 		const recentExitTimesRef = yield* Ref.make<readonly number[]>([]);
 		const escalatedRef = yield* Ref.make(false);
@@ -1311,6 +1315,9 @@ export const runInputHookSupervisor = (
 					while (true) {
 						const line = yield* handle.waitForLine;
 						if (line === null) return;
+						yield* fs
+							.appendFile(hookStdoutPath(config), `${line}\n`)
+							.pipe(Effect.catchAll(() => Effect.void));
 						const item = parseIntakeLine(line);
 						if (item === null) {
 							yield* log.write({
@@ -1654,6 +1661,31 @@ export const reconcileTick = (config: PdxConfig, maxAfk = 4) =>
 		yield* spawnReadyAgent(config, maxAfk);
 	});
 
+export const hookStopPdx = (config: PdxConfig) =>
+	Effect.gen(function* () {
+		const response = yield* requestIpc(config.socketPath, { kind: "hook.stop" });
+		if (!response.ok) {
+			yield* Effect.fail(
+				new PdxError({ code: "IPC_ERROR", message: response.error ?? "daemon hook stop failed" }),
+			);
+		}
+		return response.data;
+	});
+
+export const hookRestartPdx = (config: PdxConfig) =>
+	Effect.gen(function* () {
+		const response = yield* requestIpc(config.socketPath, { kind: "hook.restart" });
+		if (!response.ok) {
+			yield* Effect.fail(
+				new PdxError({
+					code: "IPC_ERROR",
+					message: response.error ?? "daemon hook restart failed",
+				}),
+			);
+		}
+		return response.data;
+	});
+
 const killFailureEscalationTitle = (runId: string): string => `Investigate stuck kill: ${runId}`;
 
 const killFailureEscalationBody = (
@@ -1852,6 +1884,8 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 		const pithos = yield* PithosClient;
 		const spawner = yield* Spawner;
 		const log = yield* SupervisorLog;
+		const clock = yield* Clock;
+		const lifecycleReporter = yield* LifecycleReporter;
 		yield* fs.mkdir(config.runsDir);
 		yield* log.write({ level: "info", span: "pdx.daemon", msg: "daemon starting" });
 		yield* settleHitlOrphans();
@@ -1871,6 +1905,8 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 		const tmux = yield* Tmux;
 		const processService = yield* Process;
 		const hookPidRef = yield* Ref.make<number | null>(null);
+		const hookFiberRef = yield* Ref.make<Fiber.RuntimeFiber<void, PdxError> | null>(null);
+		let hookExecService: HookExecutorService | null = null;
 		const consecutiveReconcileFailures = yield* Ref.make(0);
 		yield* loggedReconcileTick(config, maxAfk, consecutiveReconcileFailures);
 		const loop = yield* loggedReconcileTick(config, maxAfk, consecutiveReconcileFailures).pipe(
@@ -1899,31 +1935,53 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 			),
 		);
 		const hookCommand = hooks.input?.command;
-		const hookRuntime =
-			hookCommand !== undefined
-				? yield* Effect.gen(function* () {
-						const hookExec = yield* HookExecutor;
-						const fiber = yield* runInputHookSupervisor(config, hookCommand, hookPidRef).pipe(
-							Effect.provideService(HookExecutor, hookExec),
-							Effect.fork,
-						);
-						return { fiber, hookExec } as const;
-					})
-				: null;
+		if (hookCommand !== undefined) {
+			const hookExec = yield* HookExecutor;
+			hookExecService = hookExec;
+			const fiber = yield* runInputHookSupervisor(config, hookCommand, hookPidRef).pipe(
+				Effect.provideService(HookExecutor, hookExec),
+				Effect.fork,
+			);
+			yield* Ref.set(hookFiberRef, fiber);
+			yield* tmux
+				.newSession({
+					target: HOOKS_TARGET,
+					cwd: config.runsDir,
+					command: ["tail", "-n", "50", "-F", hookStderrPath(config), hookStdoutPath(config)],
+				})
+				.pipe(
+					Effect.catchAll((error) =>
+						log.write({
+							level: "warn",
+							span: "pdx.hook",
+							msg: "failed to create pdx--hooks tmux session",
+							data: { error: error.message },
+						}),
+					),
+				);
+		}
 
 		const shutdown = yield* Deferred.make<void, never>();
 		const stop = Effect.gen(function* () {
 			yield* log.write({ level: "info", span: "pdx.daemon", msg: "daemon stopping" });
 			yield* Fiber.interrupt(loop);
-			if (hookRuntime !== null) {
-				yield* Fiber.interrupt(hookRuntime.fiber);
-				const hookPid = yield* Ref.get(hookPidRef);
-				if (hookPid !== null) {
-					yield* terminateHookChild(hookRuntime.hookExec, hookPid).pipe(
-						Effect.zipRight(Ref.set(hookPidRef, null)),
-					);
-				}
+			const hookFiber = yield* Ref.get(hookFiberRef);
+			if (hookFiber !== null) {
+				yield* Fiber.interrupt(hookFiber);
 			}
+			const hookPid = yield* Ref.get(hookPidRef);
+			if (hookPid !== null && hookExecService !== null) {
+				yield* terminateHookChild(hookExecService, hookPid).pipe(
+					Effect.zipRight(Ref.set(hookPidRef, null)),
+				);
+			}
+			yield* tmux
+				.killSession(HOOKS_TARGET)
+				.pipe(
+					Effect.catchAll((error) =>
+						isMissingTmuxSessionError(error) ? Effect.void : Effect.fail(error),
+					),
+				);
 			for (const entry of yield* registry.list) {
 				if (entry.tmuxTarget !== undefined) {
 					yield* tmux
@@ -1970,6 +2028,55 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 					Effect.provideService(Tmux, tmux),
 					Effect.provideService(Process, processService),
 				);
+			}
+			if (request.kind === "hook.stop") {
+				if (hookCommand === undefined || hookExecService === null) {
+					return Effect.succeed({ ok: false, error: "no hook configured" });
+				}
+				const hookExec = hookExecService;
+				return Effect.gen(function* () {
+					const currentFiber = yield* Ref.get(hookFiberRef);
+					if (currentFiber !== null) {
+						yield* Fiber.interruptFork(currentFiber);
+						yield* Ref.set(hookFiberRef, null);
+					}
+					const currentPid = yield* Ref.get(hookPidRef);
+					if (currentPid !== null) {
+						yield* terminateHookChild(hookExec, currentPid);
+						yield* Ref.set(hookPidRef, null);
+					}
+					return { ok: true as const, data: { hook_stopped: true } };
+				});
+			}
+			if (request.kind === "hook.restart") {
+				if (hookCommand === undefined || hookExecService === null) {
+					return Effect.succeed({ ok: false, error: "no hook configured" });
+				}
+				const hookExec = hookExecService;
+				const cmd = hookCommand;
+				return Effect.gen(function* () {
+					const currentFiber = yield* Ref.get(hookFiberRef);
+					if (currentFiber !== null) {
+						yield* Fiber.interruptFork(currentFiber);
+						yield* Ref.set(hookFiberRef, null);
+					}
+					const currentPid = yield* Ref.get(hookPidRef);
+					if (currentPid !== null) {
+						yield* terminateHookChild(hookExec, currentPid);
+						yield* Ref.set(hookPidRef, null);
+					}
+					const fiber = yield* runInputHookSupervisor(config, cmd, hookPidRef).pipe(
+						Effect.provideService(HookExecutor, hookExec),
+						Effect.provideService(PithosClient, pithos),
+						Effect.provideService(SupervisorLog, log),
+						Effect.provideService(Clock, clock),
+						Effect.provideService(FileSystem, fs),
+						Effect.provideService(LifecycleReporter, lifecycleReporter),
+						Effect.fork,
+					);
+					yield* Ref.set(hookFiberRef, fiber);
+					return { ok: true as const, data: { hook_restarted: true } };
+				});
 			}
 			return stop;
 		});

@@ -210,11 +210,14 @@ pdx supervises the hook independently:
 
 - stdin is closed
 - stderr goes to `<data-dir>/runs/hook.stderr.log`
+- each raw stdout line is appended to `<data-dir>/runs/hook.stdout.log` before being parsed
 - stdout is bounded and parsed as NDJSON
 - exits restart with exponential backoff capped at 30 seconds
 - backoff resets after stable uptime
 - repeated crashes create an `input_hook_stuck` Repair Alert and stop restarting until pdx is restarted
 - `pdx close` sends SIGTERM; if the hook does not exit it escalates to SIGKILL and polls briefly before treating the process as stuck
+
+When a hook command is configured, pdx creates a `pdx--hooks` tmux session that tails `hook.stderr.log` and `hook.stdout.log` in real time. The session persists across hook restarts and is killed when the daemon closes. The operator can navigate to it like any other pdx tmux session.
 
 ## 10. Operator and Pandora Interfaces
 
@@ -224,6 +227,7 @@ The public `pdx` surface is the operator/Pandora control surface:
 - `pdx daemon status`, `pdx daemon logs`
 - `pdx run kill`, `pdx run transcript`, `pdx run show`
 - `pdx task kill`, `pdx task show`
+- `pdx hook stop`, `pdx hook restart`
 
 All commands resolve data dir as `--data-dir`, then `PDX_DATA_DIR`, then `$HOME/.pdx`.
 

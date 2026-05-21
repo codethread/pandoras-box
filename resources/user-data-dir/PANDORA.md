@@ -151,8 +151,10 @@ overrides/appends.
 
 Invalid JSON or invalid fields are logged and skipped; the hook keeps running.
 If the hook exits, pdx restarts it with backoff. Repeated crashes create an
-`input_hook_stuck` Repair Alert for Pandora and stop restarts until pdx is
-restarted.
+`input_hook_stuck` Repair Alert for Pandora and stop restarts. After fixing the
+hook script, use `pdx hook restart` to resume supervision without a full pdx
+restart, or `pdx hook stop` to disable it. A full `pdx close && pdx open` also
+clears the crash-loop state.
 
 Hooks belong in global config layers only, not repo/worktree project layers.
 

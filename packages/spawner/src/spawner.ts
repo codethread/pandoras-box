@@ -287,6 +287,12 @@ const PDX_COMMAND_ANNOTATIONS: Readonly<Record<string, readonly string[]>> = {
 	"pdx task show": [
 		"Navigation only: jumps to the interactive holder run for a task when one exists.",
 	],
+	"pdx hook stop": [
+		"Stops the running input hook process without restarting it. No-op if no hook is configured.",
+	],
+	"pdx hook restart": [
+		"Stops and re-forks the input hook supervisor. Use after fixing a hook script or clearing an input_hook_stuck alert.",
+	],
 };
 
 const PITHOS_TOP_LEVEL_PATHS: Record<SpawnableAgentKind, readonly string[]> = {
@@ -303,6 +309,8 @@ const PANDORA_PDX_COMMAND_PATHS = [
 	"pdx run transcript",
 	"pdx run show",
 	"pdx task show",
+	"pdx hook stop",
+	"pdx hook restart",
 ] as const;
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>

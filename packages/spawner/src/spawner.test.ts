@@ -291,6 +291,31 @@ const pdxHelpTree = {
 				},
 			],
 		},
+		{
+			tool: "pdx",
+			name: "hook",
+			path: "pdx hook",
+			usage: "pdx hook",
+			description: "Control the supervised input hook process.",
+			subcommands: [
+				{
+					tool: "pdx",
+					name: "stop",
+					path: "pdx hook stop",
+					usage: "pdx hook stop [--data-dir text]",
+					description: "Stop the supervised input hook process.",
+					subcommands: [],
+				},
+				{
+					tool: "pdx",
+					name: "restart",
+					path: "pdx hook restart",
+					usage: "pdx hook restart [--data-dir text]",
+					description: "Restart the supervised input hook process.",
+					subcommands: [],
+				},
+			],
+		},
 	],
 } as const;
 const pdxHelpJson = JSON.stringify(pdxHelpTree);
@@ -1038,6 +1063,10 @@ describe("renderAgent", () => {
 		expect(rendered.prompt).toContain("#### `pdx run show`");
 		expect(rendered.prompt).toContain("AFK runs are headless");
 		expect(rendered.prompt).toContain("#### `pdx task show`");
+		expect(rendered.prompt).toContain("#### `pdx hook stop`");
+		expect(rendered.prompt).toContain("Stops the running input hook process");
+		expect(rendered.prompt).toContain("#### `pdx hook restart`");
+		expect(rendered.prompt).toContain("Stops and re-forks the input hook supervisor");
 
 		expect(rendered.prompt).not.toContain("### Pithos help JSON");
 		expect(rendered.prompt).not.toContain("### pdx inspection help JSON");

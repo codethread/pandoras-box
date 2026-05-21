@@ -5,6 +5,8 @@ import process from "node:process";
 import { inspect } from "node:util";
 import {
 	closePdx,
+	hookRestartPdx,
+	hookStopPdx,
 	initPdx,
 	killPdx,
 	logsShowPdx,
@@ -105,6 +107,8 @@ type CommandInput =
 			readonly dataDir: string | undefined;
 			readonly taskId: string;
 	  }
+	| { readonly command: "hook.stop"; readonly dataDir: string | undefined }
+	| { readonly command: "hook.restart"; readonly dataDir: string | undefined }
 	| {
 			readonly command: "daemon.run";
 			readonly dataDir: string | undefined;
@@ -250,6 +254,14 @@ const runCommand = (runtime: RuntimeInput, input: CommandInput) =>
 					Effect.provide(provided),
 				);
 				yield* Effect.sync(() => process.stdout.write(json(confirmation)));
+				return;
+			}
+			case "hook.stop": {
+				yield* hookStopPdx(config).pipe(Effect.provide(provided));
+				return;
+			}
+			case "hook.restart": {
+				yield* hookRestartPdx(config).pipe(Effect.provide(provided));
 				return;
 			}
 			case "daemon.run": {
@@ -680,11 +692,38 @@ const makeCommand = (runtime: RuntimeInput) => {
 		Command.withSubcommands([taskKill, taskShow]),
 	);
 
+	const hookStop = Command.make(
+		"stop",
+		{
+			dataDir: Options.text("data-dir").pipe(
+				Options.withDescription("Directory containing Pithos state and pdx supervisor logs."),
+				Options.optional,
+			),
+		},
+		({ dataDir }) => runCommand(runtime, { command: "hook.stop", dataDir: opt(dataDir) }),
+	).pipe(Command.withDescription("Stop the supervised input hook process."));
+
+	const hookRestart = Command.make(
+		"restart",
+		{
+			dataDir: Options.text("data-dir").pipe(
+				Options.withDescription("Directory containing Pithos state and pdx supervisor logs."),
+				Options.optional,
+			),
+		},
+		({ dataDir }) => runCommand(runtime, { command: "hook.restart", dataDir: opt(dataDir) }),
+	).pipe(Command.withDescription("Restart the supervised input hook process."));
+
+	const hook = Command.make("hook").pipe(
+		Command.withDescription("Control the supervised input hook process."),
+		Command.withSubcommands([hookStop, hookRestart]),
+	);
+
 	return Command.make("pdx").pipe(
 		Command.withDescription(
 			"Local supervisor for Pandora's Box agent runs, processes, tmux sessions, and Pandora.",
 		),
-		Command.withSubcommands([init, open, close, daemon, run, task]),
+		Command.withSubcommands([init, open, close, daemon, run, task, hook]),
 	);
 };
 
