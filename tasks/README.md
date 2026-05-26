@@ -31,6 +31,13 @@ No HITL slices are required: the replay design decisions have been captured in `
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 18 implementation — 2026-05-26
+
+- Updated Pandora Repair Alert guidance to choose replay for valid same-Task retries after execution-context/external-precondition failures, and to keep Supersession for changed body, assumptions, scope, or plan.
+- Pandora guidance now states she must claim the Repair Alert first, use the held alert fencing token for `pithos task replay`, and that replay completes the alert while resetting the affected Task to queued with a fresh retry budget.
+- Generated command cards now omit `pithos task replay` for non-Pandora agents while including Pandora-only replay notes in Pandora's command reference.
+- Validation: focused Spawner tests and `pnpm verify` passed.
+
 ### Task 17 implementation — 2026-05-26
 
 - Added `pithos task replay <target-task-id> --token <repair-alert-token> --reason <text> [--run <run-id>]` with JSON output from the Engine replay transition.

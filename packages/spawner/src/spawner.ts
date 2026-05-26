@@ -251,6 +251,10 @@ const PITHOS_COMMAND_ANNOTATIONS: Readonly<Record<string, readonly string[]>> = 
 		"Use `--chain none` only for intentionally unrelated work or manual graph repair.",
 	],
 	"pithos task supersede": ["Use for graph repair/replacement, not normal successful completion."],
+	"pithos task replay": [
+		"Pandora-only Repair Alert resolution: use when the affected Task definition is still valid and the failure was execution context or external preconditions.",
+		"Run while holding the matching Repair Alert, using the Repair Alert fencing token; replay completes the alert and queues the target Task with a fresh retry budget.",
+	],
 	"pithos task cancel": ["Use to abandon non-held work, not normal successful completion."],
 	"pithos briefing": [
 		"Owns agenda-style ready/blocked summaries and user-facing next actions.",
@@ -433,8 +437,12 @@ const filteredHelpTree = (
 	};
 };
 
-const leafCommandCards = (tree: CommandHelpCard): readonly CommandHelpCard[] => {
+const leafCommandCards = (
+	tree: CommandHelpCard,
+	excludePaths: ReadonlySet<string>,
+): readonly CommandHelpCard[] => {
 	const visit = (card: CommandHelpCard): readonly CommandHelpCard[] => {
+		if (excludePaths.has(card.path)) return [];
 		if (card.subcommands.length === 0) return [card];
 		return card.subcommands.flatMap((child) => visit(child));
 	};
@@ -470,8 +478,12 @@ const annotationLines = (path: string): readonly string[] => {
 	return ["", "Notes:", "", ...notes.map((note) => `- ${note}`)];
 };
 
-const renderCommandHelpMarkdown = (title: string, tree: CommandHelpCard): string => {
-	const leaves = leafCommandCards(tree);
+const renderCommandHelpMarkdown = (
+	title: string,
+	tree: CommandHelpCard,
+	excludePaths: ReadonlySet<string> = new Set(),
+): string => {
+	const leaves = leafCommandCards(tree, excludePaths);
 	return [
 		`### ${title}`,
 		...leaves.flatMap((card) => [
@@ -494,12 +506,14 @@ const renderCommandCards = (agent: SpawnableAgentKind, services: RenderServices)
 	const rawPithosHelp = pithosHelpTree(services);
 	validateCommandAnnotations(rawPithosHelp, PITHOS_COMMAND_ANNOTATIONS);
 	const pithosHelp = filteredHelpTree(rawPithosHelp, PITHOS_TOP_LEVEL_PATHS[agent], "pithos help");
+	const pithosExcludedPaths =
+		agent === "pandora" ? new Set<string>() : new Set(["pithos task replay"]);
 	const sections = [
 		[
 			"## Generated command reference",
 			"This reference is generated from CLI metadata. Use the rendered claim command above for the exact claim invocation for this run.",
 			"",
-			renderCommandHelpMarkdown("Pithos", pithosHelp),
+			renderCommandHelpMarkdown("Pithos", pithosHelp, pithosExcludedPaths),
 		].join("\n"),
 	];
 	if (agent === "pandora") {

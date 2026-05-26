@@ -87,7 +87,7 @@ tasks:
   - id: 18
     description: Teach Pandora replay workflow
     task_file: tasks/018-teach-pandora-replay-workflow.md
-    status: pending
+    status: complete
     blocked_by: [17]
   - id: 19
     description: Fold replay into canonical docs
