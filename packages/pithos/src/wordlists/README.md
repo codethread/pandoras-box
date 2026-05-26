@@ -1,9 +1,17 @@
 # EFF Short Wordlist
 
-`eff-short.json` is a vendored copy of the [EFF Short Wordlist #1](https://www.eff.org/deeplinks/2016/07/new-wordlists-random-passphrases) published by the Electronic Frontier Foundation.
+`eff-short.json` is derived from the [EFF Short Wordlist #1](https://www.eff.org/deeplinks/2016/07/new-wordlists-random-passphrases) published by the Electronic Frontier Foundation.
 
-- 1296 words, all 3–5 characters, alphabetised
+- 1391 lowercase words, alphabetised
 - Used to generate human-friendly IDs: `task_pear-orange-tree`, `run_fish-butter-clam`
+- Removes words that are unpleasant or exceed two `o200k_base` OpenAI tokens
+- Includes extra single-token programming terms such as `async`, `cache`, `json`, and `schema`
+
+Check candidate words with:
+
+```sh
+pnpm --filter @pdx/pithos check-word-tokens -- --max 1 async cache schema
+```
 
 ## License
 

@@ -1,11 +1,9 @@
 import { randomInt } from "node:crypto";
 import words from "./eff-short.json" with { type: "json" };
 
-// EFF short list is already filtered; additionally exclude a small set of
-// words that would produce unpleasant combinations in generated IDs.
-const BLOCKLIST = new Set(["gore", "hate", "hurt"]);
+export const friendlyIdWords: readonly string[] = words;
 
-const pool: string[] = words.filter((w) => !BLOCKLIST.has(w));
+const pool: readonly string[] = friendlyIdWords;
 
 // Exported for tests that want deterministic IDs.
 export type Rng = () => number;
