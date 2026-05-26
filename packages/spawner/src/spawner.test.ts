@@ -590,13 +590,13 @@ describe("bundled agent templates", () => {
 		);
 		expect(pandora.prompt).toContain("Greed says a review task is ready for HITL walkthrough");
 		expect(pandora.prompt).toContain(
-			"Use replay only as Pandora while holding the matching Repair Alert",
+			"Use `pithos task replay <affected-task-id> --token <repair-alert-token>",
 		);
 		expect(pandora.prompt).toContain(
-			"Replay completes the Repair Alert and resets the affected Task to `queued` with a fresh retry budget",
+			"Replay completes the Repair Alert and resets the target Task to `queued` with a fresh retry budget",
 		);
 		expect(pandora.prompt).toContain(
-			"Use Supersession instead when the Task body, assumptions, scope, or plan need to change",
+			"Use Supersession when the Task body, assumptions, scope, or plan need to change",
 		);
 		for (const kind of [
 			"`interrupt`",
@@ -606,12 +606,10 @@ describe("bundled agent templates", () => {
 		] as const) {
 			expect(pandora.prompt).toContain(kind);
 		}
-		expect(pandora.prompt).toContain(
-			"Replay with the held Repair Alert token when the same Task should run again",
-		);
-		expect(pandora.prompt).toContain("Supersede when the requested work or plan needs correction");
-		expect(pandora.prompt).toContain("replay gives the target Task a fresh retry budget");
-		expect(pandora.prompt).toContain("Supersede when the work should move scope");
+		expect(pandora.prompt).toContain("same Task should run unchanged");
+		expect(pandora.prompt).toContain("otherwise supersede, replan, or inform the user");
+		expect(pandora.prompt).toContain("a fresh retry budget is intended");
+		expect(pandora.prompt).toContain("Fix the missing path/scope first");
 		expect(toil.prompt).toContain(
 			"Enqueue `review` only when triage instructions or the user request",
 		);
@@ -1086,7 +1084,7 @@ describe("renderAgent", () => {
 		expect(rendered.prompt).toContain("#### `pithos briefing`");
 		expect(rendered.prompt).toContain("#### `pithos task replay`");
 		expect(rendered.prompt).toContain("Pandora-only Repair Alert resolution");
-		expect(rendered.prompt).toContain("queues the target Task with a fresh retry budget");
+		expect(rendered.prompt).toContain("use that alert's fencing token");
 		expect(rendered.prompt).toContain("#### `pithos graph inspect`");
 		expect(rendered.prompt).toContain("typed edges, gates, and supersessions");
 		expect(rendered.prompt).toContain("#### `pithos events tail`");

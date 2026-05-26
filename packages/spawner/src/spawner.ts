@@ -252,8 +252,7 @@ const PITHOS_COMMAND_ANNOTATIONS: Readonly<Record<string, readonly string[]>> = 
 	],
 	"pithos task supersede": ["Use for graph repair/replacement, not normal successful completion."],
 	"pithos task replay": [
-		"Pandora-only Repair Alert resolution: use when the affected Task definition is still valid and the failure was execution context or external preconditions.",
-		"Run while holding the matching Repair Alert, using the Repair Alert fencing token; replay completes the alert and queues the target Task with a fresh retry budget.",
+		"Pandora-only Repair Alert resolution; run while holding the matching Repair Alert and use that alert's fencing token.",
 	],
 	"pithos task cancel": ["Use to abandon non-held work, not normal successful completion."],
 	"pithos briefing": [
