@@ -30,6 +30,35 @@ No HITL slices are required: the replay design decisions are now captured in the
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 20 verification — 2026-05-26
+
+- Focused Pithos replay/claim-sequence coverage passed: `pnpm --filter @pdx/pithos test -- test/foundation.test.ts test/chain-policy.test.ts test/task-lifecycle.test.ts test/render.test.ts test/cli.test.ts`.
+- Focused Spawner Pandora command-card/prompt coverage passed: `pnpm --filter @pdx/spawner test -- --run`.
+- Isolated SQLite CLI smoke passed with temp `PITHOS_DB`. Repro outline used:
+  ```sh
+  SMOKE_ROOT="$(mktemp -d)"
+  export PITHOS_DB="$SMOKE_ROOT/pithos.sqlite"
+  REPO_DIR="$SMOKE_ROOT/repo"; mkdir -p "$REPO_DIR"
+  PITHOS="pnpm --silent --filter @pdx/pithos start --"
+  $PITHOS init --fresh
+  SCOPE_ID="$($PITHOS scope upsert --kind repo --path "$REPO_DIR" | jq -r '.scope.id')"
+  $PITHOS run upsert --run run_toil_smoke --agent toil --mode afk --scope global --cwd "$PWD" --harness-kind system --session-log-path "$SMOKE_ROOT/toil.jsonl" --session-id session-toil
+  $PITHOS run upsert --run run_war_smoke --agent war --mode afk --scope "$SCOPE_ID" --cwd "$REPO_DIR" --harness-kind system --session-log-path "$SMOKE_ROOT/war.jsonl" --session-id session-war
+  $PITHOS run upsert --run run_pandora_smoke --agent pandora --mode hitl --scope global --cwd "$PWD" --harness-kind system --session-log-path "$SMOKE_ROOT/pandora.jsonl" --session-id session-pandora
+  TASK_ID="$(printf 'Replay smoke target body\n' | $PITHOS task enqueue --run run_toil_smoke --scope "$SCOPE_ID" --capability execute --title "Replay smoke target" --stdin | jq -r '.task.id')"
+  TARGET_TOKEN="$($PITHOS task claim --run run_war_smoke --scope "$SCOPE_ID" --capability execute | jq -r '.task.token')"
+  $PITHOS task fail "$TASK_ID" --run run_war_smoke --token "$TARGET_TOKEN" --reason "smoke intentional failure"
+  ALERT_CLAIM_JSON="$($PITHOS task claim --run run_pandora_smoke --scope global --capability escalate)"
+  ALERT_ID="$(printf '%s' "$ALERT_CLAIM_JSON" | jq -r '.task.id')"
+  ALERT_TOKEN="$(printf '%s' "$ALERT_CLAIM_JSON" | jq -r '.task.token')"
+  $PITHOS task replay "$TASK_ID" --run run_pandora_smoke --token "$ALERT_TOKEN" --reason "smoke replay after fixed precondition"
+  test "$($PITHOS task inspect "$TASK_ID" --json | jq -r '.task.status')" = queued
+  test "$($PITHOS task inspect "$TASK_ID" --json | jq -r '.task.attempts')" = 0
+  test "$($PITHOS task inspect "$ALERT_ID" --json | jq -r '.task.status')" = done
+  ```
+- Full repository validation passed: `pnpm verify`.
+- No replay integration repairs or caveats were needed.
+
 ### Task 19 documentation — 2026-05-26
 
 - Folded Task Replay into canonical Task graph docs, including replay validation, reset/preserve semantics, replay events, `claim_sequence`, and gate-release identity by claim sequence.

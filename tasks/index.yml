@@ -97,5 +97,5 @@ tasks:
   - id: 20
     description: Verify replay integration
     task_file: tasks/020-verify-replay-integration.md
-    status: pending
+    status: complete
     blocked_by: [19]
