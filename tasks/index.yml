@@ -77,7 +77,7 @@ tasks:
   - id: 16
     description: Add replay engine transition
     task_file: tasks/016-add-replay-engine-transition.md
-    status: pending
+    status: complete
     blocked_by: [15]
   - id: 17
     description: Expose replay CLI contract

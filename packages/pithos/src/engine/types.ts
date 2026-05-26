@@ -147,6 +147,12 @@ export interface Engine {
 		readonly runId: string | undefined;
 		readonly reason: string;
 	}) => { readonly ok: true; readonly task: { readonly id: string; readonly status: "cancelled" } };
+	readonly replay: (input: {
+		readonly taskId: string;
+		readonly runId: string | undefined;
+		readonly token: number;
+		readonly reason: string;
+	}) => ReplayOutput;
 	readonly graphInspect: (input: {
 		readonly taskId: string | undefined;
 		readonly scope: string | undefined;
@@ -366,6 +372,12 @@ export interface EnqueueOutput {
 	readonly ok: true;
 	readonly task: { readonly id: string; readonly status: "queued" };
 	readonly chain: ChainOutput;
+}
+
+export interface ReplayOutput {
+	readonly ok: true;
+	readonly task: { readonly id: string; readonly status: "queued" };
+	readonly repair_alert: { readonly id: string; readonly status: "done" };
 }
 
 export interface SupersedeOutput {

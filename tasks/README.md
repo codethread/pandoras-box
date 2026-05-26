@@ -31,6 +31,14 @@ No HITL slices are required: the replay design decisions have been captured in `
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 16 implementation — 2026-05-26
+
+- Added the Engine-only replay transition for Pandora-held Repair Alerts; CLI and prompt guidance remain for later slices.
+- Replay validates Pandora ownership, held Repair Alert fencing, matching `repair` edge, target status/scope/canonicality, and non-empty reason inside one transaction.
+- Successful replay resets the target Task to queued operational zero state while preserving `claim_sequence`, `max_attempts`, artifacts, edges, and prior events; the held Repair Alert is completed and cleared from Pandora's run.
+- Regression coverage exercises failed/dead-letter/cancelled target replay and the required fail-loud rejection paths.
+- Validation: focused Pithos lifecycle tests, typecheck, and lint passed during implementation.
+
 ### Task 15 implementation — 2026-05-26
 
 - Gate release rows and member rows are now keyed by lifetime `claim_sequence`; `attempt` remains stored as descriptive retry-cycle metadata.

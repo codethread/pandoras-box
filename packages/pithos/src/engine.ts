@@ -39,6 +39,7 @@ import {
 	taskSourceEdge,
 	taskSourceSummary,
 	taskSummary,
+	taskDetail,
 	taskSummarySelect,
 	taskSupersessionLinks,
 	toScopeOutput,
@@ -55,7 +56,14 @@ export {
 	renderTaskInspectMarkdown,
 } from "./engine/render.js";
 export { PDX_SYSTEM_RUN_ID } from "./engine/types.js";
-import type { ChainOutput, Engine, EngineContext, RunOutput, ScopeOutput } from "./engine/types.js";
+import type {
+	ChainOutput,
+	Engine,
+	EngineContext,
+	ReplayOutput,
+	RunOutput,
+	ScopeOutput,
+} from "./engine/types.js";
 export type {
 	ArtifactOutput,
 	BlockerOutput,
@@ -75,6 +83,7 @@ export type {
 	LaunchPreconditionEscalationOutput,
 	LineageEntryOutput,
 	RepairAlertOutput,
+	ReplayOutput,
 	RunOutput,
 	ScopeIdentityOutput,
 	ScopeOutput,
@@ -1149,6 +1158,142 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 					}),
 				recentlyCompleted,
 			};
+		}),
+	replay: ({ taskId, runId, token, reason }) =>
+		withDb(ctx, (db) => {
+			const actorRunId = resolveRunId(ctx, runId);
+			const nonEmptyReason = requireNonEmpty(reason, "--reason");
+			return db.transaction((): ReplayOutput => {
+				const actorRun = liveRun(db, actorRunId);
+				if (actorRun.agent_kind !== "pandora") {
+					fail("VALIDATION_ERROR", "task replay must be performed by pandora");
+				}
+				const repairAlertTaskId =
+					actorRun.task_id ?? fail("VALIDATION_ERROR", "pandora run does not hold a Repair Alert");
+				const repairAlertTask = taskDetail(db, repairAlertTaskId);
+				if (repairAlertTask.fencing_token !== token) {
+					fail("STALE_TOKEN", "repair alert token is stale or task is not held by run");
+				}
+				if (repairAlertTask.capability !== "escalate") {
+					fail("VALIDATION_ERROR", "held task is not an escalation Repair Alert");
+				}
+				if (repairAlertTask.status !== "claimed" && repairAlertTask.status !== "running") {
+					fail("VALIDATION_ERROR", `held Repair Alert is not active: ${repairAlertTask.status}`);
+				}
+				if (
+					db.prepare(sql`SELECT 1 FROM repair_alerts WHERE task_id=?`).get(repairAlertTaskId) ===
+					undefined
+				) {
+					fail("VALIDATION_ERROR", "held escalation is not a Repair Alert");
+				}
+				const target = taskDetail(db, taskId);
+				if (
+					db
+						.prepare(
+							sql`SELECT 1 FROM task_edges WHERE task_id=? AND target_task_id=? AND kind='repair'`,
+						)
+						.get(repairAlertTaskId, taskId) === undefined
+				) {
+					fail("VALIDATION_ERROR", "held Repair Alert does not repair the target task");
+				}
+				if (
+					db.prepare(sql`SELECT 1 FROM task_supersessions WHERE old_task_id=?`).get(taskId) !==
+					undefined
+				) {
+					fail("VALIDATION_ERROR", "task has already been superseded");
+				}
+				if (!["failed", "dead_letter", "cancelled"].includes(target.status)) {
+					fail("VALIDATION_ERROR", `task status cannot be replayed: ${target.status}`);
+				}
+				enforceTaskAdmissionScope(ctx, db, target.scope_id, target.capability);
+				const replayUpdate = db
+					.prepare(sql`
+						UPDATE tasks
+						SET status='queued',
+						    attempts=0,
+						    result_json='{}',
+						    completed_at=NULL,
+						    fencing_token=fencing_token + 1,
+						    updated_at=CURRENT_TIMESTAMP
+						WHERE id=?
+						  AND status=?
+						  AND fencing_token=?
+						  AND NOT EXISTS (
+						    SELECT 1
+						    FROM task_supersessions ts
+						    WHERE ts.old_task_id=tasks.id
+						  )
+						  AND EXISTS (
+						    SELECT 1
+						    FROM scopes s
+						    WHERE s.id=tasks.scope_id
+						      AND s.archived_at IS NULL
+						  )
+					`)
+					.run(taskId, target.status, target.fencing_token);
+				if (replayUpdate.changes === 0) {
+					fail("STALE_TOKEN_RACE", "replay target changed before update");
+				}
+				const completionResult = JSON.stringify({
+					resolution: "replayed",
+					target_task_id: taskId,
+					reason: nonEmptyReason,
+				});
+				const alertUpdate = db
+					.prepare(sql`
+						UPDATE tasks
+						SET status='done',
+						    result_json=?,
+						    completed_at=CURRENT_TIMESTAMP,
+						    updated_at=CURRENT_TIMESTAMP
+						WHERE id=?
+						  AND fencing_token=?
+						  AND status IN ('claimed','running')
+					`)
+					.run(completionResult, repairAlertTaskId, token);
+				if (alertUpdate.changes === 0) {
+					fail("STALE_TOKEN", "repair alert token is stale or task is not held by run");
+				}
+				const runUpdate = db
+					.prepare(sql`
+						UPDATE runs
+						SET task_id=NULL,
+						    updated_at=CURRENT_TIMESTAMP
+						WHERE id=? AND task_id=?
+					`)
+					.run(actorRunId, repairAlertTaskId);
+				if (runUpdate.changes === 0) {
+					fail("STALE_TOKEN_RACE", "repair alert holder changed before update");
+				}
+				event(ctx, db, "task.replayed", {
+					task_id: taskId,
+					actor_run_id: actorRunId,
+					payload: {
+						reason: nonEmptyReason,
+						repair_alert_task_id: repairAlertTaskId,
+						previous_status: target.status,
+						previous_attempts: target.attempts,
+						previous_fencing_token: target.fencing_token,
+						new_fencing_token: target.fencing_token + 1,
+					},
+				});
+				event(ctx, db, "task.completed", {
+					task_id: repairAlertTaskId,
+					actor_run_id: actorRunId,
+					payload: {
+						run_id: actorRunId,
+						fencing_token: token,
+						resolution: "replayed",
+						target_task_id: taskId,
+						reason: nonEmptyReason,
+					},
+				});
+				return {
+					ok: true as const,
+					task: { id: taskId, status: "queued" as const },
+					repair_alert: { id: repairAlertTaskId, status: "done" as const },
+				};
+			})();
 		}),
 	supersede: ({ taskId, runId, reason, title, body, bodyFile, scope, capability }) =>
 		withDb(ctx, (db) => {

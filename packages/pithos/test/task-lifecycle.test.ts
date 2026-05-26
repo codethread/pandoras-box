@@ -144,6 +144,20 @@ const upsertPandoraRun = (engine: Engine): void => {
 	});
 };
 
+const createAndClaimRepairAlert = (engine: Engine, targetTaskId: string) => {
+	upsertPandoraRun(engine);
+	const repairAlert = engine.createRepairAlert({
+		runId: "run_pdx",
+		affectedTaskId: targetTaskId,
+		kind: "task_failed",
+		escalationTitle: "Repair target",
+		escalationBody: "Target needs repair.",
+	}).escalation.id;
+	const claim = engine.claim({ runId: "run_pandora", scope: "global", capability: "escalate" });
+	expect(claim.task.id).toBe(repairAlert);
+	return { repairAlert, token: claim.task.token };
+};
+
 const taskCreatedChain = (dbPath: string, taskId: string): unknown => {
 	const db = new Database(dbPath);
 	const payload = JSON.parse(
@@ -2076,6 +2090,253 @@ CREATE TABLE repair_alerts (
 		) as { source_kind: string; source_task_id: string };
 		expect(created).toMatchObject({ edges: { repair: [affected] } });
 		db.close();
+	});
+
+	it.each(["failed", "dead_letter", "cancelled"] as const)(
+		"replays a %s target through a held Pandora Repair Alert",
+		(status) => {
+			const { dbPath, engine, repo } = setup();
+			const target = engine.enqueue({
+				scope: repo,
+				capability: "execute",
+				title: "replay target",
+				body: "body",
+				bodyFile: undefined,
+				runId: "run_toil",
+				after: [],
+				chain: "none",
+			}).task.id;
+			engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+			engine.artifactAdd({
+				taskId: target,
+				runId: "run_war",
+				kind: "note",
+				title: "history",
+				body: "preserve me",
+			});
+			const setupDb = new Database(dbPath);
+			setupDb
+				.prepare(
+					"UPDATE tasks SET status=?, attempts=2, result_json=?, completed_at=CURRENT_TIMESTAMP WHERE id=?",
+				)
+				.run(status, JSON.stringify({ reason: "bad env" }), target);
+			setupDb.prepare("UPDATE runs SET task_id=NULL WHERE id='run_war'").run();
+			setupDb.close();
+			const before = engine.taskInspect({ taskId: target }).task;
+			const { repairAlert, token } = createAndClaimRepairAlert(engine, target);
+
+			expect(
+				engine.replay({ taskId: target, runId: "run_pandora", token, reason: "VPN restored" }),
+			).toEqual({
+				ok: true,
+				task: { id: target, status: "queued" },
+				repair_alert: { id: repairAlert, status: "done" },
+			});
+
+			const inspect = engine.taskInspect({ taskId: target });
+			expect(inspect.task).toMatchObject({
+				status: "queued",
+				attempts: 0,
+				claim_sequence: before.claim_sequence,
+				fencing_token: before.fencing_token + 1,
+				completed_at: null,
+			});
+			expect(inspect.artifacts).toHaveLength(1);
+			expect(inspect.attached_context.map((task) => task.id)).toContain(repairAlert);
+
+			const db = new Database(dbPath);
+			try {
+				expect(db.prepare("SELECT result_json FROM tasks WHERE id=?").pluck().get(target)).toBe(
+					"{}",
+				);
+				expect(
+					db.prepare("SELECT task_id FROM runs WHERE id='run_pandora'").pluck().get(),
+				).toBeNull();
+				expect(db.prepare("SELECT status FROM tasks WHERE id=?").pluck().get(repairAlert)).toBe(
+					"done",
+				);
+				expect(
+					JSON.parse(
+						db
+							.prepare("SELECT result_json FROM tasks WHERE id=?")
+							.pluck()
+							.get(repairAlert) as string,
+					),
+				).toEqual({
+					resolution: "replayed",
+					target_task_id: target,
+					reason: "VPN restored",
+				});
+				expect(
+					db.prepare("SELECT COUNT(*) FROM events WHERE task_id=?").pluck().get(target),
+				).toBeGreaterThan(1);
+				expect(
+					db
+						.prepare("SELECT COUNT(*) FROM events WHERE type='task.replayed' AND task_id=?")
+						.pluck()
+						.get(target),
+				).toBe(1);
+				expect(
+					JSON.parse(
+						db
+							.prepare("SELECT payload_json FROM events WHERE type='task.completed' AND task_id=?")
+							.pluck()
+							.get(repairAlert) as string,
+					),
+				).toEqual({
+					run_id: "run_pandora",
+					fencing_token: token,
+					resolution: "replayed",
+					target_task_id: target,
+					reason: "VPN restored",
+				});
+				expect(
+					db.prepare("SELECT COUNT(*) FROM task_edges WHERE target_task_id=?").pluck().get(target),
+				).toBeGreaterThan(0);
+			} finally {
+				db.close();
+			}
+		},
+	);
+
+	it("rejects invalid replay preconditions without mutating the target", () => {
+		const { dbPath, engine, repo } = setup();
+		const target = engine.enqueue({
+			scope: repo,
+			capability: "execute",
+			title: "target",
+			body: "body",
+			bodyFile: undefined,
+			runId: "run_toil",
+			after: [],
+			chain: "none",
+		}).task.id;
+		engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+		const setupDb = new Database(dbPath);
+		setupDb
+			.prepare("UPDATE tasks SET status='failed', completed_at=CURRENT_TIMESTAMP WHERE id=?")
+			.run(target);
+		setupDb.prepare("UPDATE runs SET task_id=NULL WHERE id='run_war'").run();
+		setupDb.close();
+		const { repairAlert, token } = createAndClaimRepairAlert(engine, target);
+
+		expect(() =>
+			engine.replay({ taskId: target, runId: "run_pandora", token: token + 1, reason: "fixed" }),
+		).toThrow(/stale/);
+		expect(() =>
+			engine.replay({ taskId: target, runId: "run_toil", token, reason: "fixed" }),
+		).toThrow(/pandora/);
+		expect(() =>
+			engine.replay({ taskId: "task_missing", runId: "run_pandora", token, reason: "fixed" }),
+		).toThrow(/task not found/);
+		expect(() =>
+			engine.replay({ taskId: target, runId: "run_pandora", token, reason: "" }),
+		).toThrow(/must be non-empty/);
+
+		const db = new Database(dbPath);
+		try {
+			db.prepare(
+				"DELETE FROM task_edges WHERE task_id=? AND target_task_id=? AND kind='repair'",
+			).run(repairAlert, target);
+			expect(() =>
+				engine.replay({ taskId: target, runId: "run_pandora", token, reason: "fixed" }),
+			).toThrow(/does not repair/);
+			db.prepare(
+				"INSERT INTO task_edges(task_id,target_task_id,kind,created_by_run_id) VALUES (?,?,?,?)",
+			).run(repairAlert, target, "repair", "run_pdx");
+			db.prepare("UPDATE tasks SET status='done' WHERE id=?").run(target);
+			expect(() =>
+				engine.replay({ taskId: target, runId: "run_pandora", token, reason: "fixed" }),
+			).toThrow(/cannot be replayed/);
+			db.prepare("UPDATE tasks SET status='failed' WHERE id=?").run(target);
+			db.prepare("UPDATE scopes SET archived_at=CURRENT_TIMESTAMP WHERE id=?").run(repo);
+			expect(() =>
+				engine.replay({ taskId: target, runId: "run_pandora", token, reason: "fixed" }),
+			).toThrow(/scope is archived/);
+			db.prepare("UPDATE scopes SET archived_at=NULL WHERE id=?").run(repo);
+			db.prepare(
+				"INSERT INTO task_supersessions(old_task_id,new_task_id,created_by_run_id,reason) VALUES (?,?,?,?)",
+			).run(target, repairAlert, "run_toil", "replace");
+			expect(() =>
+				engine.replay({ taskId: target, runId: "run_pandora", token, reason: "fixed" }),
+			).toThrow(/superseded/);
+			expect(db.prepare("SELECT status FROM tasks WHERE id=?").pluck().get(target)).toBe("failed");
+		} finally {
+			db.close();
+		}
+	});
+
+	it("rejects replay when Pandora does not hold an active Repair Alert", () => {
+		const { dbPath, engine, repo } = setup();
+		const target = engine.enqueue({
+			scope: repo,
+			capability: "execute",
+			title: "target",
+			body: "body",
+			bodyFile: undefined,
+			runId: "run_toil",
+			after: [],
+			chain: "none",
+		}).task.id;
+		const ordinary = enqueueTask(engine, { title: "ordinary held" }).task.id;
+		const escalation = enqueueTask(engine, {
+			title: "plain escalation",
+			capability: "escalate",
+			chain: "none",
+		}).task.id;
+		upsertPandoraRun(engine);
+		const db = new Database(dbPath);
+		try {
+			db.prepare("UPDATE tasks SET status='failed', completed_at=CURRENT_TIMESTAMP WHERE id=?").run(
+				target,
+			);
+			expect(() =>
+				engine.replay({ taskId: target, runId: "run_pandora", token: 0, reason: "fixed" }),
+			).toThrow(/does not hold/);
+			db.prepare("UPDATE tasks SET status='claimed', fencing_token=1 WHERE id=?").run(ordinary);
+			db.prepare("UPDATE runs SET task_id=? WHERE id='run_pandora'").run(ordinary);
+			expect(() =>
+				engine.replay({ taskId: target, runId: "run_pandora", token: 1, reason: "fixed" }),
+			).toThrow(/not an escalation/);
+			db.prepare("UPDATE tasks SET status='queued' WHERE id=?").run(ordinary);
+			db.prepare("UPDATE tasks SET status='claimed', fencing_token=1 WHERE id=?").run(escalation);
+			db.prepare("UPDATE runs SET task_id=? WHERE id='run_pandora'").run(escalation);
+			expect(() =>
+				engine.replay({ taskId: target, runId: "run_pandora", token: 1, reason: "fixed" }),
+			).toThrow(/not a Repair Alert/);
+			expect(db.prepare("SELECT status FROM tasks WHERE id=?").pluck().get(target)).toBe("failed");
+		} finally {
+			db.close();
+		}
+	});
+
+	it("rejects replay when the target repo scope path is invalid", () => {
+		const existingDirectories = new Set(["/tmp/pithos-repo"]);
+		const { dbPath, engine, repo } = setup(undefined, services({ existingDirectories }));
+		const target = engine.enqueue({
+			scope: repo,
+			capability: "execute",
+			title: "target",
+			body: "body",
+			bodyFile: undefined,
+			runId: "run_toil",
+			after: [],
+			chain: "none",
+		}).task.id;
+		engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+		const setupDb = new Database(dbPath);
+		setupDb
+			.prepare("UPDATE tasks SET status='failed', completed_at=CURRENT_TIMESTAMP WHERE id=?")
+			.run(target);
+		setupDb.prepare("UPDATE runs SET task_id=NULL WHERE id='run_war'").run();
+		setupDb.close();
+		const { token } = createAndClaimRepairAlert(engine, target);
+		existingDirectories.delete("/tmp/pithos-repo");
+
+		expect(() =>
+			engine.replay({ taskId: target, runId: "run_pandora", token, reason: "fixed" }),
+		).toThrow(/scope path is missing or not a directory/);
+		expect(engine.taskInspect({ taskId: target }).task.status).toBe("failed");
 	});
 
 	it("rolls back repair alert creation when affected task is missing", () => {

@@ -114,7 +114,7 @@ Important details:
 
 - scope upsert/list/archive, including repo/worktree directory admission checks
 - Run upsert/inspect/Cleanup/Interrupt/timeout/launch-abort
-- task enqueue/supersede, including active-scope and repo/worktree directory admission checks
+- task enqueue/supersede/replay, including active-scope and repo/worktree directory admission checks
 - graph inspect
 - briefing
 - event tail
@@ -197,6 +197,7 @@ Pithos owns durable invariants, not live resource observation. Important rules t
 - `about` and `repair` edges are non-blocking provenance; `about` supports normal escalation context, while `repair` points at broken work for supersession/replan.
 - After a `gate` releases for a Claim sequence, adding `after`/`about`/`repair` growth under that released branch or superseding a released/current branch member fails while any impacted downstream task is non-terminal; terminal-only impact is allowed and recorded in `task_gate_late_growth_markers`. Gate release identity is the lifetime `claim_sequence`; `attempts` is retry-cycle metadata.
 - Supersessions preserve history while replacing work with a fresh Task.
+- Replay is a fenced Pandora-held Repair Alert resolution that resets a failed, dead-lettered, or cancelled target Task to queued zero state while preserving history.
 - Fencing tokens invalidate stale task writes.
 - Cleanup is for confirmed natural Run death; Interrupt is for deliberate Kill of a live Run; Cancel is for non-held Task abandonment.
 - Event history is retention-managed data, not an invariant store. `pruneEvents` deletes heartbeat events older than 1 day and other events older than 7 days using strict older-than cutoffs.
