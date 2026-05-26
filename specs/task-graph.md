@@ -1,11 +1,11 @@
 # Pithos Task Graph
 
 **Status:** Implemented
-**Last Updated:** 2026-05-20
+**Last Updated:** 2026-05-26
 
 ## 1. Overview
 
-Pithos owns the durable **Task graph** for Pandora's Box: Tasks, typed Task edges, Supersessions, Claims, Runs, Artifacts, Events, and inspection surfaces. The graph lets Agents and Pandora understand what work exists, what is claimable, what is waiting on branch completion, what replaced what, and what context belongs to a Task chain without relying on prompt memory.
+Pithos owns the durable **Task graph** for Pandora's Box: Tasks, typed Task edges, Supersessions, Task Replay, Claims, Runs, Artifacts, Events, and inspection surfaces. The graph lets Agents and Pandora understand what work exists, what is claimable, what is waiting on branch completion, what replaced what, and what context belongs to a Task chain without relying on prompt memory.
 
 ## 2. Typed Task edges
 
@@ -72,7 +72,7 @@ A Task is claimable when:
 - the requested Scope exactly matches the Run Scope
 - the Run has no current Held task
 
-Claim increments Attempts, sets a fresh Fencing token, stores the Held task on the Run, and records gate release snapshots when gates release. A Run may hold at most one Task at a time.
+Claim increments `attempts`, `claim_sequence`, and the Fencing token together, stores the Held task on the Run, and records gate release snapshots when gates release. `attempts` is the resettable retry-budget counter used with `max_attempts`; `claim_sequence` is the monotonic lifetime claim identity used for audit rows such as gate releases and late-growth markers. A Run may hold at most one Task at a time.
 
 ## 4. Chain policy and CLI shape
 
@@ -92,7 +92,7 @@ Claim increments Attempts, sets a fresh Fencing token, stores the Held task on t
 - ordinary held-task continuation creates `after`
 - held ordinary work to escalation creates `about`
 - held `about` or `gate` escalation to ordinary continuation creates `after` to the held escalation; the escalation edge keeps branch/checkpoint context attached
-- held `repair` escalation cannot ordinary-auto-continue; `--chain auto` fails loudly and Pandora must repair with Supersession, explicit replanning, or intentional cancellation
+- held `repair` escalation cannot ordinary-auto-continue; `--chain auto` fails loudly and Pandora must repair with Task Replay, Supersession, explicit replanning, or intentional cancellation
 - `--chain none` creates no implicit edges, though manual edge flags still apply
 
 Requested `review` Tasks are ordinary non-escalation work claimed by Greed. Reviews are usually created with `after` edges to the work they assess; fan-in reviews use repeatable `--after`.
@@ -111,7 +111,24 @@ Rules:
 
 Supersession is replacement history, not a generic edge kind.
 
-## 6. Payload CLI contract
+## 6. Task Replay
+
+`pithos task replay <target-task-id> --token <repair-alert-token> --reason <text> [--run <pandora-run-id>]` is Pandora's lightweight Repair Alert resolution for retrying the same Task after an execution-context or external-precondition failure. Replay is used when the Task id, body, assumptions, Capability, and Scope remain correct; use Supersession when the work definition must change.
+
+Replay is authorized only while Pandora holds the matching system-authored Repair Alert. Pithos validates in one transaction that the actor Run is live Pandora, the held Repair Alert fencing token matches `--token`, the alert has a `repair` edge to the target, the target exists in an active valid Scope, the target status is `failed`, `dead_letter`, or `cancelled`, the target is not superseded, and `--reason` is non-empty. Invalid replay preconditions fail loudly; workers cannot replay their own Tasks and completed/queued/claimed Tasks are not replay targets.
+
+Successful replay resets the target Task to queued operational state while preserving history:
+
+- sets status to `queued`
+- resets `attempts` to `0` for a fresh retry budget
+- increments the target Fencing token
+- clears completion/result state
+- preserves `id`, Scope, Capability, title/body, `max_attempts`, `claim_sequence`, edges, Supersession history, Artifacts, Events, Runs, and gate-release snapshots
+- completes the held Repair Alert with `{ "resolution": "replayed", "target_task_id": ..., "reason": ... }` and clears it from Pandora's Run
+
+Replay emits `task.replayed` for the target with the reason, Repair Alert id, previous status/attempts/fencing token, and new fencing token. It also emits the ordinary `task.completed` event for the Repair Alert with replay resolution metadata. Event rows are audit evidence, not the invariant store.
+
+## 7. Payload CLI contract
 
 Payload-bearing public CLI commands use one explicit stdin document:
 
@@ -124,7 +141,7 @@ Payload-bearing public CLI commands use one explicit stdin document:
 
 The CLI reads stdin only when `--stdin` is present. Missing redirected stdin, empty required payloads, invalid completion JSON, and conflicting `--run`/`PITHOS_RUN_ID` fail with tagged Pithos errors.
 
-## 7. Inspection surfaces
+## 8. Inspection surfaces
 
 ### `pithos task inspect <task-id> [--json]`
 
@@ -148,9 +165,9 @@ Readable graph output is map-oriented. It labels typed Task edges (`after`, `abo
 
 Briefing owns agenda questions: ready work, blocked/gated work, broken branches, recent completions, and Pandora-oriented summaries. Use graph inspect for graph inventory, provenance, and audit; use briefing for what needs attention next.
 
-## 8. Data model and code locations
+## 9. Data model and code locations
 
-Key tables include `tasks`, `runs`, `task_edges`, `task_gate_releases`, `task_gate_release_members`, `task_gate_late_growth_markers`, `task_supersessions`, `artifacts`, and `events`. `runs.has_claimed_task` is the durable record that a Run has claimed work, so timeout/launch-abort semantics do not depend on retained event history. Event rows are retention-managed operational history and may be pruned by age through the Engine library boundary.
+Key tables include `tasks` (with resettable `attempts` and monotonic `claim_sequence`), `runs`, `task_edges`, `task_gate_releases`, `task_gate_release_members`, `task_gate_late_growth_markers`, `task_supersessions`, `artifacts`, and `events`. `runs.has_claimed_task` is the durable record that a Run has claimed work, so timeout/launch-abort semantics do not depend on retained event history. Event rows are retention-managed operational history and may be pruned by age through the Engine library boundary.
 
 Implementation lives in:
 
@@ -163,7 +180,7 @@ Implementation lives in:
 
 The package README documents module boundaries; generated CLI help is the command syntax source.
 
-## 9. Testing
+## 10. Testing
 
 Automated coverage lives in:
 

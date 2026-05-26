@@ -4,13 +4,12 @@
 
 The completed first plan implemented the scoped `review` capability change. The completed second plan implemented the typed-edge Task graph redesign now folded into `specs/task-graph.md` and `specs/control-plane-supervision.md`. The completed graph-map refinement made readable `pithos graph inspect` a relationship map.
 
-The current MVP implements Task Replay from `specs/task-replay.md`: Pandora can resolve a held Repair Alert by resetting the same broken Task back to queued work with a fresh retry budget, without Supersession, while preserving audit history. The foundational claim identity split separates resettable `attempts` from monotonic `claim_sequence` so replay can reset retry budget without deleting gate-release snapshots.
+The current MVP implements Task Replay, now folded into the canonical specs: Pandora can resolve a held Repair Alert by resetting the same broken Task back to queued work with a fresh retry budget, without Supersession, while preserving audit history. The foundational claim identity split separates resettable `attempts` from monotonic `claim_sequence` so replay can reset retry budget without deleting gate-release snapshots.
 
 ## Important references
 
-- `specs/task-replay.md` — planned change spec for Task Replay and `claim_sequence`.
-- `specs/task-graph.md` — canonical durable typed-edge Task graph semantics to fold replay into after implementation.
-- `specs/control-plane-supervision.md` — canonical Repair Alert and pdx integration semantics.
+- `specs/task-graph.md` — canonical durable typed-edge Task graph semantics, including Task Replay, `claim_sequence`, replay validation/events, and gate-release identity.
+- `specs/control-plane-supervision.md` — canonical Repair Alert and pdx integration semantics, including replay as the lightweight same-Task repair path.
 - `UBIQUITOUS_LANGUAGE.md` — canonical domain terminology.
 - `packages/pithos/src/db.ts` — schema and seeded durable contracts.
 - `packages/pithos/src/chain-policy.ts` — enqueue policy and implicit edge behavior.
@@ -25,11 +24,18 @@ Tasks 1–13 are complete and belong to earlier plans. Tasks 14–20 implement T
 
 Task 14 adds the monotonic `claim_sequence` counter to ordinary claim behavior while leaving gate-release identity unchanged. Task 15 moves gate-release and late-growth identity from retry-cycle attempt to lifetime claim sequence. Task 16 adds the Engine replay transaction behind Pandora-held Repair Alert validation. Task 17 exposes the CLI contract. Task 18 teaches Pandora the workflow and command surface. Task 19 folds the completed behavior into canonical docs and retires the temporary change spec. Task 20 verifies the integration with focused tests, full verification, and an isolated CLI smoke.
 
-No HITL slices are required: the replay design decisions have been captured in `specs/task-replay.md`, including the alpha DB reset/no migration assumption.
+No HITL slices are required: the replay design decisions are now captured in the canonical Task graph and control-plane specs. The temporary replay change spec was removed after fold-in; the alpha DB reset/no migration assumption is retained in task history notes.
 
 ## Developer Notes
 
 Append notes here. Do not rewrite earlier notes.
+
+### Task 19 documentation — 2026-05-26
+
+- Folded Task Replay into canonical Task graph docs, including replay validation, reset/preserve semantics, replay events, `claim_sequence`, and gate-release identity by claim sequence.
+- Updated control-plane and ubiquitous-language guidance so Repair Alerts prefer Task Replay for valid same-Task retries and Supersession/replan/cancel when the work definition changes or should not continue.
+- Updated the Pithos package README with the replay CLI surface and schema/invariant notes, removed the active replay planned-spec entry from `specs/README.md`, and removed the temporary `specs/task-replay.md` change spec after fold-in.
+- Validation: `pnpm verify` passed.
 
 ### Task 18 implementation — 2026-05-26
 

@@ -1218,17 +1218,6 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 						WHERE id=?
 						  AND status=?
 						  AND fencing_token=?
-						  AND NOT EXISTS (
-						    SELECT 1
-						    FROM task_supersessions ts
-						    WHERE ts.old_task_id=tasks.id
-						  )
-						  AND EXISTS (
-						    SELECT 1
-						    FROM scopes s
-						    WHERE s.id=tasks.scope_id
-						      AND s.archived_at IS NULL
-						  )
 					`)
 					.run(taskId, target.status, target.fencing_token);
 				if (replayUpdate.changes === 0) {

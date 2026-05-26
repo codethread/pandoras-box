@@ -1,7 +1,7 @@
 # Control Plane Supervision
 
 **Status:** Implemented
-**Last Updated:** 2026-05-20
+**Last Updated:** 2026-05-26
 
 ## 1. Overview
 
@@ -133,13 +133,13 @@ Implemented kinds include:
 
 Escalation routing uses typed Task edges:
 
-| Form                  | Edge shape                        | Claimability               | Workflow meaning                                                               |
-| --------------------- | --------------------------------- | -------------------------- | ------------------------------------------------------------------------------ |
-| Immediate escalation  | `escalation --about--> target`    | immediate                  | Human attention/context about in-flight or planned work.                       |
-| Checkpoint escalation | `escalation --gate--> target`     | after target branch drains | Human checkpoint after successful branch completion.                           |
-| Repair Alert          | `repair_alert --repair--> target` | immediate                  | Broken-work repair; Pandora should supersede, replan, or intentionally cancel. |
+| Form                  | Edge shape                        | Claimability               | Workflow meaning                                                                                                                   |
+| --------------------- | --------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Immediate escalation  | `escalation --about--> target`    | immediate                  | Human attention/context about in-flight or planned work.                                                                           |
+| Checkpoint escalation | `escalation --gate--> target`     | after target branch drains | Human checkpoint after successful branch completion.                                                                               |
+| Repair Alert          | `repair_alert --repair--> target` | immediate                  | Broken-work repair; Pandora should replay when the same Task is still valid, otherwise supersede, replan, or intentionally cancel. |
 
-Repair Alerts that reference one affected Task carry a `repair` edge. They do not use `after`, because failed, cancelled, and dead-lettered Tasks do not unblock downstream work. `repair` is not ordinary context: a held `repair` escalation cannot ordinary-auto-continue. Pandora repairs the Broken chain with Supersession, explicit replanning, or intentional Cancel.
+Repair Alerts that reference one affected Task carry a `repair` edge. They do not use `after`, because failed, cancelled, and dead-lettered Tasks do not unblock downstream work. `repair` is not ordinary context: a held `repair` escalation cannot ordinary-auto-continue. Pandora repairs the Broken chain with Task Replay when the original Task definition is still valid and the failure was execution context/precondition related; otherwise she uses Supersession, explicit replanning, or intentional Cancel.
 
 Task-failure, dead-letter, and interrupt Repair Alerts are created by Pithos in the relevant Task/Run transition. pdx owns invoking Interrupt before killing the live resource, but Pithos owns the durable Alert side effect transactionally. Launch-precondition Repair Alerts are created by a Pithos atomic transition that cancels the still-queued Task, records `repair` provenance, creates the Escalation task, and emits Events in one transaction.
 

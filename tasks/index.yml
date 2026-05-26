@@ -92,7 +92,7 @@ tasks:
   - id: 19
     description: Fold replay into canonical docs
     task_file: tasks/019-fold-replay-into-canonical-docs.md
-    status: pending
+    status: complete
     blocked_by: [14, 15, 16, 17, 18]
   - id: 20
     description: Verify replay integration

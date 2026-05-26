@@ -94,6 +94,7 @@ Important details:
 
 - `--help-json` prints the command tree used by Spawner.
 - Protocol/state-transition commands return JSON by default for Agent consumption.
+- `pithos task replay <target-task-id> --token <repair-alert-token> --reason <text> [--run <pandora-run-id>]` is the Pandora-held Repair Alert resolution for resetting the same broken Task to queued work with a fresh retry budget.
 - Context commands (`task inspect`, `graph inspect`, `briefing`) render readable text by default and expose `--json` for structured output. `task inspect` readable output is a single-task dossier: full task body, full bodies of artifacts attached to that task, and direct local context only. `graph inspect` readable output is a threaded map of compact task cards for the same unpruned graph selection returned by `--json`: topology, typed edges, preview lines, artifact refs, gate branch members, provenance, and Supersession history. Agenda/sitrep summaries stay with `briefing`.
 - Payload-bearing task mutations read redirected stdin only when `--stdin` is present and fail on empty/missing stdin.
 
@@ -191,13 +192,14 @@ Pithos owns durable invariants, not live resource observation. Important rules t
 - Scopes carry an optional `description` field for operator context; set via `--description` on `scope upsert`, surfaced in `scope list` and `briefing` output.
 - Repo/worktree Scope paths are validated as directories at scope upsert and task enqueue/supersede time. The filesystem can change later, so pdx still owns launch-time runtime-path checks.
 - Claim authorization is enforced by seeded `agent_claims`.
-- Every successful Claim increments `attempts`, `claim_sequence`, and `fencing_token` together; `attempts` remains the retry/dead-letter budget counter, while `claim_sequence` is lifetime audit identity for later replay work.
+- Every successful Claim increments `attempts`, `claim_sequence`, and `fencing_token` together; `attempts` is the resettable retry/dead-letter budget counter, while `claim_sequence` is lifetime audit identity for replay-safe gate releases and late-growth markers.
 - Enqueue authorization is enforced by seeded `agent_enqueues`.
 - `after` edges are satisfied only by upstream Tasks in `done`.
-- `about` and `repair` edges are non-blocking provenance; `about` supports normal escalation context, while `repair` points at broken work for supersession/replan.
+- `about` and `repair` edges are non-blocking provenance; `about` supports normal escalation context, while `repair` points at broken work for Task Replay, Supersession, replan, or cancellation.
 - After a `gate` releases for a Claim sequence, adding `after`/`about`/`repair` growth under that released branch or superseding a released/current branch member fails while any impacted downstream task is non-terminal; terminal-only impact is allowed and recorded in `task_gate_late_growth_markers`. Gate release identity is the lifetime `claim_sequence`; `attempts` is retry-cycle metadata.
 - Supersessions preserve history while replacing work with a fresh Task.
-- Replay is a fenced Pandora-held Repair Alert resolution that resets a failed, dead-lettered, or cancelled target Task to queued zero state while preserving history.
+- Replay is a fenced Pandora-held Repair Alert resolution that resets a failed, dead-lettered, or cancelled target Task to queued zero state while preserving history, completing the held Repair Alert, and emitting `task.replayed` plus the Repair Alert's normal `task.completed` event.
+- Replay preserves the Task id, body, Scope, Capability, `max_attempts`, `claim_sequence`, edges, Artifacts, Events, Runs, Supersession history, and gate-release audit snapshots; it resets `attempts` to `0`, increments the target Fencing token, and clears completion/result state.
 - Fencing tokens invalidate stale task writes.
 - Cleanup is for confirmed natural Run death; Interrupt is for deliberate Kill of a live Run; Cancel is for non-held Task abandonment.
 - Event history is retention-managed data, not an invariant store. `pruneEvents` deletes heartbeat events older than 1 day and other events older than 7 days using strict older-than cutoffs.
