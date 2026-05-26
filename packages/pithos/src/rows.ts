@@ -37,6 +37,7 @@ export const TaskRowSchema = Schema.Struct({
 	),
 	fencing_token: Schema.Number,
 	attempts: Schema.Number,
+	claim_sequence: Schema.Number,
 	max_attempts: Schema.Number,
 	created_at: NonEmptyString,
 });

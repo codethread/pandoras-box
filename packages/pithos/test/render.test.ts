@@ -25,6 +25,7 @@ const taskDetail = {
 	body: "Do the work",
 	fencing_token: 1,
 	attempts: 0,
+	claim_sequence: 0,
 	max_attempts: 3,
 };
 

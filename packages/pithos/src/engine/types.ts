@@ -220,6 +220,7 @@ export interface TaskDetailOutput extends TaskSummaryOutput {
 	readonly body: string;
 	readonly fencing_token: number;
 	readonly attempts: number;
+	readonly claim_sequence: number;
 	readonly max_attempts: number;
 }
 

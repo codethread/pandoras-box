@@ -67,7 +67,7 @@ tasks:
   - id: 14
     description: Add claim sequence counter
     task_file: tasks/014-add-claim-sequence-counter.md
-    status: pending
+    status: complete
     blocked_by: []
   - id: 15
     description: Key gate releases by sequence

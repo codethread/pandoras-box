@@ -31,6 +31,13 @@ No HITL slices are required: the replay design decisions have been captured in `
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 14 implementation — 2026-05-26
+
+- Added fresh-schema `tasks.claim_sequence` and surfaced it through decoded Task detail / inspect JSON at the Engine boundary.
+- Successful claims now increment `attempts`, `claim_sequence`, and `fencing_token` together in the claim update; gate-release identity remains keyed by `attempt` for the next slice.
+- Regression coverage proves first claim increments both counters and cleanup dead-letter decisions still use `attempts` versus `max_attempts`, independent of `claim_sequence`.
+- Validation: `pnpm verify` passed.
+
 ### Task Replay task plan amendment — 2026-05-26
 
 - Added Tasks 14–20 for the Task Replay MVP captured in `specs/task-replay.md`.

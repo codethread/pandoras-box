@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 	) DEFAULT 'queued',
 	fencing_token INTEGER NOT NULL DEFAULT 0,
 	attempts INTEGER NOT NULL DEFAULT 0,
+	claim_sequence INTEGER NOT NULL DEFAULT 0,
 	max_attempts INTEGER NOT NULL DEFAULT 3,
 	created_by_run_id TEXT NOT NULL REFERENCES runs(id),
 	result_json TEXT NOT NULL DEFAULT '{}',

@@ -29,7 +29,7 @@ Pithos is the durable source of truth for:
 - Agent kinds and Capabilities
 - Tasks and Claims
 - Runs and Held tasks
-- Fencing tokens and Attempts
+- Fencing tokens, Attempts, and monotonic Claim sequences
 - typed Task edges (`after`, `about`, `repair`, `gate`) and Supersessions
 - Artifacts and Events
 - Task graph invariants and text/JSON inspection views
@@ -191,6 +191,7 @@ Pithos owns durable invariants, not live resource observation. Important rules t
 - Scopes carry an optional `description` field for operator context; set via `--description` on `scope upsert`, surfaced in `scope list` and `briefing` output.
 - Repo/worktree Scope paths are validated as directories at scope upsert and task enqueue/supersede time. The filesystem can change later, so pdx still owns launch-time runtime-path checks.
 - Claim authorization is enforced by seeded `agent_claims`.
+- Every successful Claim increments `attempts`, `claim_sequence`, and `fencing_token` together; `attempts` remains the retry/dead-letter budget counter, while `claim_sequence` is lifetime audit identity for later replay work.
 - Enqueue authorization is enforced by seeded `agent_enqueues`.
 - `after` edges are satisfied only by upstream Tasks in `done`.
 - `about` and `repair` edges are non-blocking provenance; `about` supports normal escalation context, while `repair` points at broken work for supersession/replan.

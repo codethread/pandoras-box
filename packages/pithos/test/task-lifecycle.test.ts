@@ -185,6 +185,11 @@ describe("task lifecycle", () => {
 		const claimed = engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
 		expect(claimed.task.id).toBe(enq.task.id);
 		expect(claimed.task.token).toBe(1);
+		expect(engine.taskInspect({ taskId: enq.task.id }).task).toMatchObject({
+			attempts: 1,
+			claim_sequence: 1,
+			fencing_token: 1,
+		});
 		expect(engine.heartbeat({ runId: "run_war", taskId: enq.task.id, token: 1 })).toEqual({
 			ok: true,
 			status: "running",
@@ -1686,6 +1691,10 @@ CREATE TABLE repair_alerts (
 		const db = new Database(dbPath);
 		expect(db.prepare("SELECT status FROM tasks WHERE id=?").pluck().get(task)).toBe("queued");
 		expect(db.prepare("SELECT fencing_token FROM tasks WHERE id=?").pluck().get(task)).toBe(2);
+		expect(db.prepare("SELECT attempts, claim_sequence FROM tasks WHERE id=?").get(task)).toEqual({
+			attempts: 1,
+			claim_sequence: 1,
+		});
 		const reclaimed = JSON.parse(
 			db
 				.prepare("SELECT payload_json FROM events WHERE type='task.reclaimed'")
@@ -1717,7 +1726,11 @@ CREATE TABLE repair_alerts (
 			runId: "run_war2",
 		});
 		engine.claim({ runId: "run_war2", scope: repo, capability: "execute" });
-		db.prepare("UPDATE tasks SET attempts=max_attempts WHERE id=?").run(task);
+		expect(db.prepare("SELECT attempts, claim_sequence FROM tasks WHERE id=?").get(task)).toEqual({
+			attempts: 2,
+			claim_sequence: 2,
+		});
+		db.prepare("UPDATE tasks SET attempts=max_attempts, claim_sequence=99 WHERE id=?").run(task);
 		expect(engine.runCleanup({ runId: "run_war2", reason: "process exited" })).toMatchObject({
 			run: {
 				id: "run_war2",
@@ -1729,6 +1742,7 @@ CREATE TABLE repair_alerts (
 		});
 		expect(db.prepare("SELECT status FROM tasks WHERE id=?").pluck().get(task)).toBe("dead_letter");
 		expect(db.prepare("SELECT fencing_token FROM tasks WHERE id=?").pluck().get(task)).toBe(4);
+		expect(db.prepare("SELECT claim_sequence FROM tasks WHERE id=?").pluck().get(task)).toBe(99);
 		expect(
 			db.prepare("SELECT COUNT(*) FROM events WHERE type='task.dead_lettered'").pluck().get(),
 		).toBe(1);

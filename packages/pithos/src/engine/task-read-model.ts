@@ -165,7 +165,7 @@ export const taskGates = (db: Db, taskId: string): readonly GateInspectOutput[] 
 		);
 
 export const taskSummarySelect = sql`
-SELECT t.id, t.scope_id, s.kind AS scope_kind, s.canonical_path, s.parent_repo_path, s.description AS scope_description, t.capability, t.title, t.body, t.status, t.fencing_token, t.attempts, t.max_attempts, t.created_at, t.completed_at
+SELECT t.id, t.scope_id, s.kind AS scope_kind, s.canonical_path, s.parent_repo_path, s.description AS scope_description, t.capability, t.title, t.body, t.status, t.fencing_token, t.attempts, t.claim_sequence, t.max_attempts, t.created_at, t.completed_at
 FROM tasks t
 JOIN scopes s ON s.id = t.scope_id
 `;
@@ -194,6 +194,7 @@ export const parseTaskDetail = (value: unknown, message: string): TaskDetailOutp
 		body: row.body,
 		fencing_token: row.fencing_token,
 		attempts: row.attempts,
+		claim_sequence: row.claim_sequence,
 		max_attempts: row.max_attempts,
 	};
 };

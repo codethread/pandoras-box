@@ -44,11 +44,12 @@ const claimTaskUpdate = sql`
 UPDATE tasks
 SET status = 'claimed',
     attempts = attempts + 1,
+    claim_sequence = claim_sequence + 1,
     fencing_token = fencing_token + 1,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = ?
   AND status = 'queued'
-RETURNING id, fencing_token, attempts, capability
+RETURNING id, fencing_token, attempts, claim_sequence, capability
 `;
 
 export const makeClaimLoopOps = (
@@ -77,7 +78,13 @@ export const makeClaimLoopOps = (
 				if (runRow.changes === 0) fail("VALIDATION_ERROR", "run already holds a task");
 
 				const updated = db.prepare(claimTaskUpdate).get(task.id) as
-					| { id: string; fencing_token: number; attempts: number; capability: Capability }
+					| {
+							readonly id: string;
+							readonly fencing_token: number;
+							readonly attempts: number;
+							readonly claim_sequence: number;
+							readonly capability: Capability;
+					  }
 					| undefined;
 
 				const claimedTask =
