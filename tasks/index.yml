@@ -72,7 +72,7 @@ tasks:
   - id: 15
     description: Key gate releases by sequence
     task_file: tasks/015-key-gate-releases-by-sequence.md
-    status: pending
+    status: complete
     blocked_by: [14]
   - id: 16
     description: Add replay engine transition

@@ -44,7 +44,7 @@ Inspection states:
 
 Gate checks are dynamic while the owner is queued. New `after`/`about`/`repair` work under the anchor before Claim can move a gate from clear back to open.
 
-When a gated Task is claimed, Pithos evaluates gates inside the Claim transaction and records `task_gate_releases` plus `task_gate_release_members` for that attempt. Historical release rows are audit snapshots; a later requeue requires a fresh release for the next attempt. Pithos emits `task.gate_released` with task id, target anchor, attempt, fencing token, releasing run, and snapshot members.
+When a gated Task is claimed, Pithos evaluates gates inside the Claim transaction and records `task_gate_releases` plus `task_gate_release_members` for that claim sequence. Historical release rows are audit snapshots; a later requeue requires a fresh release for the next claim sequence. Pithos emits `task.gate_released` with task id, target anchor, claim sequence, descriptive attempt, fencing token, releasing run, and snapshot members.
 
 ### Late branch-growth protection
 

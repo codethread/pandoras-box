@@ -31,6 +31,13 @@ No HITL slices are required: the replay design decisions have been captured in `
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 15 implementation — 2026-05-26
+
+- Gate release rows and member rows are now keyed by lifetime `claim_sequence`; `attempt` remains stored as descriptive retry-cycle metadata.
+- Claim-time release events include both `claim_sequence` and `attempt`; late-growth markers reference `gate_claim_sequence` and render claim-sequence identity with attempt in parentheses.
+- Regression coverage proves a gated task can be reclaimed and then manually replay-shaped by resetting attempts, producing release identities `(1, attempt 1)`, `(2, attempt 2)`, and `(3, attempt 1)` without collision.
+- Validation: `pnpm verify` passed.
+
 ### Task 14 implementation — 2026-05-26
 
 - Added fresh-schema `tasks.claim_sequence` and surfaced it through decoded Task detail / inspect JSON at the Engine boundary.

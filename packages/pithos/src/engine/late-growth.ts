@@ -13,6 +13,7 @@ type BranchMembershipEdgeKind = "after" | "about" | "repair";
 interface GateReleaseRow {
 	readonly task_id: string;
 	readonly target_task_id: string;
+	readonly claim_sequence: number;
 	readonly attempt: number;
 }
 
@@ -43,7 +44,7 @@ const releasedGatesAffectedByCanonicalTask = (
 	canonicalTaskIdToCheck: string,
 ): readonly GateReleaseRow[] => {
 	const releases = db
-		.prepare(sql`SELECT task_id, target_task_id, attempt FROM task_gate_releases`)
+		.prepare(sql`SELECT task_id, target_task_id, claim_sequence, attempt FROM task_gate_releases`)
 		.all() as GateReleaseRow[];
 	return releases.filter((release) => {
 		const inReleaseSnapshot =
@@ -53,11 +54,15 @@ const releasedGatesAffectedByCanonicalTask = (
 					FROM task_gate_release_members
 					WHERE task_id=?
 					  AND target_task_id=?
-					  AND attempt=?
+					  AND claim_sequence=?
 					  AND canonical_task_id=?
 				`)
-				.get(release.task_id, release.target_task_id, release.attempt, canonicalTaskIdToCheck) !==
-			undefined;
+				.get(
+					release.task_id,
+					release.target_task_id,
+					release.claim_sequence,
+					canonicalTaskIdToCheck,
+				) !== undefined;
 		if (inReleaseSnapshot) return true;
 		return branchClosure(db, release.target_task_id).some(
 			(member) => member.canonical_task_id === canonicalTaskIdToCheck,
@@ -110,7 +115,7 @@ export const enforceReleasedGateLateGrowth = (
 		if (activeTaskId !== undefined) {
 			fail(
 				"VALIDATION_ERROR",
-				`late branch growth under released gate ${release.task_id} -> ${release.target_task_id} attempt ${release.attempt} would affect non-terminal downstream task ${activeTaskId}`,
+				`late branch growth under released gate ${release.task_id} -> ${release.target_task_id} claim sequence ${release.claim_sequence} would affect non-terminal downstream task ${activeTaskId}`,
 			);
 		}
 		const markerId = Effect.runSync(ctx.services.ids.make("marker"));
@@ -121,6 +126,7 @@ export const enforceReleasedGateLateGrowth = (
 						id,
 						gate_task_id,
 						gate_target_task_id,
+						gate_claim_sequence,
 						gate_attempt,
 						mutation_kind,
 						edge_task_id,
@@ -129,12 +135,13 @@ export const enforceReleasedGateLateGrowth = (
 						superseded_task_id,
 						replacement_task_id,
 						created_by_run_id
-					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				`)
 				.run(
 					markerId,
 					release.task_id,
 					release.target_task_id,
+					release.claim_sequence,
 					release.attempt,
 					mutation.kind,
 					mutation.kind === "edge_inserted" ? mutation.edgeTaskId : null,

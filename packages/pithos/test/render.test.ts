@@ -327,6 +327,7 @@ describe("engine render helpers", () => {
 							id: "marker_1",
 							gate_task_id: "task_gate",
 							gate_target_task_id: "task_branch",
+							gate_claim_sequence: 1,
 							gate_attempt: 1,
 							mutation_kind: "edge_inserted",
 							edge_task_id: "task_late",

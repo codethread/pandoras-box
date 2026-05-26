@@ -166,6 +166,6 @@ legend: ↑ already shown · ↻ supersession history
     artifacts: none
     branch members: all clear
 Allowed late branch growth:
-- marker_1: allowed late after edge task_late -> task_branch after gate task_gate -> task_branch attempt 1
+- marker_1: allowed late after edge task_late -> task_branch after gate task_gate -> task_branch claim sequence 1 (attempt 1)
 "
 `;

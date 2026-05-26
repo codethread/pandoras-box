@@ -139,8 +139,8 @@ const renderGateMarkdown = (gate: GateInspectOutput): string => {
 
 const renderLateGrowthMarker = (marker: LateGrowthMarkerOutput): string =>
 	marker.mutation_kind === "edge_inserted"
-		? `- ${marker.id}: allowed late ${marker.edge_kind} edge ${marker.edge_task_id} -> ${marker.edge_target_task_id} after gate ${marker.gate_task_id} -> ${marker.gate_target_task_id} attempt ${marker.gate_attempt}`
-		: `- ${marker.id}: allowed late supersession ${marker.replacement_task_id} supersedes ${marker.superseded_task_id} after gate ${marker.gate_task_id} -> ${marker.gate_target_task_id} attempt ${marker.gate_attempt}`;
+		? `- ${marker.id}: allowed late ${marker.edge_kind} edge ${marker.edge_task_id} -> ${marker.edge_target_task_id} after gate ${marker.gate_task_id} -> ${marker.gate_target_task_id} claim sequence ${marker.gate_claim_sequence} (attempt ${marker.gate_attempt})`
+		: `- ${marker.id}: allowed late supersession ${marker.replacement_task_id} supersedes ${marker.superseded_task_id} after gate ${marker.gate_task_id} -> ${marker.gate_target_task_id} claim sequence ${marker.gate_claim_sequence} (attempt ${marker.gate_attempt})`;
 
 const graphScopeLabel = (task: { readonly scope_id: string }): string => task.scope_id;
 

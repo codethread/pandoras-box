@@ -154,29 +154,31 @@ CREATE TABLE IF NOT EXISTS task_supersessions (
 CREATE TABLE IF NOT EXISTS task_gate_releases (
 	task_id TEXT NOT NULL REFERENCES tasks(id),
 	target_task_id TEXT NOT NULL REFERENCES tasks(id),
+	claim_sequence INTEGER NOT NULL,
 	attempt INTEGER NOT NULL,
 	fencing_token INTEGER NOT NULL,
 	released_by_run_id TEXT NOT NULL REFERENCES runs(id),
 	released_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	PRIMARY KEY (task_id, target_task_id, attempt)
+	PRIMARY KEY (task_id, target_task_id, claim_sequence)
 );
 
 CREATE TABLE IF NOT EXISTS task_gate_release_members (
 	task_id TEXT NOT NULL,
 	target_task_id TEXT NOT NULL,
-	attempt INTEGER NOT NULL,
+	claim_sequence INTEGER NOT NULL,
 	member_task_id TEXT NOT NULL REFERENCES tasks(id),
 	canonical_task_id TEXT NOT NULL REFERENCES tasks(id),
 	status_at_release TEXT NOT NULL,
-	PRIMARY KEY (task_id, target_task_id, attempt, member_task_id),
-	FOREIGN KEY (task_id, target_task_id, attempt)
-		REFERENCES task_gate_releases(task_id, target_task_id, attempt)
+	PRIMARY KEY (task_id, target_task_id, claim_sequence, member_task_id),
+	FOREIGN KEY (task_id, target_task_id, claim_sequence)
+		REFERENCES task_gate_releases(task_id, target_task_id, claim_sequence)
 );
 
 CREATE TABLE IF NOT EXISTS task_gate_late_growth_markers (
 	id TEXT PRIMARY KEY,
 	gate_task_id TEXT NOT NULL,
 	gate_target_task_id TEXT NOT NULL,
+	gate_claim_sequence INTEGER NOT NULL,
 	gate_attempt INTEGER NOT NULL,
 	mutation_kind TEXT NOT NULL CHECK (mutation_kind IN ('edge_inserted', 'supersession')),
 	edge_task_id TEXT REFERENCES tasks(id),
@@ -186,8 +188,8 @@ CREATE TABLE IF NOT EXISTS task_gate_late_growth_markers (
 	replacement_task_id TEXT REFERENCES tasks(id),
 	created_by_run_id TEXT NOT NULL REFERENCES runs(id),
 	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	FOREIGN KEY (gate_task_id, gate_target_task_id, gate_attempt)
-		REFERENCES task_gate_releases(task_id, target_task_id, attempt),
+	FOREIGN KEY (gate_task_id, gate_target_task_id, gate_claim_sequence)
+		REFERENCES task_gate_releases(task_id, target_task_id, claim_sequence),
 	CHECK (
 		(mutation_kind = 'edge_inserted'
 			AND edge_task_id IS NOT NULL

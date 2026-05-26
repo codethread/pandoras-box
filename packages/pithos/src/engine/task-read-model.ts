@@ -54,6 +54,7 @@ export const taskGateLateGrowthMarkers = (db: Db): readonly TaskGateLateGrowthMa
 				id,
 				gate_task_id,
 				gate_target_task_id,
+				gate_claim_sequence,
 				gate_attempt,
 				mutation_kind,
 				edge_task_id,

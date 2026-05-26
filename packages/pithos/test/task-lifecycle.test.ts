@@ -2653,13 +2653,14 @@ CREATE TABLE repair_alerts (
 			try {
 				const releases = db
 					.prepare(
-						"SELECT task_id, target_task_id, attempt, fencing_token, released_by_run_id FROM task_gate_releases",
+						"SELECT task_id, target_task_id, claim_sequence, attempt, fencing_token, released_by_run_id FROM task_gate_releases",
 					)
 					.all();
 				expect(releases).toEqual([
 					expect.objectContaining({
 						task_id: gated,
 						target_task_id: anchor,
+						claim_sequence: 1,
 						attempt: 1,
 						fencing_token: claimed.task.token,
 						released_by_run_id: "run_toil",
@@ -2687,12 +2688,14 @@ CREATE TABLE repair_alerts (
 					.get() as { payload_json: string };
 				const releasePayload = JSON.parse(releaseEvent.payload_json) as unknown as {
 					readonly target_task_id: string;
+					readonly claim_sequence: number;
 					readonly attempt: number;
 					readonly fencing_token: number;
 					readonly release_run_id: string;
 					readonly release_member_task_ids: readonly string[];
 				};
 				expect(releasePayload.target_task_id).toBe(anchor);
+				expect(releasePayload.claim_sequence).toBe(1);
 				expect(releasePayload.attempt).toBe(1);
 				expect(releasePayload.fencing_token).toBe(claimed.task.token);
 				expect(releasePayload.release_run_id).toBe("run_toil");
@@ -2720,14 +2723,51 @@ CREATE TABLE repair_alerts (
 				capability: "triage",
 			});
 			expect(second.task.id).toBe(gated);
+			const releaseRows = () => {
+				const db = new Database(dbPath);
+				try {
+					return db
+						.prepare(
+							"SELECT claim_sequence, attempt FROM task_gate_releases ORDER BY claim_sequence",
+						)
+						.all();
+				} finally {
+					db.close();
+				}
+			};
+			expect(releaseRows()).toEqual([
+				{ claim_sequence: 1, attempt: 1 },
+				{ claim_sequence: 2, attempt: 2 },
+			]);
+
+			engine.runCleanup({ runId: "run_toil_retry", reason: "simulate replay precondition" });
 			const db2 = new Database(dbPath);
 			try {
-				expect(
-					db2.prepare("SELECT attempt FROM task_gate_releases ORDER BY attempt").all(),
-				).toEqual([{ attempt: 1 }, { attempt: 2 }]);
+				db2.prepare("UPDATE tasks SET attempts=0 WHERE id=?").run(gated);
 			} finally {
 				db2.close();
 			}
+			engine.runUpsert({
+				agent: "toil",
+				mode: "afk",
+				scope: "global",
+				cwd: "/tmp",
+				sessionId: "s_toil_replay",
+				harnessKind: "claude",
+				sessionLogPath: "/tmp/s_toil_replay.jsonl",
+				runId: "run_toil_replay",
+			});
+			const replayed = engine.claim({
+				runId: "run_toil_replay",
+				scope: "global",
+				capability: "triage",
+			});
+			expect(replayed.task.id).toBe(gated);
+			expect(releaseRows()).toEqual([
+				{ claim_sequence: 1, attempt: 1 },
+				{ claim_sequence: 2, attempt: 2 },
+				{ claim_sequence: 3, attempt: 1 },
+			]);
 		});
 
 		it("retargets queued gate dependents and preserves outgoing gates on supersession", () => {
@@ -3030,6 +3070,7 @@ CREATE TABLE repair_alerts (
 					expect.objectContaining({
 						gate_task_id: gated,
 						gate_target_task_id: anchor,
+						gate_claim_sequence: 1,
 						gate_attempt: 1,
 						mutation_kind: "edge_inserted",
 						edge_task_id: late,

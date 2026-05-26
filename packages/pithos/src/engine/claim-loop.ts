@@ -91,23 +91,24 @@ export const makeClaimLoopOps = (
 					updated ?? fail("STALE_TOKEN_RACE", "claim candidate changed before update");
 				for (const gate of taskGates(db, claimedTask.id)) {
 					db.prepare(sql`
-						INSERT INTO task_gate_releases(task_id,target_task_id,attempt,fencing_token,released_by_run_id)
-						VALUES (?,?,?,?,?)
+						INSERT INTO task_gate_releases(task_id,target_task_id,claim_sequence,attempt,fencing_token,released_by_run_id)
+						VALUES (?,?,?,?,?,?)
 					`).run(
 						claimedTask.id,
 						gate.target_task_id,
+						claimedTask.claim_sequence,
 						claimedTask.attempts,
 						claimedTask.fencing_token,
 						actorRunId,
 					);
 					for (const member of gate.members) {
 						db.prepare(sql`
-							INSERT INTO task_gate_release_members(task_id,target_task_id,attempt,member_task_id,canonical_task_id,status_at_release)
+							INSERT INTO task_gate_release_members(task_id,target_task_id,claim_sequence,member_task_id,canonical_task_id,status_at_release)
 							VALUES (?,?,?,?,?,?)
 						`).run(
 							claimedTask.id,
 							gate.target_task_id,
-							claimedTask.attempts,
+							claimedTask.claim_sequence,
 							member.task_id,
 							member.canonical_task_id,
 							member.status,
@@ -118,6 +119,7 @@ export const makeClaimLoopOps = (
 						actor_run_id: actorRunId,
 						payload: {
 							target_task_id: gate.target_task_id,
+							claim_sequence: claimedTask.claim_sequence,
 							attempt: claimedTask.attempts,
 							fencing_token: claimedTask.fencing_token,
 							release_run_id: actorRunId,

@@ -91,6 +91,7 @@ const TaskGateLateGrowthMarkerBaseRowSchema = Schema.Struct({
 	id: NonEmptyString,
 	gate_task_id: NonEmptyString,
 	gate_target_task_id: NonEmptyString,
+	gate_claim_sequence: Schema.Number,
 	gate_attempt: Schema.Number,
 	created_by_run_id: NonEmptyString,
 	created_at: NonEmptyString,

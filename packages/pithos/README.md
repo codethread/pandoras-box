@@ -195,7 +195,7 @@ Pithos owns durable invariants, not live resource observation. Important rules t
 - Enqueue authorization is enforced by seeded `agent_enqueues`.
 - `after` edges are satisfied only by upstream Tasks in `done`.
 - `about` and `repair` edges are non-blocking provenance; `about` supports normal escalation context, while `repair` points at broken work for supersession/replan.
-- After a `gate` releases for a Claim attempt, adding `after`/`about`/`repair` growth under that released branch or superseding a released/current branch member fails while any impacted downstream task is non-terminal; terminal-only impact is allowed and recorded in `task_gate_late_growth_markers`.
+- After a `gate` releases for a Claim sequence, adding `after`/`about`/`repair` growth under that released branch or superseding a released/current branch member fails while any impacted downstream task is non-terminal; terminal-only impact is allowed and recorded in `task_gate_late_growth_markers`. Gate release identity is the lifetime `claim_sequence`; `attempts` is retry-cycle metadata.
 - Supersessions preserve history while replacing work with a fresh Task.
 - Fencing tokens invalidate stale task writes.
 - Cleanup is for confirmed natural Run death; Interrupt is for deliberate Kill of a live Run; Cancel is for non-held Task abandonment.
