@@ -116,6 +116,13 @@ type CommandInput =
 			readonly reason: string;
 	  }
 	| {
+			readonly command: "task.replay";
+			readonly taskId: string;
+			readonly runId: string | undefined;
+			readonly token: number;
+			readonly reason: string;
+	  }
+	| {
 			readonly command: "task.supersede";
 			readonly taskId: string;
 			readonly runId: string | undefined;
@@ -309,6 +316,28 @@ const handleEmptySearchArg = (ctx: CliContext, args: readonly string[]): Effect.
 	return Effect.succeed(false);
 };
 
+const handleTaskReplayReasonArg = (
+	ctx: CliContext,
+	args: readonly string[],
+): Effect.Effect<boolean> => {
+	const cliArgs = args.slice(2);
+	if (cliArgs[0] !== "task" || cliArgs[1] !== "replay") return Effect.succeed(false);
+	if (cliArgs.includes("--help") || cliArgs.includes("-h")) return Effect.succeed(false);
+	for (let index = 0; index < cliArgs.length; index += 1) {
+		const arg = cliArgs[index];
+		if (arg === "--reason") {
+			const value = cliArgs[index + 1];
+			return value === undefined || value === ""
+				? writeValidationError(ctx, "--reason must be non-empty")
+				: Effect.succeed(false);
+		}
+		if (arg === "--reason=") {
+			return writeValidationError(ctx, "--reason must be non-empty");
+		}
+	}
+	return writeValidationError(ctx, "missing --reason");
+};
+
 const resolveConfig = (config: Config | (() => Config)): Config =>
 	typeof config === "function" ? config() : config;
 
@@ -477,6 +506,8 @@ const runCommand = (ctx: CliContext, input: CommandInput) =>
 				}
 				case "task.cancel":
 					return engine.cancel(input);
+				case "task.replay":
+					return engine.replay(input);
 				case "task.supersede":
 					return engine.supersede({ ...input, body: supersedeBody, bodyFile: undefined });
 				case "graph.inspect": {
@@ -911,6 +942,29 @@ export const makePithosCommand = (ctx: CliContext) => {
 				reason: o.reason,
 			}),
 	).pipe(Command.withDescription("Cancel non-held work that should not continue."));
+	const taskReplay = Command.make(
+		"replay",
+		{
+			taskId: Args.text({ name: "target-task-id" }),
+			runId: runIdOption.pipe(Options.optional),
+			token: Options.integer("token").pipe(
+				Options.withDescription("Current fencing token for the held Repair Alert."),
+			),
+			reason: reasonOption,
+		},
+		(o) =>
+			runCommand(ctx, {
+				command: "task.replay",
+				taskId: o.taskId,
+				runId: opt(o.runId),
+				token: o.token,
+				reason: o.reason,
+			}),
+	).pipe(
+		Command.withDescription(
+			"Replay a broken target task through the held Pandora Repair Alert and complete that alert.",
+		),
+	);
 	const taskSupersede = Command.make(
 		"supersede",
 		{
@@ -954,6 +1008,7 @@ export const makePithosCommand = (ctx: CliContext) => {
 			taskFail,
 			taskInspect,
 			taskCancel,
+			taskReplay,
 			taskSupersede,
 			taskArtifact,
 		]),
@@ -1045,6 +1100,8 @@ export const runPithosCli = (ctx: CliContext, args: readonly string[]) => {
 		if (handledHelpJson) return;
 		const handledEmptySearchArg = yield* handleEmptySearchArg(ctx, args);
 		if (handledEmptySearchArg) return;
+		const handledTaskReplayReasonArg = yield* handleTaskReplayReasonArg(ctx, args);
+		if (handledTaskReplayReasonArg) return;
 		const cli = Command.run(command, { name: "Pithos", version: "0.1.0", executable: "pithos" });
 		yield* cli(args);
 	}).pipe(

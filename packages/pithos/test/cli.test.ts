@@ -51,7 +51,7 @@ const runCli = async (
 	args: readonly string[],
 	dbPath: string,
 	stdin?: Parameters<typeof services>[0],
-	options?: Parameters<typeof services>[1],
+	options?: Parameters<typeof services>[1] & { readonly runId?: string },
 ) => {
 	process.exitCode = undefined;
 	const svc = services(stdin, options);
@@ -61,7 +61,7 @@ const runCli = async (
 			{
 				config: () => {
 					configRead = true;
-					return { dbPath };
+					return { dbPath, runId: options?.runId };
 				},
 				services: svc,
 			},
@@ -219,6 +219,25 @@ const completeArgs = (taskId: string, extra: readonly string[] = []) => [
 	"1",
 	...extra,
 ];
+
+const claimGlobal = async (dbPath: string, runId: string, capability: "triage" | "escalate") => {
+	const result = await runCli(
+		["task", "claim", "--run", runId, "--scope", "global", "--capability", capability],
+		dbPath,
+	);
+	return JSON.parse(result.stdout[0] ?? "") as { task: { id: string; token: number } };
+};
+
+const setupReplayFixture = async (dbPath: string) => {
+	await runCli(["init", "--fresh"], dbPath);
+	await upsertRun(dbPath, "run_toil");
+	await upsertRun(dbPath, "run_pandora", "pandora");
+	const target = await enqueueGlobalTriage(dbPath, "run_toil", "broken target", "body");
+	await claimGlobal(dbPath, "run_toil", "triage");
+	await runCli(["run", "interrupt", "--run", "run_toil", "--reason", "agent failed"], dbPath);
+	const alertClaim = await claimGlobal(dbPath, "run_pandora", "escalate");
+	return { target, repairAlert: alertClaim.task.id, token: alertClaim.task.token };
+};
 
 const normalizeGeneratedIds = (text: string): string =>
 	text.replaceAll(/task_cli_\d+/g, "task_cli_N").replaceAll(/artifact_cli_\d+/g, "artifact_cli_N");
@@ -1245,6 +1264,168 @@ describe("pithos cli", () => {
 				expect(result.exitCode).toBe(2);
 			}
 		});
+	});
+
+	it("replays a broken target through a held Pandora Repair Alert", async () => {
+		const dbPath = tempDb();
+		const { target, repairAlert, token } = await setupReplayFixture(dbPath);
+
+		const result = await runCli(
+			[
+				"task",
+				"replay",
+				target,
+				"--run",
+				"run_pandora",
+				"--token",
+				String(token),
+				"--reason",
+				"VPN restored",
+			],
+			dbPath,
+		);
+
+		expect(JSON.parse(result.stdout[0] ?? "")).toEqual({
+			ok: true,
+			task: { id: target, status: "queued" },
+			repair_alert: { id: repairAlert, status: "done" },
+		});
+		expect(result.stdinReads()).toBe(0);
+		const inspect = await runCli(["task", "inspect", target, "--json"], dbPath);
+		expect(JSON.parse(inspect.stdout[0] ?? "")).toMatchObject({
+			ok: true,
+			task: { id: target, status: "queued", attempts: 0 },
+		});
+	});
+
+	it("uses PITHOS_RUN_ID for task replay and rejects conflicting --run", async () => {
+		const dbPath = tempDb();
+		const { target, token } = await setupReplayFixture(dbPath);
+
+		const conflict = await runCli(
+			[
+				"task",
+				"replay",
+				target,
+				"--run",
+				"run_other",
+				"--token",
+				String(token),
+				"--reason",
+				"fixed",
+			],
+			dbPath,
+			undefined,
+			{ runId: "run_pandora" },
+		);
+		expect(JSON.parse(conflict.stderr[0] ?? "")).toEqual({
+			ok: false,
+			error: { code: "VALIDATION_ERROR", message: "--run conflicts with PITHOS_RUN_ID" },
+		});
+
+		const replayed = await runCli(
+			["task", "replay", target, "--token", String(token), "--reason", "fixed"],
+			dbPath,
+			undefined,
+			{ runId: "run_pandora" },
+		);
+		expect(JSON.parse(replayed.stdout[0] ?? "")).toMatchObject({
+			ok: true,
+			task: { id: target, status: "queued" },
+		});
+	});
+
+	it("returns tagged JSON for task replay validation failures", async () => {
+		const missingReason = await runCli(
+			["task", "replay", "task_missing", "--token", "1"],
+			tempDb(),
+		);
+		expect(JSON.parse(missingReason.stderr[0] ?? "")).toEqual({
+			ok: false,
+			error: { code: "VALIDATION_ERROR", message: "missing --reason" },
+		});
+		expect(missingReason.configRead).toBe(false);
+
+		for (const args of [
+			["task", "replay", "task_missing", "--token", "1", "--reason", ""],
+			["task", "replay", "task_missing", "--token", "1", "--reason"],
+		]) {
+			const emptyReason = await runCli(args, tempDb());
+			expect(JSON.parse(emptyReason.stderr[0] ?? "")).toEqual({
+				ok: false,
+				error: { code: "VALIDATION_ERROR", message: "--reason must be non-empty" },
+			});
+			expect(emptyReason.configRead).toBe(false);
+		}
+
+		const dbPath = tempDb();
+		const { target, token } = await setupReplayFixture(dbPath);
+		const stale = await runCli(
+			[
+				"task",
+				"replay",
+				target,
+				"--run",
+				"run_pandora",
+				"--token",
+				String(token + 1),
+				"--reason",
+				"fixed",
+			],
+			dbPath,
+		);
+		expect(JSON.parse(stale.stderr[0] ?? "")).toEqual({
+			ok: false,
+			error: {
+				code: "STALE_TOKEN",
+				message: "repair alert token is stale or task is not held by run",
+			},
+		});
+
+		await upsertRun(dbPath, "run_toil_other");
+		const otherTarget = await enqueueGlobalTriage(dbPath, "run_toil_other", "other broken", "body");
+		const mismatch = await runCli(
+			[
+				"task",
+				"replay",
+				otherTarget,
+				"--run",
+				"run_pandora",
+				"--token",
+				String(token),
+				"--reason",
+				"fixed",
+			],
+			dbPath,
+		);
+		expect(JSON.parse(mismatch.stderr[0] ?? "")).toEqual({
+			ok: false,
+			error: {
+				code: "VALIDATION_ERROR",
+				message: "held Repair Alert does not repair the target task",
+			},
+		});
+	});
+
+	it("renders task replay help and includes help JSON metadata", async () => {
+		const commandHelp = await runCli(["task", "replay", "--help"], tempDb());
+		expect(commandHelp.configRead).toBe(false);
+		expect(commandHelp.stderr).toEqual([]);
+
+		const result = await runCli(["--help-json"], tempDb());
+		const help = JSON.parse(result.stdout[0] ?? "") as PithosHelpCommand;
+		const flatten = (command: PithosHelpCommand): readonly PithosHelpCommand[] => [
+			command,
+			...command.subcommands.flatMap(flatten),
+		];
+		const replay = flatten(help).find((command) => command.path === "pithos task replay");
+		expect(replay).toMatchObject({
+			path: "pithos task replay",
+			description:
+				"Replay a broken target task through the held Pandora Repair Alert and complete that alert.",
+		});
+		expect(replay?.usage).toContain("--token");
+		expect(replay?.usage).toContain("--reason");
 	});
 
 	it("supersedes with explicit stdin replacement body", async () => {

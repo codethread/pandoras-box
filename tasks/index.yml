@@ -82,7 +82,7 @@ tasks:
   - id: 17
     description: Expose replay CLI contract
     task_file: tasks/017-expose-replay-cli-contract.md
-    status: pending
+    status: complete
     blocked_by: [16]
   - id: 18
     description: Teach Pandora replay workflow

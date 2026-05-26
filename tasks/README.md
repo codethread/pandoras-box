@@ -31,6 +31,13 @@ No HITL slices are required: the replay design decisions have been captured in `
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 17 implementation — 2026-05-26
+
+- Added `pithos task replay <target-task-id> --token <repair-alert-token> --reason <text> [--run <run-id>]` with JSON output from the Engine replay transition.
+- Replay uses the existing PITHOS_RUN_ID/`--run` resolution path and adds tagged pre-parse validation for missing/empty replay reasons so stdin stays out of the command.
+- CLI regression coverage exercises real SQLite replay through interrupt-created Repair Alerts, env/default run resolution, conflicting run ids, missing/empty reason, stale token, mismatched Repair Alert target, and help-json metadata.
+- Validation: focused Pithos CLI tests and `pnpm verify` passed.
+
 ### Task 16 implementation — 2026-05-26
 
 - Added the Engine-only replay transition for Pandora-held Repair Alerts; CLI and prompt guidance remain for later slices.
