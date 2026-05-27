@@ -114,7 +114,7 @@ Registry entries in `launching`, `live`, and `terminating` states count against 
 
 ## 5. Greed Review Lifecycle
 
-Greed handles `review` Tasks as requested HITL assessment: inspect the Task graph and scoped context, prepare the walkthrough, then enqueue a global `escalate` readiness Task so Pandora can route the user to Greed's live session. Greed records the outcome in a `review-report` artifact and completes the review Task; rejected work is routed onward through Pandora/Toil rather than silently rewriting the chain.
+Greed handles `review` Tasks as requested HITL assessment: inspect the Task graph and scoped context, prepare the walkthrough, then enqueue a global `escalate` readiness Task so Pandora can route the user to Greed's live session. Greed records the outcome in an artifact and completes the review Task; rejected work is routed onward through Pandora/Toil rather than silently rewriting the chain.
 
 ## 6. Repair Alerts and Broken Chains
 

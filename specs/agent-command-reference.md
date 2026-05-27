@@ -98,7 +98,7 @@ Notes:
 - Use `--json` only for exact fields, scripting, or token recovery.
 ````
 
-Pandora's `pithos graph inspect` annotations summarize the implemented graph contract: graph inspect is for inventory/provenance/audit, briefing is for ready/blocked agenda, readable output is threaded task cards with preview lines and artifact refs, filters narrow seeds before closure, JSON is for exact typed-edge fields, and scope graph views include attached global `about`/`repair`/checkpoint context when closure reaches it.
+Pandora's `pithos graph inspect` annotations summarize the implemented graph contract: graph inspect is for inventory/provenance/audit, briefing is for ready/blocked agenda, readable output is threaded task cards with title-based preview lines and artifact refs, filters narrow seeds before closure, JSON is for exact typed-edge fields, and scope graph views include attached global `about`/`repair`/checkpoint context when closure reaches it.
 
 ## 6. Template and Preview Interface
 

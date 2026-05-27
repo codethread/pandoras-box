@@ -237,7 +237,7 @@ const PITHOS_COMMAND_ANNOTATIONS: Readonly<Record<string, readonly string[]>> = 
 		"Use `--json` only for exact fields, scripting, or lost-token recovery.",
 	],
 	"pithos task artifact add": [
-		"Use `--stdin` with a quoted heredoc (`<<'EOF'`) for artifact body content.",
+		"Artifact bodies are optional; use `--stdin` with a quoted heredoc (`<<'EOF'`) only when the artifact needs a body.",
 	],
 	"pithos task complete": [
 		"Default completion sends no stdin and records empty metadata.",
@@ -261,7 +261,7 @@ const PITHOS_COMMAND_ANNOTATIONS: Readonly<Record<string, readonly string[]>> = 
 	],
 	"pithos graph inspect": [
 		"Use for task inventory, edge/gate shape, provenance, audit questions, and drill-down task ids.",
-		"Readable output renders threaded task cards with preview lines and artifact refs per task.",
+		"Readable output renders threaded task cards with title-based preview lines and artifact refs per task.",
 		"Use `--task <id>` when you want the big-picture map for one task before drilling into `pithos task inspect <id>`.",
 		"`--task`, `--scope`, and `--all` are mutually exclusive selectors.",
 		"Repeat `--status` to OR literal task statuses; repeat `--search` to AND terms over task title/body only.",

@@ -3,7 +3,6 @@ import { sql, type TaskStatus } from "../db.js";
 import { fail } from "../errors.js";
 import {
 	canonicalTaskId,
-	firstMeaningfulBodyLine,
 	gateStateForTarget,
 	isClaimable,
 	taskArtifactReferences,
@@ -197,7 +196,7 @@ const graphForIds = (
 					.prepare(sql`SELECT new_task_id FROM task_supersessions WHERE old_task_id=?`)
 					.pluck()
 					.get(task.id) as string | undefined) ?? null,
-			preview: firstMeaningfulBodyLine(task.body),
+			preview: task.title,
 			artifact_refs: taskArtifactReferences(db, task.id),
 		}));
 	const edges = [

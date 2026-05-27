@@ -944,27 +944,27 @@ describe("pithos cli", () => {
 
 			- task_cli_N [triage] [queued] Triage readable inspect API
 			  scope: repo:/tmp/pithos-cli
-			  preview: Triage readable inspect API body
+			  preview: Triage readable inspect API
 			  artifacts: none
 			  - after ← task_cli_N [design] [blocked] Design output mode contract
 			    scope: repo:/tmp/pithos-cli
-			    preview: Design output mode contract body
+			    preview: Design output mode contract
 			    artifacts: none
 			    - after ← task_cli_N [execute] [blocked] Execute A task inspect renderer
 			      scope: repo:/tmp/pithos-cli
-			      preview: Execute A task inspect renderer body
+			      preview: Execute A task inspect renderer
 			      artifacts: none
 			      - after ← task_cli_N [execute] [blocked] Follow-up A docs for inspect
 			        scope: repo:/tmp/pithos-cli
-			        preview: Follow-up A docs for inspect body
+			        preview: Follow-up A docs for inspect
 			        artifacts: none
 			    - after ← task_cli_N [execute] [blocked] Execute B graph briefing help
 			      scope: repo:/tmp/pithos-cli
-			      preview: Execute B graph briefing help body
+			      preview: Execute B graph briefing help
 			      artifacts: none
 			      - after ← task_cli_N [execute] [blocked] Follow-up B prompt verification
 			        scope: repo:/tmp/pithos-cli
-			        preview: Follow-up B prompt verification body
+			        preview: Follow-up B prompt verification
 			        artifacts: none
 			"
 		`);
@@ -1010,11 +1010,11 @@ describe("pithos cli", () => {
 
 			- task_cli_N [triage] [queued] Ready triage
 			  scope: global
-			  preview: ready body
+			  preview: Ready triage
 			  artifacts: none
 			  - after ← task_cli_N [triage] [blocked] Blocked triage
 			    scope: global
-			    preview: blocked body
+			    preview: Blocked triage
 			    artifacts: none
 			"
 		`);
@@ -1514,14 +1514,16 @@ describe("pithos cli", () => {
 		expect(artifactBody(dbPath, artifactId)).toBe("artifact body\n");
 	});
 
-	it("returns validation JSON when artifact add omits --stdin", async () => {
-		const result = await runCli(artifactAddArgs(), tempDb());
-		expect(JSON.parse(result.stderr[0] ?? "")).toMatchObject({
-			ok: false,
-			error: { code: "VALIDATION_ERROR" },
-		});
-		expect(result.exitCode).toBe(2);
-		expect(result.configRead).toBe(false);
+	it("adds empty artifact bodies when --stdin is omitted", async () => {
+		const dbPath = tempDb();
+		await runCli(["init", "--fresh"], dbPath);
+		await upsertRun(dbPath, "run_toil");
+		const taskId = await enqueueGlobalTriage(dbPath, "run_toil", "artifact task", "task body");
+
+		const result = await runCli(artifactAddArgs(taskId, ["--run", "run_toil"]), dbPath);
+		const artifactId = (JSON.parse(result.stdout[0] ?? "") as { artifact: { id: string } }).artifact
+			.id;
+		expect(artifactBody(dbPath, artifactId)).toBe("");
 	});
 
 	it("validates artifact add stdin availability and non-empty content", async () => {
@@ -1548,6 +1550,12 @@ describe("pithos cli", () => {
 			ok: false,
 			error: { code: "USER_ERROR", message: "stdin exploded" },
 		});
+	});
+
+	it("returns parser errors for positional artifact body", async () => {
+		await expect(
+			runCli(artifactAddArgs("task_missing", ["positional body"]), tempDb()),
+		).rejects.toThrow("positional body");
 	});
 
 	it("returns parser errors for removed artifact add body-file flag", async () => {

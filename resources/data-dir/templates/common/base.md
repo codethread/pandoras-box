@@ -12,7 +12,6 @@
 - Creating or reactivating a repo/worktree scope records the path in Pithos; if the target directory does not exist yet, create it first with filesystem commands, then upsert the scope and use the returned scope id.
 - Pithos stores the full task graph; agents usually work the task chain reconstructed from it.
 - A task chain is the inspectable history the user will review later: typed task edges, supersessions, artifacts, runs, and events together explain what happened.
-- When enqueueing work, put the task's concise summary and any issue/source URL in the opening non-heading line of the body so `graph inspect` previews surface it.
 - Typed edges are `after` (direct prerequisite), `gate` (wait for a target branch to drain), `about` (immediate Pandora context), and `repair` (system-authored broken-work alert).
 - For any Pithos command using `--stdin`, send exactly one stdin document; prefer quoted heredocs (`<<'EOF'`) and do not stage temp files solely for payload upload.
 - Queue capabilities are `triage`, `design`, `execute`, `review`, and `escalate`; only enqueue capabilities listed in your launch context.
@@ -32,13 +31,7 @@ pithos task inspect <task-id>
 
 Use `graph inspect --task` for the big picture: chain topology, previews, artifact refs, gates, supersessions, and other task ids to drill into. `task inspect` renders a single-task Markdown dossier by default: the full task body, full bodies of artifacts attached to that task, and direct local context only. Use `task inspect <task-id> --json` only when you need the full structured object for exact fields, scripting, or a lost fencing token.
 
-Attach an artifact with a stdin body:
-
-```sh
-pithos task artifact add --run $PITHOS_RUN_ID --kind <kind> --title '<title>' --stdin <task-id> <<'EOF'
-<artifact body>
-EOF
-```
+Attach artifacts when suitable.
 
 Complete with default `{}` metadata:
 

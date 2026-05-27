@@ -132,12 +132,12 @@ Replay emits `task.replayed` for the target with the reason, Repair Alert id, pr
 
 Payload-bearing public CLI commands use one explicit stdin document:
 
-| Command                                | Payload rule                                                 |
-| -------------------------------------- | ------------------------------------------------------------ |
-| `pithos task enqueue ... --stdin`      | required non-empty Task body                                 |
-| `pithos task supersede ... --stdin`    | required non-empty replacement Task body                     |
-| `pithos task artifact add ... --stdin` | required non-empty Artifact body                             |
-| `pithos task complete ... [--stdin]`   | optional JSON object completion metadata; omitted means `{}` |
+| Command                                  | Payload rule                                                 |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| `pithos task enqueue ... --stdin`        | required non-empty Task body                                 |
+| `pithos task supersede ... --stdin`      | required non-empty replacement Task body                     |
+| `pithos task artifact add ... [--stdin]` | optional Artifact body; omitted means empty body             |
+| `pithos task complete ... [--stdin]`     | optional JSON object completion metadata; omitted means `{}` |
 
 The CLI reads stdin only when `--stdin` is present. Missing redirected stdin, empty required payloads, invalid completion JSON, and conflicting `--run`/`PITHOS_RUN_ID` fail with tagged Pithos errors.
 
@@ -157,7 +157,7 @@ Graph inspect is the relationship-map surface for Task graph topology, provenanc
 
 Closure may include related Tasks that do not match filters so blockers, attached context, gates, and replacement history remain understandable. Scope graph inspection may include global `about`/`repair` escalation Tasks attached to selected scoped work, and global checkpoint escalations whose `gate` target is in selected scoped closure.
 
-Readable graph output is map-oriented. It labels typed Task edges (`after`, `about`, `repair`, and `gate [state]`), shows referenced Tasks before incoming owners/follow-ups, and renders each Task as a compact card with id/capability/status/title, scope, `preview:` from the first meaningful non-heading body line, and `artifacts:` refs (`artifact_id [kind] title`). Gate members render as computed branch-closure blocks and Supersession renders as replacement history. It does not own full task bodies, full Artifact bodies, next-action hints, or agenda/sitrep summaries; use `task inspect` for single-Task drill-down and `briefing` for agenda/attention summaries.
+Readable graph output is map-oriented. It labels typed Task edges (`after`, `about`, `repair`, and `gate [state]`), shows referenced Tasks before incoming owners/follow-ups, and renders each Task as a compact card with id/capability/status/title, scope, `preview:` from the Task title, and `artifacts:` refs (`artifact_id [kind] title`). Gate members render as computed branch-closure blocks and Supersession renders as replacement history. It does not own full task bodies, full Artifact bodies, next-action hints, or agenda/sitrep summaries; use `task inspect` for single-Task drill-down and `briefing` for agenda/attention summaries.
 
 `graph inspect --json` preserves the structured graph output contract for the same selection and closure, including edge kind, gate state, per-node preview, and artifact refs.
 

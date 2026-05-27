@@ -386,6 +386,12 @@ const readRequiredStdinBody = (ctx: CliContext, command: string, enabled: boolea
 		return yield* readStdinText(ctx);
 	});
 
+const readOptionalStdinBody = (ctx: CliContext, enabled: boolean) =>
+	Effect.gen(function* () {
+		if (!enabled) return "";
+		return yield* readStdinText(ctx);
+	});
+
 const parseResultMetadata = (text: string): string => {
 	let parsed: unknown;
 	try {
@@ -448,7 +454,7 @@ const runCommand = (ctx: CliContext, input: CommandInput) =>
 				: undefined;
 		const artifactBody =
 			input.command === "task.artifact.add"
-				? yield* readRequiredStdinBody(ctx, "task artifact add", input.stdin)
+				? yield* readOptionalStdinBody(ctx, input.stdin)
 				: undefined;
 		const completeResult =
 			input.command === "task.complete"
@@ -889,9 +895,7 @@ export const makePithosCommand = (ctx: CliContext) => {
 		{
 			taskId: Args.text({ name: "task-id" }),
 			runId: runIdOption.pipe(Options.optional),
-			kind: Options.text("kind").pipe(
-				Options.withDescription("Artifact kind, for example note, patch, log, or decision."),
-			),
+			kind: Options.text("kind").pipe(Options.withDescription("Artifact kind.")),
 			title: Options.text("title").pipe(
 				Options.withDescription("Short artifact title shown with the task."),
 			),
@@ -908,7 +912,7 @@ export const makePithosCommand = (ctx: CliContext) => {
 			}),
 	).pipe(
 		Command.withDescription(
-			"Attach an artifact to a task; body is read from stdin when requested.",
+			"Attach an artifact to a task; optional body is read from stdin when requested.",
 		),
 	);
 	const taskArtifact = Command.make("artifact").pipe(

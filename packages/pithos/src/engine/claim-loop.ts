@@ -267,7 +267,7 @@ export const makeClaimLoopOps = (
 						actorRunId,
 						deps.requireNonEmpty(kind, "--kind"),
 						deps.requireNonEmpty(title, "--title"),
-						deps.requireNonEmpty(body, "stdin body"),
+						body,
 					);
 					event(ctx, db, "task.artifact_added", {
 						task_id: taskId,

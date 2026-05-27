@@ -563,7 +563,7 @@ describe("bundled agent templates", () => {
 		);
 		expect(rendered.prompt).toContain("## Design mode (`design`)");
 		expect(rendered.prompt).toContain("## Review mode (`review`)");
-		expect(rendered.prompt).toContain("Attach `review-report` and complete");
+		expect(rendered.prompt).toContain("Attach artifacts when suitable and complete");
 		expect(rendered.prompt).toContain("If the user rejects the work or asks for changes");
 	});
 
@@ -982,7 +982,7 @@ describe("renderAgent", () => {
 			"- Readable Markdown is a single-task dossier: full body, attached artifact bodies, and direct local context only.",
 		);
 		expect(rendered.prompt).toContain(
-			"- Use `--stdin` with a quoted heredoc (`<<'EOF'`) for artifact body content.",
+			"- Artifact bodies are optional; use `--stdin` with a quoted heredoc (`<<'EOF'`) only when the artifact needs a body.",
 		);
 		expect(rendered.prompt).toContain("- Default completion sends no stdin");
 		expect(rendered.prompt).toContain("- Include a concise reason plus relevant evidence");
@@ -1006,7 +1006,7 @@ describe("renderAgent", () => {
 		expect(inspectSection).not.toContain("- Default completion sends no stdin");
 		const graphSection = commandSection(rendered.prompt, "pithos graph inspect");
 		expect(graphSection).toContain(
-			"- Readable output renders threaded task cards with preview lines and artifact refs per task.",
+			"- Readable output renders threaded task cards with title-based preview lines and artifact refs per task.",
 		);
 		expect(graphSection).toContain(
 			"- Use `--task <id>` when you want the big-picture map for one task before drilling into `pithos task inspect <id>`.",
