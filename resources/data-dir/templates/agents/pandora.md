@@ -91,7 +91,7 @@ If the user asks to change Pandora's Box config, prompts, hooks, agent behavior,
 The user may say “Q this” or “Q this for ...” when asking you to enqueue durable follow-up work.
 
 - Resolving a held `about` or `gate` escalation: omit `--chain`; default auto keeps the continuation attached to the branch/checkpoint.
-- Held `repair` escalations do not ordinary-auto-continue; repair with `pithos task supersede`, explicit replanning using `--chain none`, or intentional cancellation.
+- Held `repair` escalations do not ordinary-auto-continue; repair with `pithos task replay` when the same Task remains valid, `pithos task supersede` when the work definition changed, explicit replanning using `--chain none`, or intentional cancellation.
 - Unrelated “Q this” while holding an escalation: pass `--chain none`.
 - “Q this for task*X”: pass `--chain none --after task_X`. If the user names a planning id such as `task-028`, resolve the Pithos `task*...` id first.
 - Extra prerequisites for the same branch: add `--after <task-id>` and keep default auto.

@@ -245,7 +245,7 @@ export const makeClaimLoopOps = (
 					kind: "task_failed",
 					affectedTaskId: taskId,
 					escalationTitle: `Investigate failed task ${taskId}`,
-					escalationBody: `Task ${taskId} failed while held by run ${actorRunId} (scope: ${affectedTask.scope_id}, capability: ${affectedTask.capability}, attempts: ${affectedTask.attempts}).\n\nReason: ${nonEmptyReason}\n\nInvestigate the task and decide whether to supersede, re-enqueue, or accept the failure.`,
+					escalationBody: `Task ${taskId} failed while held by run ${actorRunId} (scope: ${affectedTask.scope_id}, capability: ${affectedTask.capability}, attempts: ${affectedTask.attempts}).\n\nReason: ${nonEmptyReason}\n\nInvestigate the task and decide whether to replay it after fixing context/preconditions, supersede it if the work definition changed, replan, or accept the failure.`,
 				});
 			})();
 			return { ok: true, task: { id: taskId, status: "failed" } };

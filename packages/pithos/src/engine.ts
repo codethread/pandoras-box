@@ -708,7 +708,7 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 						kind: "dead_letter",
 						affectedTaskId: task.id,
 						escalationTitle: `Investigate dead-lettered task ${task.id}`,
-						escalationBody: `Task ${task.id} exhausted its ${task.max_attempts} attempts and entered dead_letter state (scope: ${task.scope_id}, capability: ${task.capability}).\n\nReason: ${nonEmptyReason}\n\nInvestigate the task history, fix the underlying issue, and supersede the task to restart the work.`,
+						escalationBody: `Task ${task.id} exhausted its ${task.max_attempts} attempts and entered dead_letter state (scope: ${task.scope_id}, capability: ${task.capability}).\n\nReason: ${nonEmptyReason}\n\nInvestigate the task history and decide whether to replay it with a fresh retry budget after fixing context/preconditions, supersede it if the work definition changed, replan, or accept the failure.`,
 					});
 				}
 				return runById(db, run.id);
@@ -812,7 +812,7 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 							kind: "interrupt",
 							affectedTaskId: task.id,
 							escalationTitle: `Investigate interrupted task ${task.id}`,
-							escalationBody: `Task ${task.id} was interrupted while held by run ${run.id} (scope: ${task.scope_id}, capability: ${task.capability}).\n\nReason: ${nonEmptyReason}\n\nInvestigate the task, determine if the work should be resumed, and take the appropriate action (supersede, re-enqueue, or accept the failure).`,
+							escalationBody: `Task ${task.id} was interrupted while held by run ${run.id} (scope: ${task.scope_id}, capability: ${task.capability}).\n\nReason: ${nonEmptyReason}\n\nInvestigate the task and decide whether to replay it after fixing context/preconditions, supersede it if the work definition changed, replan, or accept the failure.`,
 						});
 						return {
 							run: runById(db, run.id),

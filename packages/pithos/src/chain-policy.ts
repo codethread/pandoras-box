@@ -147,7 +147,7 @@ export const resolveChainPolicy = (input: {
 		}
 		if (input.heldSource.kind !== "chain_source") {
 			throw chainValidationError(
-				"--chain auto cannot continue from repair edge; supersede, replan, or cancel the repaired task instead",
+				"--chain auto cannot continue from repair edge; replay, supersede, replan, or cancel the repaired task instead",
 			);
 		}
 		return {

@@ -1532,7 +1532,9 @@ CREATE TABLE repair_alerts (
 				capability: "design",
 				runId: "run_pandora",
 			}),
-		).toThrow(/--chain auto cannot continue from repair edge; supersede, replan, or cancel/);
+		).toThrow(
+			/--chain auto cannot continue from repair edge; replay, supersede, replan, or cancel/,
+		);
 	});
 
 	it("makes held escalation without source a visible auto-chain no-op", () => {

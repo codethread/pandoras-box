@@ -138,7 +138,7 @@ describe("chain policy resolver", () => {
 					heldTask: escalation,
 					heldSource: { taskId: "source", kind: "repair_source" },
 				}),
-			"--chain auto cannot continue from repair edge; supersede, replan, or cancel the repaired task instead",
+			"--chain auto cannot continue from repair edge; replay, supersede, replan, or cancel the repaired task instead",
 		);
 	});
 
