@@ -1,13 +1,13 @@
 # Agent Configuration
 
-**Status:** Planned
-**Last Updated:** 2026-05-17
+**Status:** Implemented
+**Last Updated:** 2026-05-27
 
 ## 1. Overview
 
 ### Purpose
 
-Agent configuration defines how Spawner renders Pandora's Box Agent prompts and Harness launch arguments while giving users a safe, discoverable place to edit those settings with a direct Agent session. The clean-break configuration model separates pdx-owned runtime data from user-owned config, uses TOML partials instead of whole-file JSON replacement, and resolves config by scope kind without relying on ephemeral worktree files.
+Agent configuration defines how Spawner renders Pandora's Box Agent prompts and Harness launch arguments while giving users a safe, discoverable place to edit those settings with a direct Agent session. The configuration model separates pdx-owned runtime data from user-owned config, uses TOML partials instead of whole-file JSON replacement, and resolves config by scope kind without relying on ephemeral worktree files.
 
 ### Goals
 
@@ -155,7 +155,7 @@ Project-local config is eligible for repo scope launches and for all worktree sc
 
 `pdx init --clean` removes runtime state only: the Pithos DB, runs directory, supervisor log, and socket if present. It preserves `$PDX_USER_DATA_DIR`, `$PDX_DATA_DIR/agents.toml`, and `$PDX_DATA_DIR/templates/`.
 
-When this planned spec is implemented, it supersedes the current `--nuke` lifecycle contract in `control-plane-supervision.md`. `pdx init --nuke` removes pdx-owned runtime and canonical bundle state while preserving `$PDX_USER_DATA_DIR`:
+This spec supersedes the older unconditional data-dir deletion model. `pdx init --nuke` removes pdx-owned runtime and canonical bundle state while preserving `$PDX_USER_DATA_DIR`:
 
 - if `$PDX_USER_DATA_DIR` resolves outside `$PDX_DATA_DIR`, pdx may remove and recreate `$PDX_DATA_DIR`
 - if `$PDX_USER_DATA_DIR` resolves to `$PDX_DATA_DIR/config`, pdx deletes every immediate child of `$PDX_DATA_DIR` except `config`
@@ -335,65 +335,33 @@ Because user config is partial TOML, the direct Agent can focus on intentional d
 
 The scaffolded `AGENTS.md` and `CLAUDE.md` are tiny pointers to `PANDORA.md`; the installed `PANDORA.md` carries concise examples and direct-editing guidance.
 
-## 7. Implementation Phases
+## 7. Implementation Notes
 
-### Phase 1: Config paths and TOML parser
+The implementation lives at the package boundaries listed below. Spawner owns TOML parsing, manifest merging, template resolution, preview provenance, hook loading, and rendered Harness argv/env construction. pdx owns path parsing, bundled resource materialization, user config scaffolding, and lifecycle preservation. Pithos owns durable scope metadata, including the parent repo path required for worktree config layering.
 
-- [ ] Add `PDX_USER_DATA_DIR` parsing to pdx and Spawner config services.
-- [ ] Change bundled materialization from the legacy bundled `agents.json` to `$PDX_DATA_DIR/agents.toml` plus `$PDX_DATA_DIR/templates/`.
-- [ ] Add TOML parsing dependency or implementation at the Spawner IO boundary.
-- [ ] Define schemas for partial `agents.toml`, list operations, hooks, and resolved complete Agent config.
-
-### Phase 2: Layer resolver
-
-- [ ] Replace the current two-layer extensions/templates resolver with ordered config layers.
-- [ ] Select layers from launch scope kind; use scope root for repo project-local config and required recorded parent repo root for worktree project-local config.
-- [ ] Merge all present `agents.toml` files in layer order, including scalar canonical reset operations.
-- [ ] Resolve template references through each layer's `templates/` directory in reverse priority order.
-- [ ] Keep absolute and `~/` references as direct paths outside layer fallback.
-
-### Phase 3: User config scaffolding and lifecycle
-
-- [ ] On `pdx init`, create `$PDX_USER_DATA_DIR` if missing; scaffold `AGENTS.md`, `CLAUDE.md`, and `agents.toml` once; and re-seed installed `PANDORA.md`, not full copied overrides.
-- [ ] Validate `PDX_USER_DATA_DIR` path relationships before scaffolding, launch, clean, or nuke.
-- [ ] Extend Pithos/pdx worktree scope creation to record a durable parent repo root for config layering, and fail/migrate existing worktree scopes that lack it before launch.
-- [ ] Preserve `$PDX_USER_DATA_DIR` during `--clean` and `--nuke`, including the default nested path.
-- [ ] Update `specs/control-plane-supervision.md` so `--nuke` no longer claims to delete the full data dir unconditionally.
-- [ ] Remove or replace docs that refer to `extensions/templates` and `agents.json`.
-- [ ] Update `resources/user-data-dir/AGENTS.md` guidance into the new user config scaffold.
-
-### Phase 4: Validation and diagnostics
-
-- [ ] Update `pandora-spawn preview` to render with the new layer model.
-- [ ] Include resolved config provenance in `pandora-spawn preview` output so users can see which layer set each Agent field and template file.
-- [ ] Add tests for layer order, TOML merge semantics, explicit list operations, hook disable behavior, and missing template failures.
-- [ ] Add smoke-test coverage for `PDX_USER_DATA_DIR` inside and outside `$PDX_DATA_DIR`.
-
-### Phase 5: Clean-break removal
-
-- [ ] Remove `extensions/templates` lookup.
-- [ ] Remove `agents.json` schema and docs.
-- [ ] Update package READMEs, `resources/README.md`, and the user-facing root README configuration section.
+The older `extensions/templates` and `agents.json` model is not part of the implemented contract. Current bundled defaults live under `resources/data-dir/agents.toml` and `resources/data-dir/templates/`; user scaffolds live under `resources/user-data-dir/`.
 
 ## 8. Code Locations
 
-| File / Directory                       | Planned change                                                                                             |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `packages/spawner/src/paths.ts`        | Resolve data, user, scope, parent repo, and project config roots.                                          |
-| `packages/spawner/src/spawner.ts`      | Parse/merge `agents.toml`, select layers, resolve template refs.                                           |
-| `packages/spawner/src/services.ts`     | Expose env and filesystem operations needed for TOML config discovery.                                     |
-| `packages/spawner/src/main.ts`         | Preview output and help/docs for new config model.                                                         |
-| `packages/spawner/src/spawner.test.ts` | Layering, merge, validation, preview tests.                                                                |
-| `packages/pdx/src/config.ts`           | Parse `PDX_USER_DATA_DIR` / derived default.                                                               |
-| `packages/pdx/src/live.ts`             | Materialize canonical config and scaffold user config.                                                     |
-| `packages/pdx/src/controller.ts`       | Preserve user config during clean/nuke and pass scope/parent-repo context to Spawner.                      |
-| `packages/pithos/src/`                 | Store/inspect required parent repo metadata for worktree scopes; migrate or fail legacy scopes missing it. |
-| `packages/pdx/README.md`               | Document runtime vs user config paths.                                                                     |
-| `packages/spawner/README.md`           | Document TOML manifest and resolver boundary.                                                              |
-| `resources/`                           | Move bundled manifest to TOML and remove config-editing `AGENTS.md` from data-dir root materialization.    |
-| `README.md`                            | Update user configuration instructions.                                                                    |
+| File / Directory                       | Responsibility                                                                                       |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `packages/spawner/src/manifest.ts`     | Parse and merge `agents.toml`, select config layers, load hooks, resolve template assets.            |
+| `packages/spawner/src/paths.ts`        | Resolve bundled data-dir resources, templates, manifest paths, and default user config roots.        |
+| `packages/spawner/src/spawner.ts`      | Render prompts, Harness argv/env, session log paths, and config/template provenance.                 |
+| `packages/spawner/src/main.ts`         | `pandora-spawn preview` CLI boundary, including worktree parent repo and selected-capability inputs. |
+| `packages/spawner/src/spawner.test.ts` | Layering, merge, validation, preview provenance, launch, and transcript tests.                       |
+| `packages/pdx/src/config.ts`           | Parse `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, derived defaults, and invalid path relationships.         |
+| `packages/pdx/src/live.ts`             | Re-seed canonical config/templates and scaffold user config files.                                   |
+| `packages/pdx/src/controller.ts`       | Preserve user config during clean/nuke and pass scope/parent-repo context to Spawner.                |
+| `packages/pithos/src/db.ts`            | Scope table parent repo metadata column and integrity checks.                                        |
+| `packages/pithos/src/engine.ts`        | Scope upsert validation for repo/worktree paths and parent repo metadata.                            |
+| `packages/pdx/README.md`               | pdx package runtime/config developer notes.                                                          |
+| `packages/spawner/README.md`           | Spawner render/launch boundary and config pointers.                                                  |
+| `resources/README.md`                  | Operator-facing manifest, template, hook, and lifecycle contract.                                    |
+| `resources/data-dir/`                  | Bundled canonical `agents.toml`, templates, and runtime `AGENTS.md` note.                            |
+| `resources/user-data-dir/`             | User config scaffold files and installed `PANDORA.md` reference.                                     |
 
-## 9. Validation Strategy
+## 9. Testing
 
 Automated tests should cover user-visible and invariant-bearing behavior:
 
