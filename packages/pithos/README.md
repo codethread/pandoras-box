@@ -47,6 +47,7 @@ Pithos is the durable source of truth for:
 | ----------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `@pdx/pdx`                    | imports `makeEngine` and `liveServices` through the package root | typed in-process durable state transitions; no subprocess parsing   |
 | `@pdx/spawner`                | imports `@pdx/pithos/builtins` and calls `pithos --help-json`    | validates render config against built-ins and renders command cards |
+| `@pdx/cli-help`               | renders human `pithos --help` from the Effect command descriptor | custom terminal layout without duplicating command definitions      |
 | Harness CLIs (`claude`, `pi`) | no direct integration                                            | Harness sessions are represented only by Run transcript metadata    |
 
 The composed behavior is specified in [`../../specs/control-plane-supervision.md`](../../specs/control-plane-supervision.md) and Task graph semantics in [`../../specs/task-graph.md`](../../specs/task-graph.md). Use [`../../UBIQUITOUS_LANGUAGE.md`](../../UBIQUITOUS_LANGUAGE.md) for terms.
@@ -88,10 +89,11 @@ If both `PITHOS_RUN_ID` and `--run` are present for a command, Engine code fails
 
 ### `src/cli.ts` — CLI and output contract
 
-Defines the human CLI and machine-readable help tree with `@effect/cli`.
+Defines the command tree with `@effect/cli`, dispatches command handlers, and exposes both human and machine-readable help from that same descriptor structure.
 
 Important details:
 
+- Human `--help` / `help <command>` output is rendered by `@pdx/cli-help` from the Effect command descriptor; command/flag text is authored on `Command.withDescription`, `Args.withDescription`, and `Options.withDescription`.
 - `--help-json` prints the command tree used by Spawner.
 - Protocol/state-transition commands return JSON by default for Agent consumption.
 - `pithos task replay <target-task-id> --token <repair-alert-token> --reason <text> [--run <pandora-run-id>]` is the Pandora-held Repair Alert resolution for resetting the same broken Task to queued work with a fresh retry budget.

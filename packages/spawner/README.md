@@ -56,11 +56,13 @@ Specs describe the full control plane: [`../../specs/control-plane-supervision.m
 | Path                        | Why read it                                                                 |
 | --------------------------- | --------------------------------------------------------------------------- |
 | `src/index.ts`              | package-root exports; keep consumers on this boundary                       |
-| `src/main.ts`               | `pandora-spawn preview` CLI boundary and tagged CLI errors                  |
+| `src/main.ts`               | process boundary, preview execution, and tagged CLI errors                  |
+| `src/cli.ts`                | `pandora-spawn preview` command surface and help rendering                  |
 | `src/spawner.ts`            | manifest contract, render pipeline, launch mechanics, transcript parsers    |
 | `src/services.ts`           | Render/Launch service interfaces, live Node IO, fake services               |
 | `src/paths.ts`              | template asset discovery for repo-root bundled defaults and data-dir copies |
 | `src/errors.ts`             | `SpawnerError` codes and CLI exit mapping                                   |
+| `src/help.ts`               | re-exports shared descriptor-driven terminal help renderer                  |
 | `../../resources/README.md` | manifest/template contract and operator-facing config docs                  |
 | `../../resources/`          | bundled default manifest and prompts seeded into `<data-dir>/templates/`    |
 | `src/spawner.test.ts`       | behavior examples for render, launch, transcript, and manifest failures     |
@@ -78,7 +80,7 @@ Exported from `@pdx/spawner`:
 - `makeFakeSpawnerServices(input)` — deterministic service implementation for tests.
 - `bundledTemplatesDir` — repo-root bundled default template directory used when `PDX_DATA_DIR` is unset and by `pdx` when seeding a fresh data dir.
 
-`RenderedAgent` is the important API object: it contains `logicalName`, `harness.kind`, `harness.argv`, `harness.env`, `sessionLogPath`, and `prompt`. `prompt` includes a generated Markdown command reference for the `{{command_cards}}` template variable. Spawner sources syntax from structured CLI metadata (`pithos --help-json` and, for Pandora, selected `pdx --help-json` inspection/debug commands), applies role filters, validates configured command paths, validates built-in command annotations against the generated help tree, then renders concise Markdown. Pandora receives `pdx daemon status` / `logs` as debug-only cards alongside run transcript/show navigation. Human `pithos --help` / `pdx --help` and the agent command reference are separate surfaces that share structured CLI metadata; Spawner does not copy terminal help text into prompts. Malformed help JSON, configured command paths missing from help, or annotation paths missing from help fail render loudly. `LaunchResult` intentionally contains runtime metadata only: pid for AFK mode or tmux target/pane pid for HITL mode.
+`RenderedAgent` is the important API object: it contains `logicalName`, `harness.kind`, `harness.argv`, `harness.env`, `sessionLogPath`, and `prompt`. `prompt` includes a generated Markdown command reference for the `{{command_cards}}` template variable. Spawner sources syntax from structured CLI metadata (`pithos --help-json` and, for Pandora, selected `pdx --help-json` inspection/debug commands), applies role filters, validates configured command paths, validates built-in command annotations against the generated help tree, then renders concise Markdown. Pandora receives `pdx daemon status` / `logs` as debug-only cards alongside run transcript/show navigation. Human terminal help is rendered from the same Effect command descriptors via `@pdx/cli-help`, while the agent command reference uses `--help-json`; Spawner does not copy terminal help text into prompts. Malformed help JSON, configured command paths missing from help, or annotation paths missing from help fail render loudly. `LaunchResult` intentionally contains runtime metadata only: pid for AFK mode or tmux target/pane pid for HITL mode.
 
 ## Manifest/template config
 

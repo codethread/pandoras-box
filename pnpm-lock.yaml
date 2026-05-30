@@ -66,6 +66,15 @@ importers:
         specifier: ^3.1.4
         version: 3.2.4(@types/node@25.6.0)(tsx@4.21.0)(yaml@2.8.3)
 
+  packages/cli-help:
+    dependencies:
+      '@effect/cli':
+        specifier: 'catalog:'
+        version: 0.75.1(@effect/platform@0.96.1(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      effect:
+        specifier: 'catalog:'
+        version: 3.21.2
+
   packages/pdx:
     dependencies:
       '@effect/cli':
@@ -74,6 +83,9 @@ importers:
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 0.106.0(@effect/cluster@0.58.2(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.18.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@pdx/cli-help':
+        specifier: workspace:*
+        version: link:../cli-help
       '@pdx/pithos':
         specifier: workspace:*
         version: link:../pithos
@@ -95,6 +107,9 @@ importers:
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 0.106.0(@effect/cluster@0.58.2(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/workflow@0.18.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@pdx/cli-help':
+        specifier: workspace:*
+        version: link:../cli-help
       better-sqlite3:
         specifier: ^12.9.0
         version: 12.9.0
@@ -123,6 +138,9 @@ importers:
       '@iarna/toml':
         specifier: 2.2.5
         version: 2.2.5
+      '@pdx/cli-help':
+        specifier: workspace:*
+        version: link:../cli-help
       '@pdx/pithos':
         specifier: workspace:*
         version: link:../pithos

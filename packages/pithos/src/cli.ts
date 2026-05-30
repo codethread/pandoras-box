@@ -22,6 +22,7 @@ import {
 	type ScopeKind,
 	type TaskStatus,
 } from "./db.js";
+import { renderHelp } from "./help.js";
 import type { Services } from "./services.js";
 
 export interface CliContext {
@@ -302,6 +303,17 @@ const handleHelpJson = <Name extends string, R, E, A>(
 	return ctx.services.output.write(renderPithosHelpJson(command)).pipe(Effect.as(true));
 };
 
+const handleCustomHelp = <Name extends string, R, E, A>(
+	ctx: CliContext,
+	args: readonly string[],
+	command: Command.Command<Name, R, E, A>,
+): Effect.Effect<boolean> => {
+	const help = renderHelp(command, args.slice(2));
+	return help === undefined
+		? Effect.succeed(false)
+		: ctx.services.output.write(help).pipe(Effect.as(true));
+};
+
 const handleEmptySearchArg = (ctx: CliContext, args: readonly string[]): Effect.Effect<boolean> => {
 	const cliArgs = args.slice(2);
 	for (let index = 0; index < cliArgs.length; index += 1) {
@@ -559,22 +571,41 @@ const runCommand = (ctx: CliContext, input: CommandInput) =>
 		),
 	);
 
-const runIdOption = Options.text("run").pipe(
-	Options.withDescription("Pithos run id for the agent run making or owning this transition."),
+const textOption = (name: string, pseudoName: string, description: string) =>
+	Options.text(name).pipe(Options.withPseudoName(pseudoName), Options.withDescription(description));
+
+const integerOption = (name: string, pseudoName: string, description: string) =>
+	Options.integer(name).pipe(
+		Options.withPseudoName(pseudoName),
+		Options.withDescription(description),
+	);
+
+const textArg = (name: string, description: string) =>
+	Args.text({ name }).pipe(Args.withDescription(description));
+
+const runIdOption = textOption(
+	"run",
+	"run-id",
+	"Pithos Run id for the agent run making or owning this transition.",
 );
-const taskIdOption = Options.text("task").pipe(
-	Options.withDescription("Pithos task id for the held task or graph root."),
+const taskIdOption = textOption(
+	"task",
+	"task-id",
+	"Pithos Task id for the held task or graph root.",
 );
-const reasonOption = Options.text("reason").pipe(
-	Options.withDescription("Operator-readable reason recorded in Pithos events."),
+const reasonOption = textOption(
+	"reason",
+	"reason",
+	"Operator-readable reason recorded in Pithos Events.",
 );
 const stdinFlag = Options.boolean("stdin").pipe(
-	Options.withDescription("Read the task or artifact body from stdin."),
+	Options.withDescription("Read the command payload from redirected stdin."),
 );
-const chainOption = Options.text("chain").pipe(
-	Options.withDescription("Task chaining policy: auto (default), none (manual-only), or held."),
-	Options.withDefault("auto"),
-);
+const chainOption = textOption(
+	"chain",
+	"auto|none|held",
+	"Task chaining policy: auto, none, or held. Default: auto.",
+).pipe(Options.withDefault("auto"));
 
 const parseChainPolicy = (value: string): ChainPolicy => {
 	if ((["auto", "none", "held"] as const).includes(value as ChainPolicy)) {
@@ -615,18 +646,21 @@ export const makePithosCommand = (ctx: CliContext) => {
 			kind: Options.choice("kind", ["global", "repo", "worktree"] as const).pipe(
 				Options.withDescription("Scope kind: global, repository, or worktree."),
 			),
-			path: Options.text("path").pipe(
-				Options.withDescription("Filesystem path for repo/worktree scopes; omit for global scope."),
-				Options.optional,
-			),
-			parentRepoPath: Options.text("parent-repo").pipe(
-				Options.withDescription("Durable parent repo path required for worktree scopes."),
-				Options.optional,
-			),
-			description: Options.text("description").pipe(
-				Options.withDescription("Optional human-readable description for operator context."),
-				Options.optional,
-			),
+			path: textOption(
+				"path",
+				"path",
+				"Filesystem path for repo/worktree scopes; omit for global scope.",
+			).pipe(Options.optional),
+			parentRepoPath: textOption(
+				"parent-repo",
+				"path",
+				"Durable parent repo path required for worktree scopes.",
+			).pipe(Options.optional),
+			description: textOption(
+				"description",
+				"text",
+				"Human-readable description for operator context.",
+			).pipe(Options.optional),
 		},
 		({ kind, path, parentRepoPath, description }) =>
 			runCommand(ctx, {
@@ -648,8 +682,10 @@ export const makePithosCommand = (ctx: CliContext) => {
 	).pipe(
 		Command.withDescription("List durable Pithos scopes with task/run counts and archive state."),
 	);
-	const scopeArchive = Command.make("archive", { id: Args.text({ name: "scope-id" }) }, ({ id }) =>
-		runCommand(ctx, { command: "scope.archive", scopeId: id }),
+	const scopeArchive = Command.make(
+		"archive",
+		{ id: textArg("scope-id", "Durable Pithos Scope to archive or delete.") },
+		({ id }) => runCommand(ctx, { command: "scope.archive", scopeId: id }),
 	).pipe(
 		Command.withDescription(
 			"Archive one durable Pithos scope, or delete it if nothing has ever referenced it.",
@@ -662,28 +698,28 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const runUpsert = Command.make(
 		"upsert",
 		{
-			agent: Options.text("agent").pipe(
-				Options.withDescription(
-					"Agent kind for this run, for example pandora, toil, greed, or war.",
-				),
+			agent: textOption(
+				"agent",
+				"agent-kind",
+				"Agent kind for this Run, for example pandora, toil, greed, or war.",
 			),
 			mode: Options.choice("mode", ["afk", "hitl"] as const).pipe(
 				Options.withDescription("Supervision mode: AFK process or HITL tmux session."),
 			),
-			scope: Options.text("scope").pipe(
-				Options.withDescription("Pithos scope id this run belongs to."),
-			),
-			cwd: Options.text("cwd").pipe(
-				Options.withDescription("Working directory the harness should run in."),
-			),
+			scope: textOption("scope", "scope-id", "Pithos Scope id this Run belongs to."),
+			cwd: textOption("cwd", "path", "Working directory the Harness should run in."),
 			harnessKind: Options.choice("harness-kind", ["claude", "pi", "system"] as const).pipe(
 				Options.withDescription("Underlying harness runtime used by the agent run."),
 			),
-			sessionLogPath: Options.text("session-log-path").pipe(
-				Options.withDescription("JSONL harness session log path for agent-facing observability."),
+			sessionLogPath: textOption(
+				"session-log-path",
+				"path",
+				"JSONL Harness session log path for agent-facing observability.",
 			),
-			sessionId: Options.text("session-id").pipe(
-				Options.withDescription("Harness session id assigned by the launcher."),
+			sessionId: textOption(
+				"session-id",
+				"session-id",
+				"Harness session id assigned by the launcher.",
 			),
 			runId: runIdOption.pipe(Options.optional),
 		},
@@ -700,8 +736,10 @@ export const makePithosCommand = (ctx: CliContext) => {
 				runId: opt(o.runId),
 			}),
 	).pipe(Command.withDescription("Create or update the durable run row for one agent invocation."));
-	const runInspect = Command.make("inspect", { id: Args.text({ name: "run-id" }) }, ({ id }) =>
-		runCommand(ctx, { command: "run.inspect", runId: id }),
+	const runInspect = Command.make(
+		"inspect",
+		{ id: textArg("run-id", "Durable Pithos Run to inspect.") },
+		({ id }) => runCommand(ctx, { command: "run.inspect", runId: id }),
 	).pipe(Command.withDescription("Show one durable Pithos run record."));
 	const runCleanup = Command.make(
 		"cleanup",
@@ -741,10 +779,11 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const eventsTail = Command.make(
 		"tail",
 		{
-			limit: Options.integer("limit").pipe(
-				Options.withDescription("Maximum number of newest Pithos events to print."),
-				Options.optional,
-			),
+			limit: integerOption(
+				"limit",
+				"count",
+				"Maximum number of newest Pithos Events to print.",
+			).pipe(Options.optional),
 		},
 		({ limit }) => runCommand(ctx, { command: "events.tail", limit: opt(limit) }),
 	).pipe(Command.withDescription("Print newest durable Pithos events."));
@@ -767,33 +806,27 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const taskEnqueue = Command.make(
 		"enqueue",
 		{
-			scope: Options.text("scope").pipe(
-				Options.withDescription("Pithos scope id where the task will be queued."),
-			),
+			scope: textOption("scope", "scope-id", "Pithos Scope id where the Task will be queued."),
 			capability,
-			title: Options.text("title").pipe(
-				Options.withDescription("Short task title shown in graph and inspection output."),
-			),
+			title: textOption("title", "title", "Short Task title shown in graph and inspection output."),
 			stdin: stdinFlag,
 			runId: runIdOption.pipe(Options.optional),
-			after: Options.text("after").pipe(
-				Options.withDescription(
-					"Upstream task id that must be done before this task is claimable; repeatable.",
-				),
-				Options.repeated,
-			),
-			about: Options.text("about").pipe(
-				Options.withDescription("Singular branch-attention task id this task is about."),
-				Options.optional,
-			),
-			gate: Options.text("gate-on").pipe(
-				Options.withDescription(
-					"Target task id whose canonical branch closure must drain before this task is claimable; repeatable.",
-				),
-				Options.repeated,
-			),
-			repair: Options.text("repair").pipe(
-				Options.withDescription("System-only Repair Alert target task id."),
+			after: textOption(
+				"after",
+				"task-id",
+				"Upstream Task id that must be done before this Task is claimable.",
+			).pipe(Options.repeated, Options.optional),
+			about: textOption(
+				"about",
+				"task-id",
+				"Singular branch-attention Task id this Task is about.",
+			).pipe(Options.optional),
+			gate: textOption(
+				"gate-on",
+				"task-id",
+				"Target Task id whose canonical branch closure must drain before this Task is claimable.",
+			).pipe(Options.repeated, Options.optional),
+			repair: textOption("repair", "task-id", "System-only Repair Alert target Task id.").pipe(
 				Options.optional,
 			),
 			chain: chainOption,
@@ -806,8 +839,8 @@ export const makePithosCommand = (ctx: CliContext) => {
 				title: o.title,
 				stdin: o.stdin,
 				runId: opt(o.runId),
-				after: o.after,
-				gate: o.gate,
+				after: opt(o.after) ?? [],
+				gate: opt(o.gate) ?? [],
 				about: opt(o.about),
 				repair: opt(o.repair),
 				chain: o.chain,
@@ -821,7 +854,7 @@ export const makePithosCommand = (ctx: CliContext) => {
 		"claim",
 		{
 			runId: runIdOption.pipe(Options.optional),
-			scope: Options.text("scope").pipe(Options.withDescription("Pithos scope id to claim from.")),
+			scope: textOption("scope", "scope-id", "Pithos Scope id to claim from."),
 			capability,
 		},
 		(o) =>
@@ -839,8 +872,7 @@ export const makePithosCommand = (ctx: CliContext) => {
 		{
 			runId: runIdOption.pipe(Options.optional),
 			taskId: taskIdOption.pipe(Options.optional),
-			token: Options.integer("token").pipe(
-				Options.withDescription("Current fencing token for the held task."),
+			token: integerOption("token", "token", "Current fencing token for the held Task.").pipe(
 				Options.optional,
 			),
 		},
@@ -855,10 +887,12 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const taskComplete = Command.make(
 		"complete",
 		{
-			taskId: Args.text({ name: "task-id" }),
+			taskId: textArg("task-id", "Held Task to complete."),
 			runId: runIdOption.pipe(Options.optional),
-			token: Options.integer("token").pipe(
-				Options.withDescription("Current fencing token proving ownership of the held task."),
+			token: integerOption(
+				"token",
+				"token",
+				"Current fencing token proving ownership of the held Task.",
 			),
 			stdin: stdinFlag,
 		},
@@ -874,10 +908,12 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const taskFail = Command.make(
 		"fail",
 		{
-			taskId: Args.text({ name: "task-id" }),
+			taskId: textArg("task-id", "Held Task to fail."),
 			runId: runIdOption.pipe(Options.optional),
-			token: Options.integer("token").pipe(
-				Options.withDescription("Current fencing token proving ownership of the held task."),
+			token: integerOption(
+				"token",
+				"token",
+				"Current fencing token proving ownership of the held Task.",
 			),
 			reason: reasonOption,
 		},
@@ -893,12 +929,10 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const artifactAdd = Command.make(
 		"add",
 		{
-			taskId: Args.text({ name: "task-id" }),
+			taskId: textArg("task-id", "Task receiving the artifact."),
 			runId: runIdOption.pipe(Options.optional),
-			kind: Options.text("kind").pipe(Options.withDescription("Artifact kind.")),
-			title: Options.text("title").pipe(
-				Options.withDescription("Short artifact title shown with the task."),
-			),
+			kind: textOption("kind", "kind", "Artifact kind."),
+			title: textOption("title", "title", "Short artifact title shown with the Task."),
 			stdin: stdinFlag,
 		},
 		(o) =>
@@ -922,7 +956,7 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const taskInspect = Command.make(
 		"inspect",
 		{
-			taskId: Args.text({ name: "task-id" }),
+			taskId: textArg("task-id", "Task to inspect."),
 			json: Options.boolean("json").pipe(
 				Options.withDescription("Return the full structured inspect object as JSON."),
 			),
@@ -934,7 +968,7 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const taskCancel = Command.make(
 		"cancel",
 		{
-			taskId: Args.text({ name: "task-id" }),
+			taskId: textArg("task-id", "Non-held Task to cancel."),
 			runId: runIdOption.pipe(Options.optional),
 			reason: reasonOption,
 		},
@@ -949,11 +983,9 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const taskReplay = Command.make(
 		"replay",
 		{
-			taskId: Args.text({ name: "target-task-id" }),
+			taskId: textArg("target-task-id", "Broken target Task to replay."),
 			runId: runIdOption.pipe(Options.optional),
-			token: Options.integer("token").pipe(
-				Options.withDescription("Current fencing token for the held Repair Alert."),
-			),
+			token: integerOption("token", "token", "Current fencing token for the held Repair Alert."),
 			reason: reasonOption,
 		},
 		(o) =>
@@ -972,18 +1004,20 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const taskSupersede = Command.make(
 		"supersede",
 		{
-			taskId: Args.text({ name: "task-id" }),
+			taskId: textArg("task-id", "Task to replace with a fresh successor."),
 			runId: runIdOption.pipe(Options.optional),
 			reason: reasonOption,
-			title: Options.text("title").pipe(
-				Options.withDescription("Replacement task title; defaults to the superseded task title."),
-				Options.optional,
-			),
+			title: textOption(
+				"title",
+				"title",
+				"Replacement Task title; defaults to the superseded Task title.",
+			).pipe(Options.optional),
 			stdin: stdinFlag,
-			scope: Options.text("scope").pipe(
-				Options.withDescription("Replacement task scope; defaults to the superseded task scope."),
-				Options.optional,
-			),
+			scope: textOption(
+				"scope",
+				"scope-id",
+				"Replacement Task Scope; defaults to the superseded Task Scope.",
+			).pipe(Options.optional),
 			capability: capability.pipe(Options.optional),
 		},
 		(o) =>
@@ -1021,8 +1055,7 @@ export const makePithosCommand = (ctx: CliContext) => {
 		"inspect",
 		{
 			taskId: taskIdOption.pipe(Options.optional),
-			scope: Options.text("scope").pipe(
-				Options.withDescription("Restrict graph output to one Pithos scope."),
+			scope: textOption("scope", "scope-id", "Restrict graph output to one Pithos Scope.").pipe(
 				Options.optional,
 			),
 			all: Options.boolean("all").pipe(
@@ -1030,24 +1063,21 @@ export const makePithosCommand = (ctx: CliContext) => {
 					"Inspect the global graph selection, excluding stale cancelled tasks unless needed for closure.",
 				),
 			),
-			status: Options.text("status").pipe(
-				Options.withDescription(
-					"Seed from tasks with this exact status: queued, claimed, running, done, failed, dead_letter, or cancelled; repeat for OR.",
-				),
-				Options.repeated,
-			),
-			search: Options.text("search").pipe(
-				Options.withDescription(
-					"Seed from tasks whose title or body contains this case-insensitive text; repeat for AND.",
-				),
-				Options.repeated,
-			),
-			since: Options.text("since").pipe(
-				Options.withDescription(
-					"Seed from tasks touched at or after cutoff: today, <n>h, <n>d, YYYY-MM-DD, or ISO timestamp with timezone.",
-				),
-				Options.optional,
-			),
+			status: textOption(
+				"status",
+				"status",
+				"Seed from Tasks with this exact status; repeated values are ORed. Valid values: queued, claimed, running, done, failed, dead_letter, cancelled.",
+			).pipe(Options.repeated, Options.optional),
+			search: textOption(
+				"search",
+				"text",
+				"Seed from Tasks whose title or body contains this case-insensitive text; repeated values are ANDed.",
+			).pipe(Options.repeated, Options.optional),
+			since: textOption(
+				"since",
+				"cutoff",
+				"Seed from Tasks touched at or after cutoff: today, <n>h, <n>d, YYYY-MM-DD, or ISO timestamp with timezone.",
+			).pipe(Options.optional),
 			json: Options.boolean("json").pipe(
 				Options.withDescription("Return the full structured graph object as JSON."),
 			),
@@ -1058,8 +1088,8 @@ export const makePithosCommand = (ctx: CliContext) => {
 				taskId: opt(o.taskId),
 				scope: opt(o.scope),
 				all: o.all,
-				status: o.status,
-				search: o.search,
+				status: opt(o.status) ?? [],
+				search: opt(o.search) ?? [],
 				since: opt(o.since),
 				json: o.json,
 			}),
@@ -1075,8 +1105,7 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const briefing = Command.make(
 		"briefing",
 		{
-			agent: Options.text("agent").pipe(
-				Options.withDescription("Agent kind to tailor the briefing for."),
+			agent: textOption("agent", "agent-kind", "Agent kind to tailor the briefing for.").pipe(
 				Options.optional,
 			),
 			json: Options.boolean("json").pipe(
@@ -1102,6 +1131,8 @@ export const runPithosCli = (ctx: CliContext, args: readonly string[]) => {
 	return Effect.gen(function* () {
 		const handledHelpJson = yield* handleHelpJson(ctx, args, command);
 		if (handledHelpJson) return;
+		const handledCustomHelp = yield* handleCustomHelp(ctx, args, command);
+		if (handledCustomHelp) return;
 		const handledEmptySearchArg = yield* handleEmptySearchArg(ctx, args);
 		if (handledEmptySearchArg) return;
 		const handledTaskReplayReasonArg = yield* handleTaskReplayReasonArg(ctx, args);

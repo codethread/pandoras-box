@@ -1,0 +1,43 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pithos cli > renders top-level --help as human help without loading config 1`] = `
+[
+  "pithos
+
+Durable state CLI for tasks, runs, claims, artifacts, events, and graph invariants.
+
+Usage:
+  pithos <command>
+
+Commands:
+  init      Create the Pithos database schema and seed built-in agent kinds.
+  scope     Manage durable Pithos scopes used to partition task queues.
+  run       Manage durable Pithos run records for agent invocations.
+  task      Manage durable Pithos tasks, claims, fencing, and supersession.
+  graph     Inspect Pithos task typed-edge and supersession graphs.
+  events    Inspect durable Pithos event history.
+  briefing  Print a readable ready/blocked briefing; pass --json for structured task arrays.
+",
+]
+`;
+
+exports[`pithos cli > renders top-level --help as human help without loading config 2`] = `
+[
+  "pithos
+
+Durable state CLI for tasks, runs, claims, artifacts, events, and graph invariants.
+
+Usage:
+  pithos <command>
+
+Commands:
+  init      Create the Pithos database schema and seed built-in agent kinds.
+  scope     Manage durable Pithos scopes used to partition task queues.
+  run       Manage durable Pithos run records for agent invocations.
+  task      Manage durable Pithos tasks, claims, fencing, and supersession.
+  graph     Inspect Pithos task typed-edge and supersession graphs.
+  events    Inspect durable Pithos event history.
+  briefing  Print a readable ready/blocked briefing; pass --json for structured task arrays.
+",
+]
+`;

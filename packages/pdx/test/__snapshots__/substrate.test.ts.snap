@@ -1,0 +1,20 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pdx substrate > keeps default help human-readable 1`] = `
+"pdx
+
+Local supervisor for Pandora's Box agent runs, processes, tmux sessions, and Pandora.
+
+Usage:
+  pdx <command>
+
+Commands:
+  init      Initialize the pdx data dir and seeded bundle templates only.
+  open      Open the box: start pdx supervision and the Pandora HITL singleton.
+  close     Close the box: stop pdx supervision and clean up supervised runs.
+  daemon    Daemon supervisor commands.
+  run       Inspect or stop supervised agent runs owned by pdx.
+  task      Operate on live supervision for Pithos tasks.
+  hook      Control the supervised input hook process.
+"
+`;

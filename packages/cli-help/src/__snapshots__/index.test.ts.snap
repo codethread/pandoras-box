@@ -1,0 +1,144 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderHelp > renders leaf help from args, options, pseudo names, choices, repeats, defaults, and descriptions 1`] = `
+"demo item inspect
+
+Inspect one item.
+
+Usage:
+  demo item inspect [--json] [--data-dir path] [--limit count] [--workers count] --mode short | full [--tag tag...] [--literal text] <item-id>
+
+Arguments:
+  <item-id>  Item to inspect.
+
+Options:
+  --json               Return structured JSON.
+  --data-dir path      Directory containing demo state.
+  --limit count        Maximum records to show.
+  --workers count      Worker count. Default: 4.
+  --mode short | full  Inspection detail level.
+  --tag tag...         Filter by tag; repeated values are ORed.
+  --literal text       One of the following: keep this authored sentence.
+"
+`;
+
+exports[`renderHelp > renders nested parent help from the Effect command descriptor 1`] = `
+"demo item
+
+Manage demo items.
+
+Usage:
+  demo item <command>
+
+Commands:
+  inspect   Inspect one item.
+"
+`;
+
+exports[`renderHelp > renders root help from the Effect command descriptor 1`] = `
+"demo
+
+Demo command tree.
+
+Usage:
+  demo <command>
+
+Commands:
+  item      Manage demo items.
+  status    Show demo status.
+"
+`;
+
+exports[`renderHelp > resolves help command 1`] = `
+"demo
+
+Demo command tree.
+
+Usage:
+  demo <command>
+
+Commands:
+  item      Manage demo items.
+  status    Show demo status.
+"
+`;
+
+exports[`renderHelp > resolves leaf help with positional value 1`] = `
+"demo item inspect
+
+Inspect one item.
+
+Usage:
+  demo item inspect [--json] [--data-dir path] [--limit count] [--workers count] --mode short | full [--tag tag...] [--literal text] <item-id>
+
+Arguments:
+  <item-id>  Item to inspect.
+
+Options:
+  --json               Return structured JSON.
+  --data-dir path      Directory containing demo state.
+  --limit count        Maximum records to show.
+  --workers count      Worker count. Default: 4.
+  --mode short | full  Inspection detail level.
+  --tag tag...         Filter by tag; repeated values are ORed.
+  --literal text       One of the following: keep this authored sentence.
+"
+`;
+
+exports[`renderHelp > resolves leaf short help flag 1`] = `
+"demo item inspect
+
+Inspect one item.
+
+Usage:
+  demo item inspect [--json] [--data-dir path] [--limit count] [--workers count] --mode short | full [--tag tag...] [--literal text] <item-id>
+
+Arguments:
+  <item-id>  Item to inspect.
+
+Options:
+  --json               Return structured JSON.
+  --data-dir path      Directory containing demo state.
+  --limit count        Maximum records to show.
+  --workers count      Worker count. Default: 4.
+  --mode short | full  Inspection detail level.
+  --tag tag...         Filter by tag; repeated values are ORed.
+  --literal text       One of the following: keep this authored sentence.
+"
+`;
+
+exports[`renderHelp > resolves nested help command 1`] = `
+"demo item inspect
+
+Inspect one item.
+
+Usage:
+  demo item inspect [--json] [--data-dir path] [--limit count] [--workers count] --mode short | full [--tag tag...] [--literal text] <item-id>
+
+Arguments:
+  <item-id>  Item to inspect.
+
+Options:
+  --json               Return structured JSON.
+  --data-dir path      Directory containing demo state.
+  --limit count        Maximum records to show.
+  --workers count      Worker count. Default: 4.
+  --mode short | full  Inspection detail level.
+  --tag tag...         Filter by tag; repeated values are ORed.
+  --literal text       One of the following: keep this authored sentence.
+"
+`;
+
+exports[`renderHelp > resolves short help flag 1`] = `
+"demo
+
+Demo command tree.
+
+Usage:
+  demo <command>
+
+Commands:
+  item      Manage demo items.
+  status    Show demo status.
+"
+`;

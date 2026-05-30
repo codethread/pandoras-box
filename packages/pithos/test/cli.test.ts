@@ -1953,7 +1953,7 @@ describe("pithos cli", () => {
 			const result = await runCli([flag], tempDb());
 			expect(result.configRead).toBe(false);
 			expect(result.stderr).toEqual([]);
-			expect(result.stdout).toEqual([]);
+			expect(result.stdout).toMatchSnapshot();
 		}
 	});
 

@@ -478,7 +478,7 @@ describe("pdx substrate", () => {
 		expect(() => {
 			JSON.parse(stdout);
 		}).toThrow();
-		expect(stdout).toContain("Local supervisor for Pandora's Box agent runs");
+		expect(stdout).toMatchSnapshot();
 	});
 
 	it("CLI init materializes templates without tmux", async () => {
