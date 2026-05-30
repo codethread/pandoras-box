@@ -77,7 +77,7 @@ Exported from `@pdx/spawner`:
 - `launchRenderedAgent(rendered)` — launch an already-rendered plan.
 - `launchAgent(input)` — convenience render-then-launch wrapper. `pdx` should prefer the two-step flow.
 - `renderSessionTranscript(input)` — parse a stored Claude/Pi Harness session log, including Pi timeline tool-call previews when present.
-- `loadHooks()` — read the optional pdx hook config from the same layered `agents.toml` manifest resolution used by rendering.
+- `loadHooks()` — read optional pdx hook config from bundled defaults plus `$PDX_USER_DATA_DIR/agents.toml`; scope directories, rules, and project-local `.pdx` files are not hook sources.
 - `LiveSpawnerServices` — live filesystem/process/env implementation.
 - `makeFakeSpawnerServices(input)` — deterministic service implementation for tests.
 - `bundledTemplatesDir` — repo-root bundled default template directory used when `PDX_DATA_DIR` is unset and by `pdx` when seeding a fresh data dir.

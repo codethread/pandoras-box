@@ -1933,18 +1933,71 @@ system_prompt_mode = "append"
 		expect(hooks.input?.command).toEqual(["/tmp/hook"]);
 	});
 
-	it("loadHooks rejects hooks in non-global scope manifests", () => {
+	it("loadHooks preserves user enabled=false over a bundled hook command", () => {
+		const dataDir = "/tmp/pdx-hooks-disable";
+		const userDir = `${dataDir}/config`;
+		const hooks = loadHooks({
+			readText: (path: string) => {
+				if (path === `${dataDir}/agents.toml`)
+					return `${agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" })}\n[hooks.input]\ncommand = ["/tmp/bundled-hook"]\n`;
+				if (path === `${userDir}/agents.toml`) return "[hooks.input]\nenabled = false\n";
+				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+					code: "ENOENT",
+				});
+			},
+			realPath: (path: string) => path,
+			env: (key: string) => {
+				if (key === "PDX_DATA_DIR") return dataDir;
+				if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+				return undefined;
+			},
+			execFile: noopExec,
+		});
+		expect(hooks.input).toEqual({ enabled: false });
+	});
+
+	it("loadHooks ignores old scope and project hook manifests", () => {
 		const dataDir = "/tmp/pdx-hooks-invalid-overlay";
+		const userDir = `${dataDir}/config`;
+		const repoDir = "/tmp/pdx-hooks-repo";
+		const hooks = loadHooks({
+			readText: (path: string) => {
+				if (path === `${dataDir}/agents.toml`)
+					return agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" });
+				if (path === `${userDir}/scopes/global/agents.toml`)
+					return '[hooks.input]\ncommand = ["/tmp/global-hook"]\n';
+				if (path === `${userDir}/scopes/repo/agents.toml`)
+					return '[hooks.input]\ncommand = ["/tmp/repo-hook"]\n';
+				if (path === `${repoDir}/.pdx/agents.toml`)
+					return '[hooks.input]\ncommand = ["/tmp/project-hook"]\n';
+				if (path === `${repoDir}/.pdx/scopes/repo/agents.toml`)
+					return '[hooks.input]\ncommand = ["/tmp/project-scope-hook"]\n';
+				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+					code: "ENOENT",
+				});
+			},
+			realPath: (path: string) => path,
+			env: (key: string) => {
+				if (key === "PDX_DATA_DIR") return dataDir;
+				if (key === "PDX_USER_DATA_DIR") return userDir;
+				if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+				return undefined;
+			},
+			execFile: noopExec,
+		});
+		expect(hooks.input).toBeUndefined();
+	});
+
+	it("loadHooks rejects hooks declared inside rules", () => {
+		const dataDir = "/tmp/pdx-hooks-rule";
 		const userDir = `${dataDir}/config`;
 		expect(() =>
 			loadHooks({
 				readText: (path: string) => {
 					if (path === `${dataDir}/agents.toml`)
 						return agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" });
-					if (path === `${userDir}/scopes/global/agents.toml`)
-						return '[hooks.input]\ncommand = ["/tmp/hook"]\n';
-					if (path === `${userDir}/scopes/repo/agents.toml`)
-						return '[hooks.input]\ncommand = ["/tmp/illegal"]\n';
+					if (path === `${userDir}/agents.toml`)
+						return '[[rules]]\npath = "/tmp/project"\n[rules.hooks.input]\ncommand = ["/tmp/hook"]\n';
 					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
 						code: "ENOENT",
 					});
@@ -1958,7 +2011,7 @@ system_prompt_mode = "append"
 				},
 				execFile: noopExec,
 			}),
-		).not.toThrow();
+		).toThrow("rules[0] contains unknown predicate or field 'hooks'");
 	});
 
 	it("user scope templates do not override bundled templates", () => {

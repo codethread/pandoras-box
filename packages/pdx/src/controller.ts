@@ -1930,7 +1930,7 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 						runId: PDX_SYSTEM_RUN_ID,
 						kind: "hook_config_error",
 						escalationTitle: "Input hook disabled: hook config failed to load",
-						escalationBody: `pdx failed to load the input hook configuration. The input hook is disabled for this daemon session.\n\nError: ${error.message}\n\nSuggested next steps: fix the layered agents.toml hook config (usually $PDX_USER_DATA_DIR/agents.toml or $PDX_USER_DATA_DIR/scopes/global/agents.toml for custom hooks), then restart pdx (pdx close && pdx open) to resume hook supervision.`,
+						escalationBody: `pdx failed to load the input hook configuration. The input hook is disabled for this daemon session.\n\nError: ${error.message}\n\nSuggested next steps: fix $PDX_USER_DATA_DIR/agents.toml, then restart pdx (pdx close && pdx open) to resume hook supervision.`,
 					});
 					return { input: undefined } as const;
 				}),

@@ -32,6 +32,13 @@ No HITL slices are required: the target behavior is captured in `specs/agent-con
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 24 implementation — 2026-05-30
+
+- Confirmed `loadHooks` now reads only bundled defaults plus `$PDX_USER_DATA_DIR/agents.toml`; legacy user scope directories and project-local `.pdx` hook manifests are ignored rather than parsed.
+- Added Spawner coverage that user manifest hooks still load, user `enabled = false` clears an inherited command, old scope/project hook locations cannot affect supervision, and `[[rules]]` hook tables fail validation as unknown rule fields.
+- Normalized disabled hooks at the Spawner parser boundary so pdx only sees an effective command when the hook should run; updated Repair Alert/operator guidance to point hook config repairs at `$PDX_USER_DATA_DIR/agents.toml` only.
+- Validation passed: `pnpm --filter @pdx/spawner test -- spawner.test.ts`; `pnpm --filter @pdx/pdx test -- substrate.test.ts`; `pnpm verify`.
+
 ### Task 23 implementation — 2026-05-30
 
 - Added ordered user manifest `[[rules]]` policy selection for `path`, `path_glob`, `scope_kind`, and `agent`; `~` predicates normalize before matching and repo/worktree encoded scope paths take precedence over `cwd`.

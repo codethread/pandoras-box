@@ -119,7 +119,7 @@ Owns pdx behavior:
 
 - `initPdx` creates the data dir, initializes Pithos, creates `runs`, materializes bundle-owned config, preserves `<user-data-dir>/AGENTS.md`, and re-seeds `<user-data-dir>/PANDORA.md` without touching tmux or Harness CLIs.
 - `openPdx` supports normal reuse, `--clean` runtime-state reset, and `--nuke` pdx-owned state reset with user-config preservation before starting the pdx daemon tmux session and waiting for IPC readiness.
-- `runDaemon` settles startup orphans, upserts the `pdx` system Run, starts the reconcile loop, forks the input hook supervisor when `hooks.input` is configured in layered `agents.toml`, creates the `pdx--hooks` tail session, and serves IPC.
+- `runDaemon` settles startup orphans, upserts the `pdx` system Run, starts the reconcile loop, forks the input hook supervisor when `hooks.input` is configured in bundled defaults or `<user-data-dir>/agents.toml`, creates the `pdx--hooks` tail session, and serves IPC.
 - `reconcileTick` performs Cleanup/settlement first, runs event-pruning maintenance on daemon startup and then hourly, maintains Pandora, sends Nudges for new Escalation tasks, validates launch preconditions, and spawns at most one ready non-Pandora Agent run per tick.
 - `runInputHookSupervisor` manages the hook child process: reads NDJSON stdout to enqueue intake tasks, appends raw stdout lines to `hook.stdout.log` and stderr to `hook.stderr.log`, restarts on exit with exponential backoff, and creates an `input_hook_stuck` Repair Alert when the crash limit is reached.
 - `hookStopPdx` and `hookRestartPdx` proxy `pdx hook stop` and `pdx hook restart` over IPC; the daemon interrupts the supervisor fiber, terminates the hook child, and optionally re-forks the supervisor.

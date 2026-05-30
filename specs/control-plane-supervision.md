@@ -204,7 +204,7 @@ Spawner does not own Pithos graph policy, live Registry state, Kill, Cleanup, In
 
 ## 9. Input Hook
 
-Layered `agents.toml` may configure `hooks.input.command` through the global config layers. pdx runs that command as a producer process after Pandora is live. The hook writes newline-delimited JSON on stdout; each valid line with non-empty `title` and `body` creates a global `intake` Task for Envy. Invalid lines are logged and skipped.
+Bundled defaults and `$PDX_USER_DATA_DIR/agents.toml` may configure `hooks.input.command`; rules, scope directories, and project-local `.pdx` manifests do not configure hooks. pdx runs that command as a producer process after Pandora is live. The hook writes newline-delimited JSON on stdout; each valid line with non-empty `title` and `body` creates a global `intake` Task for Envy. Invalid lines are logged and skipped.
 
 pdx supervises the hook independently:
 

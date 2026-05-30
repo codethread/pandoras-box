@@ -117,7 +117,7 @@ tasks:
   - id: 24
     description: Centralize hook configuration
     task_file: tasks/024-centralize-hook-configuration.md
-    status: pending
+    status: complete
     blocked_by: [23]
   - id: 25
     description: Update policy scaffolds and docs

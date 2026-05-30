@@ -1702,6 +1702,8 @@ describe("pdx substrate", () => {
 		expect(repairAlerts[0]).toMatchObject({ kind: "hook_config_error", runId: PDX_SYSTEM_RUN_ID });
 		expect(repairAlerts[0]?.escalationTitle).toContain("Input hook disabled");
 		expect(repairAlerts[0]?.escalationBody).toContain("malformed hooks.json");
+		expect(repairAlerts[0]?.escalationBody).toContain("$PDX_USER_DATA_DIR/agents.toml");
+		expect(repairAlerts[0]?.escalationBody).not.toContain("scopes/global");
 		expect(logRecords).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({

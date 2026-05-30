@@ -400,6 +400,19 @@ const ruleMatches = (
 	return true;
 };
 
+const mergeHookInput = (
+	current: HooksConfig["input"],
+	input: NonNullable<NonNullable<PartialAgentsFile["hooks"]>["input"]>,
+): HooksConfig => ({
+	input:
+		input.enabled === false
+			? { enabled: false }
+			: {
+					enabled: input.enabled ?? current?.enabled,
+					command: input.command ?? current?.command,
+				},
+});
+
 const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void => {
 	for (const policyId of Object.keys(file.policies ?? {})) {
 		if (!POLICY_ID_PATTERN.test(policyId)) {
@@ -780,13 +793,7 @@ const buildResolvedConfig = (
 			current.harness.argv = mergeArgvList(current.harness.argv, partial.harness?.argv);
 		}
 		const hookInput = file.hooks?.input;
-		if (hookInput !== undefined) {
-			const nextInput = {
-				enabled: hookInput.enabled ?? hooks.input?.enabled,
-				command: hookInput.command ?? hooks.input?.command,
-			};
-			hooks = decode(ResolvedHooksSchema, { input: nextInput }, layer.agentsPath);
-		}
+		if (hookInput !== undefined) hooks = mergeHookInput(hooks.input, hookInput);
 	}
 
 	const resolvedAgents = Object.fromEntries(
@@ -886,15 +893,9 @@ export const loadResolvedHooks = (services: RenderServices): HooksConfig => {
 		bundledFile.hooks ?? {},
 		bundledLayer.agentsPath,
 	);
-	for (const [layer, file] of layerFiles.slice(1)) {
+	for (const [, file] of layerFiles.slice(1)) {
 		const hookInput = file.hooks?.input;
-		if (hookInput !== undefined) {
-			const nextInput = {
-				enabled: hookInput.enabled ?? hooks.input?.enabled,
-				command: hookInput.command ?? hooks.input?.command,
-			};
-			hooks = decode(ResolvedHooksSchema, { input: nextInput }, layer.agentsPath);
-		}
+		if (hookInput !== undefined) hooks = mergeHookInput(hooks.input, hookInput);
 	}
 	return hooks;
 };
