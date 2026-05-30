@@ -32,6 +32,14 @@ No HITL slices are required: the target behavior is captured in `specs/agent-con
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 23 implementation — 2026-05-30
+
+- Added ordered user manifest `[[rules]]` policy selection for `path`, `path_glob`, `scope_kind`, and `agent`; `~` predicates normalize before matching and repo/worktree encoded scope paths take precedence over `cwd`.
+- Matching rules apply after top-level and Agent policy defaults, with the same duplicate-add and absent-remove validation as policy packs.
+- Preview provenance now reports the normalized rule match path, matched rule indexes/predicates, and policy changes, alongside final rendered policy files.
+- Deep-review follow-up wired pdx launches and `pandora-spawn preview` to pass durable scope kind/path context into Spawner so rules work with opaque Pithos scope ids, and tightened path normalization / relative predicate rejection.
+- Focused Spawner coverage exercises glob, exact path removal/addition, worktree+War-only rules, nonmatching Agent rules, rendered policy provenance, and invalid rule validation.
+
 ### Task 22 implementation — 2026-05-30
 
 - Added user manifest policy declarations and user-wide / Agent-specific policy selection with `add`/`remove`; `replace`, duplicate adds, absent removes, invalid ids, missing definitions, and missing files fail loudly with tagged Spawner validation/template errors.

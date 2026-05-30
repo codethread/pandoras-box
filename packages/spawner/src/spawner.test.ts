@@ -960,6 +960,104 @@ add = ["toil-only"]
 		]);
 	});
 
+	it("applies ordered policy match rules by path glob, exact path, scope kind, and agent", () => {
+		const dataDir = "/tmp/pdx-policy-rules-data";
+		const userDir = "/tmp/pdx-policy-rules-user";
+		const repoDir = `${homedir()}/work/app`;
+		const userToml = `
+[policies.git-flow]
+file = "policies/git.md"
+[policies.org]
+file = "policies/org.md"
+[policies.project]
+file = "policies/project.md"
+[policies.worktree-war]
+file = "policies/worktree-war.md"
+[policy]
+add = ["git-flow"]
+
+[[rules]]
+path_glob = "~/work/**"
+policy.add = ["org"]
+
+[[rules]]
+path = "~/work/app"
+policy.remove = ["org"]
+policy.add = ["project"]
+
+[[rules]]
+scope_kind = "worktree"
+agent = "war"
+agents.war.policy.add = ["worktree-war"]
+`;
+		const services = {
+			...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+			readText: (path: string) => {
+				if (path === `${dataDir}/agents.toml`)
+					return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+				if (path === `${userDir}/agents.toml`) return userToml;
+				if (path === `${userDir}/policies/git.md`) return "GIT POLICY";
+				if (path === `${userDir}/policies/org.md`) return "ORG POLICY";
+				if (path === `${userDir}/policies/project.md`) return "PROJECT POLICY";
+				if (path === `${userDir}/policies/worktree-war.md`) return "WORKTREE WAR POLICY";
+				if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+				if (path === `${dataDir}/templates/war.md` || path === `${dataDir}/templates/toil.md`)
+					return "{{claim_command}}\n{{command_cards}}";
+				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+					code: "ENOENT",
+				});
+			},
+			env: (key: string) =>
+				key === "PDX_DATA_DIR"
+					? dataDir
+					: key === "PDX_USER_DATA_DIR"
+						? userDir
+						: key === "PITHOS_DB"
+							? `${dataDir}/pithos.sqlite`
+							: undefined,
+		};
+
+		const war = renderAgent(
+			{
+				...base,
+				agent: "war",
+				mode: "afk",
+				scopeId: "scope_worktree",
+				scopeKind: "worktree",
+				scopePath: `${repoDir}/.`,
+				cwd: "/tmp/fallback",
+			},
+			services,
+		);
+		expect(war.prompt).toContain("GIT POLICY");
+		expect(war.prompt).not.toContain("ORG POLICY");
+		expect(war.prompt).toContain("PROJECT POLICY");
+		expect(war.prompt).toContain("WORKTREE WAR POLICY");
+		expect(war.provenance?.policyRules.matchPath).toBe(repoDir);
+		expect(war.provenance?.policyRules.matched.map((rule) => rule.index)).toEqual([0, 1, 2]);
+		expect(war.provenance?.policies.map((policy) => policy.id)).toEqual([
+			"git-flow",
+			"project",
+			"worktree-war",
+		]);
+
+		const toil = renderAgent(
+			{
+				...base,
+				agent: "toil",
+				mode: "afk",
+				scopeId: "scope_repo",
+				scopeKind: "repo",
+				scopePath: repoDir,
+				cwd: "/tmp/fallback",
+			},
+			services,
+		);
+		expect(toil.prompt).toContain("PROJECT POLICY");
+		expect(toil.prompt).not.toContain("WORKTREE WAR POLICY");
+		expect(toil.provenance?.policyRules.matched.map((rule) => rule.index)).toEqual([0, 1]);
+	});
+
 	it("removes a globally selected policy for one agent", () => {
 		const dataDir = "/tmp/pdx-policy-remove-data";
 		const userDir = "/tmp/pdx-policy-remove-user";
@@ -1025,6 +1123,19 @@ remove = ["global-flow"]
 		],
 		["invalid id", '[policies.Bad]\nfile = "p.md"', /invalid policy id 'Bad'/],
 		["replace", '[policy]\nreplace = ["git-flow"]', /policy\.replace is not supported/],
+		["unknown rule predicate", '[[rules]]\nbranch = "main"', /unknown predicate or field 'branch'/],
+		[
+			"invalid rule glob",
+			'[[rules]]\npath_glob = "/tmp/[abc"',
+			/unsupported glob character class syntax/,
+		],
+		[
+			"relative rule path",
+			'[[rules]]\npath = "relative/project"',
+			/must be absolute or start with ~\//,
+		],
+		["invalid rule scope kind", '[[rules]]\nscope_kind = "branch"', /invalid manifest/],
+		["invalid rule agent", '[[rules]]\nagent = "sloth"', /invalid manifest/],
 	])("fails loudly for invalid policy config: %s", (_name, userToml, error) => {
 		const dataDir = "/tmp/pdx-policy-invalid-data";
 		const userDir = "/tmp/pdx-policy-invalid-user";
@@ -2225,6 +2336,7 @@ describe("launchRenderedAgent", () => {
 				includes: [],
 				appends: [],
 				policies: [],
+				policyRules: { matchPath: base.cwd, matched: [] },
 			},
 			cwd: `/tmp/pdx-spawner-missing-cwd-test-${process.pid.toString()}`,
 		};

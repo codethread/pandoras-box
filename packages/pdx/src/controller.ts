@@ -1002,6 +1002,8 @@ const spawnReadyAgent = (config: PdxConfig, maxAfk: number) =>
 				runId,
 				sessionId,
 				scopeId: task.scope_id,
+				scopeKind: task.scope_kind,
+				...(task.canonical_path === null ? {} : { scopePath: task.canonical_path }),
 				cwd,
 				...(task.parent_repo_path === null ? {} : { parentRepoPath: task.parent_repo_path }),
 			} as const;

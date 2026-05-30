@@ -32,6 +32,8 @@ interface RenderAgentInputBase {
 	readonly runId: string;
 	readonly sessionId: string;
 	readonly scopeId: string;
+	readonly scopeKind?: "global" | "repo" | "worktree";
+	readonly scopePath?: string;
 	readonly cwd: string;
 	readonly parentRepoPath?: string;
 }
@@ -78,6 +80,10 @@ interface RenderedAgentFields {
 			readonly id: string;
 			readonly path: string;
 		}[];
+		readonly policyRules: {
+			readonly matchPath: string;
+			readonly matched: readonly ResolvedAgentManifest["matchedRules"][number][];
+		};
 	};
 }
 
@@ -786,6 +792,10 @@ export const renderAgent = (
 			includes: includeAssets.map(templateProvenance),
 			appends: appendAssets.map(templateProvenance),
 			policies: manifest.policies.map((policy) => ({ id: policy.id, path: policy.path })),
+			policyRules: {
+				matchPath: manifest.ruleMatchPath,
+				matched: manifest.matchedRules,
+			},
 		},
 	};
 };

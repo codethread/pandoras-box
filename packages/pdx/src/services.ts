@@ -184,6 +184,8 @@ interface LaunchAgentInputBase {
 	readonly runId: string;
 	readonly sessionId: string;
 	readonly scopeId: string;
+	readonly scopeKind?: "global" | "repo" | "worktree";
+	readonly scopePath?: string;
 	readonly cwd: string;
 	readonly parentRepoPath?: string;
 }

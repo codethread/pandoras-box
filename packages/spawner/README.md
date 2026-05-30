@@ -22,6 +22,7 @@ Spawner owns:
 
 - Agent manifest loading from bundled defaults plus `$PDX_USER_DATA_DIR/agents.toml`
 - user policy-pack registry and `[policy]` / `[agents.<kind>.policy]` add/remove selection
+- ordered `[[rules]]` policy selection by normalized launch path, path glob, scope kind, and Agent kind
 - prompt rendering from bundled templates, including generated Markdown command references for `{{command_cards}}` and verbatim selected policy Markdown
 - Harness argv/env construction
 - expected Harness session log paths
@@ -126,6 +127,8 @@ pnpm --filter @pdx/spawner start -- preview \
   --agent war \
   --mode afk \
   --scope scope_repo \
+  --scope-kind repo \
+  --scope-path "$PWD" \
   --run run_demo \
   --session-id 123e4567-e89b-12d3-a456-426614174000 \
   --cwd "$PWD" | jq .
@@ -135,8 +138,11 @@ If you want preview to use the same seeded bundled defaults as `pdx`, set
 `PDX_DATA_DIR` and ensure `<data-dir>/agents.toml` plus `<data-dir>/templates/`
 have already been seeded. User manifest prompt fields and same-path user
 `templates/` files are rejected or ignored; only bundled prompt assets render.
-User policy packs declared under `[policies.<id>]` may be selected with `[policy]`
-or `[agents.<kind>.policy]` `add`/`remove`; selected Markdown is appended
-verbatim after the bundled prompt and generated command reference.
+User policy packs declared under `[policies.<id>]` may be selected with `[policy]`,
+`[agents.<kind>.policy]`, `[[rules]].policy`, or
+`[[rules]].agents.<kind>.policy` `add`/`remove`; selected Markdown is appended
+verbatim after the bundled prompt and generated command reference. Rule predicates support
+`path`, `path_glob`, `scope_kind`, and `agent`, and preview provenance reports the
+normalized launch path plus matched rules.
 
 Use fake services for deterministic render/launch tests. Do not require live model credentials for package tests.

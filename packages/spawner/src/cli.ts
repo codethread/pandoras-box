@@ -14,6 +14,8 @@ const PreviewInputRawSchema = Schema.Struct({
 	runId: Schema.NonEmptyString,
 	sessionId: Schema.NonEmptyString,
 	scopeId: Schema.NonEmptyString,
+	scopeKind: Schema.optional(Schema.Literal("global", "repo", "worktree")),
+	scopePath: Schema.optional(Schema.NonEmptyString),
 	cwd: Schema.NonEmptyString,
 	parentRepoPath: Schema.optional(Schema.NonEmptyString),
 	selectedCapability: Schema.optional(CapabilitySchema),
@@ -26,6 +28,8 @@ interface PreviewInputBase {
 	readonly runId: string;
 	readonly sessionId: string;
 	readonly scopeId: string;
+	readonly scopeKind?: "global" | "repo" | "worktree";
+	readonly scopePath?: string;
 	readonly cwd: string;
 	readonly parentRepoPath?: string;
 }
@@ -67,6 +71,8 @@ const parsePreviewInput = (raw: PreviewInputRaw): Effect.Effect<PreviewInput, Sp
 				runId: input.runId,
 				sessionId: input.sessionId,
 				scopeId: input.scopeId,
+				...(input.scopeKind === undefined ? {} : { scopeKind: input.scopeKind }),
+				...(input.scopePath === undefined ? {} : { scopePath: input.scopePath }),
 				cwd: input.cwd,
 				...(input.parentRepoPath === undefined ? {} : { parentRepoPath: input.parentRepoPath }),
 			} as const;
@@ -118,6 +124,15 @@ export const makeSpawnerCommand = (
 			cwd: textOption("cwd", "path", "Working directory for the Harness.").pipe(
 				Options.withSchema(Schema.NonEmptyString),
 			),
+			scopeKind: Options.choice("scope-kind", ["global", "repo", "worktree"] as const).pipe(
+				Options.withDescription("Durable Pithos Scope kind for policy rule preview matching."),
+				Options.optional,
+			),
+			scopePath: textOption(
+				"scope-path",
+				"path",
+				"Recorded repo/worktree Scope path for policy rule preview matching.",
+			).pipe(Options.optional),
 			parentRepoPath: textOption(
 				"parent-repo",
 				"path",
@@ -128,11 +143,24 @@ export const makeSpawnerCommand = (
 				Options.optional,
 			),
 		},
-		({ agent, mode, scopeId, runId, sessionId, cwd, parentRepoPath, selectedCapability }) =>
+		({
+			agent,
+			mode,
+			scopeId,
+			scopeKind,
+			scopePath,
+			runId,
+			sessionId,
+			cwd,
+			parentRepoPath,
+			selectedCapability,
+		}) =>
 			parsePreviewInput({
 				agent,
 				mode,
 				scopeId,
+				...(opt(scopeKind) === undefined ? {} : { scopeKind: opt(scopeKind) }),
+				...(opt(scopePath) === undefined ? {} : { scopePath: opt(scopePath) }),
 				runId,
 				sessionId,
 				cwd,

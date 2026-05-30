@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, normalize } from "node:path";
 import { BUILTIN_SPAWNABLE_AGENT_KINDS, type SpawnableAgentKind } from "@pdx/pithos/builtins";
 import { Either, ParseResult, Schema } from "effect";
 import * as Toml from "@iarna/toml";
@@ -71,11 +71,21 @@ const PartialAgentsTableSchema = Schema.Struct({
 	envy: Schema.optional(PartialAgentSchema),
 });
 
+const PolicyRuleSchema = Schema.Struct({
+	path: Schema.optional(Schema.NonEmptyString),
+	path_glob: Schema.optional(Schema.NonEmptyString),
+	scope_kind: Schema.optional(Schema.Literal("global", "repo", "worktree")),
+	agent: Schema.optional(Schema.Literal(...BUILTIN_SPAWNABLE_AGENT_KINDS)),
+	policy: Schema.optional(PolicyListOpsSchema),
+	agents: Schema.optional(PartialAgentsTableSchema),
+});
+
 const PartialAgentsFileSchema = Schema.Struct({
 	policies: Schema.optional(Schema.Record({ key: Schema.String, value: PolicyDeclarationSchema })),
 	policy: Schema.optional(PolicyListOpsSchema),
 	agents: Schema.optional(PartialAgentsTableSchema),
 	hooks: Schema.optional(PartialHooksSchema),
+	rules: Schema.optional(Schema.Array(PolicyRuleSchema)),
 });
 
 const ResolvedHarnessSchema = Schema.Struct({
@@ -103,12 +113,30 @@ const ResolvedHooksSchema = Schema.Struct({
 });
 
 export type HooksConfig = Schema.Schema.Type<typeof ResolvedHooksSchema>;
+export interface MatchedPolicyRuleProvenance {
+	readonly index: number;
+	readonly matchPath: string;
+	readonly predicates: {
+		readonly path?: string;
+		readonly pathGlob?: string;
+		readonly scopeKind?: ScopeKind;
+		readonly agent?: SpawnableAgentKind;
+	};
+	readonly policyChanges: readonly {
+		readonly field: string;
+		readonly add: readonly string[];
+		readonly remove: readonly string[];
+	}[];
+}
+
 export type ResolvedAgentManifest = Schema.Schema.Type<typeof ResolvedAgentSchema> & {
 	readonly policies: readonly {
 		readonly id: string;
 		readonly path: string;
 		readonly content: string;
 	}[];
+	readonly matchedRules: readonly MatchedPolicyRuleProvenance[];
+	readonly ruleMatchPath: string;
 };
 
 interface ConfigLayer {
@@ -136,6 +164,7 @@ export interface ResolvedTemplateAsset {
 
 type PartialAgentsFile = Schema.Schema.Type<typeof PartialAgentsFileSchema>;
 type PolicyOps = Schema.Schema.Type<typeof PolicyListOpsSchema>;
+type PolicyRule = Schema.Schema.Type<typeof PolicyRuleSchema>;
 
 const POLICY_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
@@ -157,6 +186,27 @@ const decode = <A, I>(schema: Schema.Schema<A, I>, value: unknown, path: string)
 	return decoded.right;
 };
 
+const isRecordValue = (value: unknown): value is Readonly<Record<string, unknown>> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
+const validateRawRuleKeys = (parsed: unknown, path: string): void => {
+	if (!isRecordValue(parsed)) return;
+	const rules = parsed.rules;
+	if (rules === undefined) return;
+	if (!Array.isArray(rules)) return;
+	rules.forEach((rule, index) => {
+		if (!isRecordValue(rule)) return;
+		for (const key of Object.keys(rule)) {
+			if (!allowedRuleKeys.has(key)) {
+				throw new SpawnerError({
+					code: "VALIDATION_ERROR",
+					message: `${path}: rules[${index.toString()}] contains unknown predicate or field '${key}'`,
+				});
+			}
+		}
+	});
+};
+
 const parseTomlFile = (path: string, services: RenderServices): PartialAgentsFile => {
 	let raw: string;
 	try {
@@ -174,6 +224,7 @@ const parseTomlFile = (path: string, services: RenderServices): PartialAgentsFil
 			message: `${path}: invalid TOML\n${error instanceof Error ? error.message : String(error)}`,
 		});
 	}
+	validateRawRuleKeys(parsed, path);
 	return decode(PartialAgentsFileSchema, parsed, path);
 };
 
@@ -241,6 +292,114 @@ const validateListOps = (
 	}
 };
 
+const allowedRuleKeys = new Set(["path", "path_glob", "scope_kind", "agent", "policy", "agents"]);
+const regexMeta = /[\\^$+?.()|{}]/g;
+
+const normalizeAbsolutePath = (reference: string, field: string, path: string): string => {
+	const expanded = resolveAbsoluteOrHomePath(reference);
+	if (!isAbsolute(expanded)) {
+		throw new SpawnerError({
+			code: "VALIDATION_ERROR",
+			message: `${path}: ${field} must be absolute or start with ~/`,
+		});
+	}
+	return normalize(expanded);
+};
+
+const globToRegExp = (glob: string, path: string, field: string): RegExp => {
+	let pattern = "^";
+	for (let index = 0; index < glob.length; index += 1) {
+		const char = glob[index]!;
+		if (char === "[") {
+			throw new SpawnerError({
+				code: "VALIDATION_ERROR",
+				message: `${path}: ${field} contains unsupported glob character class syntax`,
+			});
+		}
+		if (char === "*") {
+			if (glob[index + 1] === "*") {
+				pattern += ".*";
+				index += 1;
+			} else {
+				pattern += "[^/]*";
+			}
+			continue;
+		}
+		pattern += char.replace(regexMeta, "\\$&");
+	}
+	return new RegExp(`${pattern}$`);
+};
+
+const scopeKindForInput = (input: RenderAgentInput): ScopeKind => {
+	if (input.scopeKind !== undefined) return input.scopeKind;
+	if (input.scopeId === "global") return "global";
+	const pathScope = /^(repo|worktree):/.exec(input.scopeId);
+	if (pathScope !== null) return pathScope[1] as ScopeKind;
+	return "global";
+};
+
+const rawRuleMatchPathForInput = (input: RenderAgentInput): string => {
+	if (input.scopeKind === "repo" || input.scopeKind === "worktree") {
+		return input.scopePath === undefined || input.scopePath.length === 0
+			? input.cwd
+			: input.scopePath;
+	}
+	const pathScope = /^(repo|worktree):(.*)$/.exec(input.scopeId);
+	const recordedPath = pathScope?.[2];
+	return recordedPath === undefined || recordedPath.length === 0 ? input.cwd : recordedPath;
+};
+
+const ruleMatchPathForInput = (input: RenderAgentInput, path: string): string =>
+	normalizeAbsolutePath(rawRuleMatchPathForInput(input), "launch path", path);
+
+const policyChangesForRule = (
+	rule: PolicyRule,
+	agent: SpawnableAgentKind,
+): MatchedPolicyRuleProvenance["policyChanges"] => {
+	const changes: MatchedPolicyRuleProvenance["policyChanges"][number][] = [];
+	if (rule.policy !== undefined) {
+		changes.push({
+			field: "rules.policy",
+			add: rule.policy.add ?? [],
+			remove: rule.policy.remove ?? [],
+		});
+	}
+	const agentPolicy = rule.agents?.[agent]?.policy;
+	if (agentPolicy !== undefined) {
+		changes.push({
+			field: `rules.agents.${agent}.policy`,
+			add: agentPolicy.add ?? [],
+			remove: agentPolicy.remove ?? [],
+		});
+	}
+	return changes;
+};
+
+const ruleMatches = (
+	rule: PolicyRule,
+	input: RenderAgentInput,
+	layer: ConfigLayer,
+	matchPath: string,
+): boolean => {
+	const scopeKind = scopeKindForInput(input);
+	if (
+		rule.path !== undefined &&
+		normalizeAbsolutePath(rule.path, "rules.path", layer.agentsPath) !== matchPath
+	)
+		return false;
+	if (rule.path_glob !== undefined) {
+		const pattern = globToRegExp(
+			normalizeAbsolutePath(rule.path_glob, "rules.path_glob", layer.agentsPath),
+			layer.agentsPath,
+			"rules.path_glob",
+		);
+		if (!pattern.test(matchPath)) return false;
+	}
+	if (rule.scope_kind !== undefined && rule.scope_kind !== scopeKind) return false;
+	if (rule.agent !== undefined && rule.agent !== input.agent) return false;
+	return true;
+};
+
 const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void => {
 	for (const policyId of Object.keys(file.policies ?? {})) {
 		if (!POLICY_ID_PATTERN.test(policyId)) {
@@ -253,6 +412,45 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 	if (file.policy !== undefined) {
 		validatePolicyOps(file.policy, "policy", layer.agentsPath);
 	}
+	file.rules?.forEach((rule, index) => {
+		if (rule.policy !== undefined) {
+			validatePolicyOps(rule.policy, `rules[${index.toString()}].policy`, layer.agentsPath);
+		}
+		if (rule.path !== undefined) {
+			normalizeAbsolutePath(rule.path, `rules[${index.toString()}].path`, layer.agentsPath);
+		}
+		if (rule.path_glob !== undefined) {
+			globToRegExp(
+				normalizeAbsolutePath(
+					rule.path_glob,
+					`rules[${index.toString()}].path_glob`,
+					layer.agentsPath,
+				),
+				layer.agentsPath,
+				`rules[${index.toString()}].path_glob`,
+			);
+		}
+		for (const [agent, partial] of Object.entries(rule.agents ?? {})) {
+			if (partial?.policy !== undefined) {
+				validatePolicyOps(
+					partial.policy,
+					`rules[${index.toString()}].agents.${agent}.policy`,
+					layer.agentsPath,
+				);
+			}
+			if (
+				partial?.template !== undefined ||
+				partial?.includes !== undefined ||
+				partial?.appends !== undefined ||
+				partial?.harness !== undefined
+			) {
+				throw new SpawnerError({
+					code: "VALIDATION_ERROR",
+					message: `${layer.agentsPath}: rules[${index.toString()}].agents.${agent} may only configure policy`,
+				});
+			}
+		}
+	});
 	for (const [agent, partial] of Object.entries(file.agents ?? {})) {
 		if (partial === undefined) continue;
 		if (partial.includes !== undefined) {
@@ -447,6 +645,7 @@ const readLayerFiles = (
 const buildResolvedConfig = (
 	layers: readonly ConfigLayer[],
 	services: RenderServices,
+	input: RenderAgentInput,
 ): ResolvedConfig => {
 	const layerFiles = readLayerFiles(layers, services);
 	const bundledLayerEntry = layerFiles[0];
@@ -501,6 +700,8 @@ const buildResolvedConfig = (
 	);
 
 	const policyDeclarations = new Map<string, string>();
+	const matchedRules: MatchedPolicyRuleProvenance[] = [];
+	const ruleMatchPath = ruleMatchPathForInput(input, bundledLayer.agentsPath);
 	for (const [layer, file] of layerFiles.slice(1)) {
 		for (const [policyId, declaration] of Object.entries(file.policies ?? {})) {
 			policyDeclarations.set(policyId, resolvePolicyPath(declaration.file, layer));
@@ -514,13 +715,54 @@ const buildResolvedConfig = (
 				"policy",
 				layer.agentsPath,
 			);
+			if (partial !== undefined) {
+				current.policyIds = mergeUniqueList(
+					current.policyIds,
+					partial.policy,
+					`agents.${agent}.policy`,
+					layer.agentsPath,
+				);
+			}
+			if (agent === input.agent) {
+				file.rules?.forEach((rule, index) => {
+					if (!ruleMatches(rule, input, layer, ruleMatchPath)) return;
+					current.policyIds = mergeUniqueList(
+						current.policyIds,
+						rule.policy,
+						`rules[${index.toString()}].policy`,
+						layer.agentsPath,
+					);
+					const agentPolicy = rule.agents?.[agent]?.policy;
+					current.policyIds = mergeUniqueList(
+						current.policyIds,
+						agentPolicy,
+						`rules[${index.toString()}].agents.${agent}.policy`,
+						layer.agentsPath,
+					);
+					matchedRules.push({
+						index,
+						matchPath: ruleMatchPath,
+						predicates: {
+							...(rule.path === undefined
+								? {}
+								: { path: normalizeAbsolutePath(rule.path, "rules.path", layer.agentsPath) }),
+							...(rule.path_glob === undefined
+								? {}
+								: {
+										pathGlob: normalizeAbsolutePath(
+											rule.path_glob,
+											"rules.path_glob",
+											layer.agentsPath,
+										),
+									}),
+							...(rule.scope_kind === undefined ? {} : { scopeKind: rule.scope_kind }),
+							...(rule.agent === undefined ? {} : { agent: rule.agent }),
+						},
+						policyChanges: policyChangesForRule(rule, agent),
+					});
+				});
+			}
 			if (partial === undefined) continue;
-			current.policyIds = mergeUniqueList(
-				current.policyIds,
-				partial.policy,
-				`agents.${agent}.policy`,
-				layer.agentsPath,
-			);
 
 			if (partial.harness?.kind !== undefined) current.harness.kind = partial.harness.kind;
 			if (partial.harness?.model !== undefined) current.harness.model = partial.harness.model;
@@ -589,7 +831,15 @@ const buildResolvedConfig = (
 					bundledLayer.agentsPath,
 				);
 			}
-			return [agent, { ...resolved, policies }];
+			return [
+				agent,
+				{
+					...resolved,
+					policies,
+					matchedRules: agent === input.agent ? matchedRules : [],
+					ruleMatchPath,
+				},
+			];
 		}),
 	) as unknown as Readonly<Record<SpawnableAgentKind, ResolvedAgentManifest>>;
 	return { layers, bundledLayer, hooks, agents: resolvedAgents };
@@ -622,7 +872,7 @@ const readPolicyText = (path: string, services: RenderServices): string => {
 export const loadResolvedAgentConfig = (
 	input: RenderAgentInput,
 	services: RenderServices,
-): ResolvedConfig => buildResolvedConfig(layerOrderForRender(input, services), services);
+): ResolvedConfig => buildResolvedConfig(layerOrderForRender(input, services), services, input);
 
 export const loadResolvedHooks = (services: RenderServices): HooksConfig => {
 	const layerFiles = readLayerFiles(hookLayers(services), services);

@@ -112,7 +112,7 @@ tasks:
   - id: 23
     description: Add policy match rules
     task_file: tasks/023-add-policy-match-rules.md
-    status: pending
+    status: complete
     blocked_by: [22]
   - id: 24
     description: Centralize hook configuration
