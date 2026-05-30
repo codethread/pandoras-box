@@ -32,6 +32,23 @@ No HITL slices are required: the target behavior is captured in `specs/agent-con
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 26 verification — 2026-05-30
+
+- Focused validation passed: `pnpm --filter @pdx/spawner test -- spawner.test.ts` (95 tests) and `pnpm --filter @pdx/pdx test -- substrate.test.ts` (115 tests).
+- Full repository validation passed: `pnpm verify`.
+- Isolated preview smoke passed with temp `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR`:
+  ```sh
+  export PDX_DATA_DIR="$SMOKE_ROOT/pdx"
+  export PDX_USER_DATA_DIR="$SMOKE_ROOT/pdx-user-config"
+  export PITHOS_DB="$PDX_DATA_DIR/pithos.sqlite"
+  export TMUX_TMPDIR="$PDX_DATA_DIR/tmux"
+  pnpm --silent --filter @pdx/pithos start -- init --fresh
+  pnpm --silent --filter @pdx/pdx start -- init --data-dir "$PDX_DATA_DIR"
+  pnpm --silent --filter @pdx/spawner start -- preview --agent war --mode afk --scope scope_repo_special --scope-kind repo --scope-path "$SMOKE_ROOT/work/repo-special" --run run_war_policy_smoke --session-id 00000000-0000-4000-8000-000000000026 --cwd "$SMOKE_ROOT/work/repo-special" > "$SMOKE_ROOT/war-preview.json"
+  pnpm --silent --filter @pdx/spawner start -- preview --agent toil --mode afk --scope global --scope-kind global --run run_toil_policy_smoke --session-id 00000000-0000-4000-8000-000000000027 --cwd "$SMOKE_ROOT/work/other" > "$SMOKE_ROOT/toil-preview.json"
+  ```
+  Smoke setup created two user policies, selected one globally and one through a `path` rule, and added same-path user template sentinel files. `jq` assertions confirmed War rendered bundled base content plus both selected policies, Toil rendered bundled base content plus only the global policy, provenance reported the expected policy/rule selections, and neither prompt contained user template shadow sentinels.
+
 ### Task 24 implementation — 2026-05-30
 
 - Confirmed `loadHooks` now reads only bundled defaults plus `$PDX_USER_DATA_DIR/agents.toml`; legacy user scope directories and project-local `.pdx` hook manifests are ignored rather than parsed.
