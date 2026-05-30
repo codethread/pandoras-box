@@ -11,7 +11,7 @@ pandora-spawn --help
 pandora-spawn preview --help
 ```
 
-Preview renders the Agent run plan as JSON, including config/template provenance for layered `agents.toml` debugging. It does not mutate Pithos, create a Run, touch tmux, or launch a Harness session.
+Preview renders the Agent run plan as JSON, including bundled prompt provenance and user Harness overrides. It does not mutate Pithos, create a Run, touch tmux, or launch a Harness session.
 
 For the actual agent manifest and prompt-template contract, see the repo-root
 [`resources/`](../../resources/) directory and [`resources/README.md`](../../resources/README.md).
@@ -20,8 +20,8 @@ For the actual agent manifest and prompt-template contract, see the repo-root
 
 Spawner owns:
 
-- Agent manifest/template loading
-- prompt rendering, including generated Markdown command references for `{{command_cards}}`
+- Agent manifest loading from bundled defaults plus `$PDX_USER_DATA_DIR/agents.toml`
+- prompt rendering from bundled templates, including generated Markdown command references for `{{command_cards}}`
 - Harness argv/env construction
 - expected Harness session log paths
 - AFK mode process launch mechanics
@@ -53,19 +53,19 @@ Specs describe the full control plane: [`../../specs/control-plane-supervision.m
 
 ## File map
 
-| Path                        | Why read it                                                                 |
-| --------------------------- | --------------------------------------------------------------------------- |
-| `src/index.ts`              | package-root exports; keep consumers on this boundary                       |
-| `src/main.ts`               | process boundary, preview execution, and tagged CLI errors                  |
-| `src/cli.ts`                | `pandora-spawn preview` command surface and help rendering                  |
-| `src/spawner.ts`            | manifest contract, render pipeline, launch mechanics, transcript parsers    |
-| `src/services.ts`           | Render/Launch service interfaces, live Node IO, fake services               |
-| `src/paths.ts`              | template asset discovery for repo-root bundled defaults and data-dir copies |
-| `src/errors.ts`             | `SpawnerError` codes and CLI exit mapping                                   |
-| `src/help.ts`               | re-exports shared descriptor-driven terminal help renderer                  |
-| `../../resources/README.md` | manifest/template contract and operator-facing config docs                  |
-| `../../resources/`          | bundled default manifest and prompts seeded into `<data-dir>/templates/`    |
-| `src/spawner.test.ts`       | behavior examples for render, launch, transcript, and manifest failures     |
+| Path                        | Why read it                                                              |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `src/index.ts`              | package-root exports; keep consumers on this boundary                    |
+| `src/main.ts`               | process boundary, preview execution, and tagged CLI errors               |
+| `src/cli.ts`                | `pandora-spawn preview` command surface and help rendering               |
+| `src/spawner.ts`            | manifest contract, render pipeline, launch mechanics, transcript parsers |
+| `src/services.ts`           | Render/Launch service interfaces, live Node IO, fake services            |
+| `src/paths.ts`              | bundled data/user resource path helpers and argv path expansion roots    |
+| `src/errors.ts`             | `SpawnerError` codes and CLI exit mapping                                |
+| `src/help.ts`               | re-exports shared descriptor-driven terminal help renderer               |
+| `../../resources/README.md` | manifest/template contract and operator-facing config docs               |
+| `../../resources/`          | bundled default manifest and prompts seeded into `<data-dir>/templates/` |
+| `src/spawner.test.ts`       | behavior examples for render, launch, transcript, and manifest failures  |
 
 ## Public library surface
 
@@ -130,8 +130,9 @@ pnpm --filter @pdx/spawner start -- preview \
   --cwd "$PWD" | jq .
 ```
 
-If you want preview to use the same seeded templates plus
-layered `agents.toml` / `templates/` config as `pdx`, set `PDX_DATA_DIR` and ensure
-`<data-dir>/templates/` has already been seeded.
+If you want preview to use the same seeded bundled defaults as `pdx`, set
+`PDX_DATA_DIR` and ensure `<data-dir>/agents.toml` plus `<data-dir>/templates/`
+have already been seeded. User manifest prompt fields and same-path user
+`templates/` files are rejected or ignored; only bundled prompt assets render.
 
 Use fake services for deterministic render/launch tests. Do not require live model credentials for package tests.

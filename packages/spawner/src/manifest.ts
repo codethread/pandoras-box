@@ -18,7 +18,6 @@ const HarnessKindSchema = Schema.Literal("claude", "pi");
 const SystemPromptModeSchema = Schema.Literal("replace", "append");
 const NonEmptyStringArray = Schema.Array(Schema.NonEmptyString);
 
-const ScalarDefaultSchema = Schema.Struct({ default: Schema.Literal(true) });
 const ListOpsSchema = Schema.Struct({
 	replace: Schema.optional(NonEmptyStringArray),
 	remove: Schema.optional(NonEmptyStringArray),
@@ -28,20 +27,19 @@ const ArgvListOpsSchema = Schema.Struct({
 	replace: Schema.optional(NonEmptyStringArray),
 	add: Schema.optional(NonEmptyStringArray),
 });
-const ScalarStringOrDefaultSchema = Schema.Union(Schema.NonEmptyString, ScalarDefaultSchema);
 const ScalarBooleanSchema = Schema.Boolean;
 const HookCommandSchema = Schema.Array(Schema.NonEmptyString).pipe(Schema.minItems(1));
 
 const PartialHarnessSchema = Schema.Struct({
 	kind: Schema.optional(HarnessKindSchema),
-	model: Schema.optional(ScalarStringOrDefaultSchema),
+	model: Schema.optional(Schema.NonEmptyString),
 	system_prompt_mode: Schema.optional(SystemPromptModeSchema),
 	tools: Schema.optional(ListOpsSchema),
 	argv: Schema.optional(ArgvListOpsSchema),
 });
 
 const PartialAgentSchema = Schema.Struct({
-	template: Schema.optional(ScalarStringOrDefaultSchema),
+	template: Schema.optional(Schema.NonEmptyString),
 	includes: Schema.optional(ListOpsSchema),
 	appends: Schema.optional(ListOpsSchema),
 	harness: Schema.optional(PartialHarnessSchema),
@@ -94,16 +92,14 @@ const ResolvedHooksSchema = Schema.Struct({
 });
 
 export type HooksConfig = Schema.Schema.Type<typeof ResolvedHooksSchema>;
-export type ResolvedAgentManifest = Schema.Schema.Type<typeof ResolvedAgentSchema> & {
-	readonly templatePinnedToBundled: boolean;
-};
+export type ResolvedAgentManifest = Schema.Schema.Type<typeof ResolvedAgentSchema>;
 
 interface ConfigLayer {
 	readonly rootDir: string;
 	readonly templatesDir: string;
 	readonly agentsPath: string;
 	readonly scopeKind: ScopeKind;
-	readonly kind: "bundled" | "user" | "user-scope" | "project" | "project-scope";
+	readonly kind: "bundled" | "user";
 	readonly required: boolean;
 }
 
@@ -261,26 +257,23 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 		});
 	}
 	if (
-		input !== undefined &&
-		(layer.scopeKind === "repo" || layer.scopeKind === "worktree") &&
-		(layer.kind === "user-scope" || layer.kind === "project" || layer.kind === "project-scope")
+		layer.kind !== "bundled" &&
+		Object.values(file.agents ?? {}).some(
+			(partial) =>
+				partial?.template !== undefined ||
+				partial?.includes !== undefined ||
+				partial?.appends !== undefined,
+		)
 	) {
 		throw new SpawnerError({
 			code: "VALIDATION_ERROR",
-			message: `${layer.agentsPath}: hooks.input is only valid in bundled, user, or scopes/global manifests`,
+			message: `${layer.agentsPath}: user manifest may not configure agents.<kind>.template, agents.<kind>.includes, or agents.<kind>.appends`,
 		});
 	}
 };
 
 const agentModeFor = (agent: SpawnableAgentKind): "afk" | "hitl" =>
 	agent === "pandora" || agent === "greed" ? "hitl" : "afk";
-
-const scalarValue = (value: string | { readonly default: true } | undefined): string | undefined =>
-	typeof value === "string" ? value : undefined;
-const scalarIsDefault = (
-	value: string | { readonly default: true } | undefined,
-): value is { readonly default: true } =>
-	typeof value === "object" && value !== null && value.default === true;
 
 const mergeUniqueList = (
 	current: readonly string[],
@@ -322,22 +315,6 @@ const mergeArgvList = (
 	return [...current, ...(ops.add ?? [])];
 };
 
-const normalizeScopeKind = (input: Pick<RenderAgentInput, "scopeId">): ScopeKind => {
-	if (input.scopeId === "global") return "global";
-	if (input.scopeId.startsWith("repo:")) return "repo";
-	if (input.scopeId.startsWith("worktree:")) return "worktree";
-	return "repo";
-};
-
-const scopePathFromId = (input: Pick<RenderAgentInput, "scopeId" | "cwd">): string | undefined => {
-	for (const prefix of ["repo:", "worktree:"] as const) {
-		if (input.scopeId.startsWith(prefix)) {
-			return input.scopeId.slice(prefix.length) || input.cwd;
-		}
-	}
-	return undefined;
-};
-
 const resolveLayer = (
 	rootDir: string,
 	scopeKind: ScopeKind,
@@ -365,78 +342,24 @@ const bundledLayerFor = (services: RenderServices): ConfigLayer => {
 };
 
 const layerOrderForRender = (
-	input: RenderAgentInput,
+	_input: RenderAgentInput,
 	services: RenderServices,
 ): readonly ConfigLayer[] => {
-	const scopeKind = normalizeScopeKind(input);
-	if (scopeKind === "worktree" && input.parentRepoPath === undefined) {
-		throw new SpawnerError({
-			code: "VALIDATION_ERROR",
-			message: `worktree scope ${input.scopeId} requires parentRepoPath for layered config resolution`,
-		});
-	}
 	const bundledLayer = bundledLayerFor(services);
 	const dataDir = services.env("PDX_DATA_DIR");
 	const userDataDir = resolveUserDataDir(dataDir, services.env("PDX_USER_DATA_DIR"));
-	const layers: ConfigLayer[] = [bundledLayer];
-	if (userDataDir !== undefined) {
-		layers.push(resolveLayer(userDataDir, "global", "user", false));
-		layers.push(
-			resolveLayer(join(userDataDir, "scopes", scopeKind), scopeKind, "user-scope", false),
-		);
-	}
-	if (scopeKind === "repo") {
-		const scopePath = scopePathFromId(input);
-		if (scopePath !== undefined) {
-			layers.push(resolveLayer(join(scopePath, ".pdx"), "repo", "project", false));
-			layers.push(
-				resolveLayer(join(scopePath, ".pdx", "scopes", "repo"), "repo", "project-scope", false),
-			);
-		}
-	}
-	if (scopeKind === "worktree" && input.parentRepoPath !== undefined) {
-		layers.push(resolveLayer(join(input.parentRepoPath, ".pdx"), "worktree", "project", false));
-		layers.push(
-			resolveLayer(
-				join(input.parentRepoPath, ".pdx", "scopes", "worktree"),
-				"worktree",
-				"project-scope",
-				false,
-			),
-		);
-	}
-	return layers;
+	return userDataDir === undefined
+		? [bundledLayer]
+		: [bundledLayer, resolveLayer(userDataDir, "global", "user", false)];
 };
 
 const hookLayers = (services: RenderServices): readonly ConfigLayer[] => {
 	const bundledLayer = bundledLayerFor(services);
 	const dataDir = services.env("PDX_DATA_DIR");
 	const userDataDir = resolveUserDataDir(dataDir, services.env("PDX_USER_DATA_DIR"));
-	const layers: ConfigLayer[] = [bundledLayer];
-	if (userDataDir !== undefined) {
-		layers.push(resolveLayer(userDataDir, "global", "user", false));
-		layers.push(resolveLayer(join(userDataDir, "scopes", "global"), "global", "user-scope", false));
-	}
-	return layers;
-};
-
-const validateProjectConfigRoots = (
-	layers: readonly ConfigLayer[],
-	services: RenderServices,
-): void => {
-	for (const layer of layers) {
-		if (layer.kind !== "project" && layer.kind !== "project-scope") continue;
-		const projectConfigRoot =
-			layer.kind === "project" ? layer.rootDir : join(layer.rootDir, "..", "..");
-		const invalidGlobalAgentsPath = join(projectConfigRoot, "scopes", "global", "agents.toml");
-		const invalidGlobalManifest = maybeParseTomlFile(invalidGlobalAgentsPath, services);
-		if (invalidGlobalManifest !== undefined) {
-			throw new SpawnerError({
-				code: "VALIDATION_ERROR",
-				message: `${invalidGlobalAgentsPath}: project-local .pdx may not define scopes/global`,
-			});
-		}
-	}
+	return userDataDir === undefined
+		? [bundledLayer]
+		: [bundledLayer, resolveLayer(userDataDir, "global", "user", false)];
 };
 
 const readLayerFiles = (
@@ -460,7 +383,6 @@ const buildResolvedConfig = (
 	layers: readonly ConfigLayer[],
 	services: RenderServices,
 ): ResolvedConfig => {
-	validateProjectConfigRoots(layers, services);
 	const layerFiles = readLayerFiles(layers, services);
 	const bundledLayerEntry = layerFiles[0];
 	if (bundledLayerEntry === undefined) {
@@ -477,13 +399,12 @@ const buildResolvedConfig = (
 				});
 			}
 			const resolved = {
-				template: scalarValue(bundledAgent.template),
-				templatePinnedToBundled: false,
+				template: bundledAgent.template,
 				includes: bundledAgent.includes?.replace ?? [],
 				appends: bundledAgent.appends?.replace ?? [],
 				harness: {
 					kind: bundledAgent.harness?.kind,
-					model: scalarValue(bundledAgent.harness?.model),
+					model: bundledAgent.harness?.model,
 					system_prompt_mode: bundledAgent.harness?.system_prompt_mode,
 					tools: bundledAgent.harness?.tools?.replace,
 					argv: bundledAgent.harness?.argv?.replace ?? [],
@@ -495,7 +416,6 @@ const buildResolvedConfig = (
 		SpawnableAgentKind,
 		{
 			template: string | undefined;
-			templatePinnedToBundled: boolean;
 			includes: readonly string[];
 			appends: readonly string[];
 			harness: {
@@ -518,31 +438,9 @@ const buildResolvedConfig = (
 			const partial = file.agents?.[agent];
 			if (partial === undefined) continue;
 			const current = agents[agent];
-			if (scalarIsDefault(partial.template)) {
-				current.template = scalarValue(bundledFile.agents?.[agent]?.template);
-				current.templatePinnedToBundled = true;
-			} else if (typeof partial.template === "string") {
-				current.template = partial.template;
-				current.templatePinnedToBundled = false;
-			}
-			current.includes = mergeUniqueList(
-				current.includes,
-				partial.includes,
-				`agents.${agent}.includes`,
-				layer.agentsPath,
-			);
-			current.appends = mergeUniqueList(
-				current.appends,
-				partial.appends,
-				`agents.${agent}.appends`,
-				layer.agentsPath,
-			);
+
 			if (partial.harness?.kind !== undefined) current.harness.kind = partial.harness.kind;
-			if (scalarIsDefault(partial.harness?.model)) {
-				current.harness.model = scalarValue(bundledFile.agents?.[agent]?.harness?.model);
-			} else if (typeof partial.harness?.model === "string") {
-				current.harness.model = partial.harness.model;
-			}
+			if (partial.harness?.model !== undefined) current.harness.model = partial.harness.model;
 			if (partial.harness?.system_prompt_mode !== undefined) {
 				current.harness.system_prompt_mode = partial.harness.system_prompt_mode;
 			}
@@ -594,7 +492,7 @@ const buildResolvedConfig = (
 					bundledLayer.agentsPath,
 				);
 			}
-			return [agent, { ...resolved, templatePinnedToBundled: current.templatePinnedToBundled }];
+			return [agent, resolved];
 		}),
 	) as Readonly<Record<SpawnableAgentKind, ResolvedAgentManifest>>;
 	return { layers, bundledLayer, hooks, agents: resolvedAgents };
@@ -627,7 +525,6 @@ export const resolveTemplateAsset = (
 	reference: string,
 	config: Pick<ResolvedConfig, "layers" | "bundledLayer">,
 	services: RenderServices,
-	options: { readonly pinToBundled?: boolean } = {},
 ): ResolvedTemplateAsset => {
 	if (reference === "~" || reference.startsWith("~/") || reference.startsWith("/")) {
 		const path = resolveAbsoluteOrHomePath(reference);
@@ -638,47 +535,18 @@ export const resolveTemplateAsset = (
 			layer: { type: reference.startsWith("/") ? "absolute" : "home" },
 		};
 	}
-	if (options.pinToBundled === true) {
-		const path = join(config.bundledLayer.templatesDir, reference);
-		return {
-			reference,
-			path,
-			content: readText(path, services),
-			layer: {
-				type: "layer",
-				kind: config.bundledLayer.kind,
-				scopeKind: config.bundledLayer.scopeKind,
-				rootDir: config.bundledLayer.rootDir,
-			},
-		};
-	}
-	for (const layer of [...config.layers].reverse()) {
-		const path = join(layer.templatesDir, reference);
-		try {
-			return {
-				reference,
-				path,
-				content: services.readText(path),
-				layer: {
-					type: "layer",
-					kind: layer.kind,
-					scopeKind: layer.scopeKind,
-					rootDir: layer.rootDir,
-				},
-			};
-		} catch (error) {
-			if (!isEnoent(error)) {
-				throw new SpawnerError({
-					code: "TEMPLATE_ERROR",
-					message: `${path}: ${error instanceof Error ? error.message : String(error)}`,
-				});
-			}
-		}
-	}
-	throw new SpawnerError({
-		code: "TEMPLATE_ERROR",
-		message: `template asset not found in any config layer: ${reference}`,
-	});
+	const path = join(config.bundledLayer.templatesDir, reference);
+	return {
+		reference,
+		path,
+		content: readText(path, services),
+		layer: {
+			type: "layer",
+			kind: config.bundledLayer.kind,
+			scopeKind: config.bundledLayer.scopeKind,
+			rootDir: config.bundledLayer.rootDir,
+		},
+	};
 };
 
 export { agentModeFor, type ConfigLayer, type ResolvedConfig, type ScopeKind };

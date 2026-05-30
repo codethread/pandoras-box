@@ -447,13 +447,18 @@ const fakeRenderServices = (
 ) =>
 	({
 		readText: (path: string) => {
-			if (path.endsWith("agents.toml")) return agentsToml;
+			if (path === "/tmp/pdx-data/agents.toml") return agentsToml;
 			if (path.endsWith("_common.md")) return "COMMON";
 			if (path.endsWith("war.md")) {
 				return "{{_common.md}} {{model}} {{tools_csv}} {{claims}} {{enqueues}} {{claim_command}}\n{{command_cards}}";
 			}
 			if (path.endsWith("pandora.md")) return "{{claim_command}}\n{{command_cards}}";
-			return "{{claim_command}}\n{{command_cards}}";
+			if (path.endsWith("toil.md") || path.endsWith("greed.md") || path.endsWith("envy.md")) {
+				return "{{claim_command}}\n{{command_cards}}";
+			}
+			throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+				code: "ENOENT",
+			});
 		},
 		env: (key: string) => (key === "PDX_DATA_DIR" ? "/tmp/pdx-data" : undefined),
 		realPath: (path: string) => path,
@@ -906,6 +911,50 @@ describe("renderAgent", () => {
 		);
 		expect(rendered.logicalName).toBe(
 			"pdx--greed__worktree-dev-pandoras-box-fix-session-names--123e4567",
+		);
+	});
+
+	it("same-path user templates do not shadow bundled War prompt assets", () => {
+		const dataDir = "/tmp/pdx-shadow-data";
+		const userDir = "/tmp/pdx-shadow-user";
+		const rendered = renderAgent(
+			{ ...base, agent: "war", mode: "afk" },
+			{
+				readText: (path: string) => {
+					if (path === `${dataDir}/agents.toml`)
+						return readFileSync(join(templateDir, "..", "agents.toml"), "utf8");
+					if (path === `${userDir}/agents.toml`)
+						return '[agents.war.harness]\nmodel = "user_model"\n';
+					if (path === `${userDir}/templates/agents/war.md`) return "USER_WAR_TEMPLATE";
+					if (path === `${userDir}/templates/common/base.md`) return "USER_BASE_TEMPLATE";
+					if (path.startsWith(`${dataDir}/templates/`)) {
+						return readFileSync(path.replace(`${dataDir}/templates`, templateDir), "utf8");
+					}
+					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+						code: "ENOENT",
+					});
+				},
+				realPath: (path: string) => path,
+				env: (key: string) => {
+					if (key === "PDX_DATA_DIR") return dataDir;
+					if (key === "PDX_USER_DATA_DIR") return userDir;
+					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+					return undefined;
+				},
+				execFile: (file: string, args: readonly string[]) =>
+					file.split("/").at(-1) === "pithos" && args[0] === "--help-json"
+						? { status: 0, stdout: pithosHelpJson, stderr: "" }
+						: { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` },
+			},
+		);
+		expect(rendered.prompt).not.toContain("USER_WAR_TEMPLATE");
+		expect(rendered.prompt).not.toContain("USER_BASE_TEMPLATE");
+		expect(rendered.prompt).toContain("You are War, the execution agent for Pithos.");
+		expect(rendered.prompt).toContain("## Shared Pithos operating rules");
+		expect(rendered.harness.argv).toContain("user_model");
+		expect(rendered.provenance?.template.resolved.path).toBe(`${dataDir}/templates/agents/war.md`);
+		expect(rendered.provenance?.includes.map((include) => include.path)).toContain(
+			`${dataDir}/templates/common/base.md`,
 		);
 	});
 
@@ -1542,7 +1591,7 @@ system_prompt_mode = "append"
 		).toThrow("invalid manifest");
 	});
 
-	it("loadHooks merges bundled, user, and scopes/global manifests", () => {
+	it("loadHooks reads bundled and user manifests only", () => {
 		const dataDir = "/tmp/pdx-hooks-overlay";
 		const userDir = `${dataDir}/config`;
 		const hooks = loadHooks({
@@ -1564,7 +1613,7 @@ system_prompt_mode = "append"
 			},
 			execFile: noopExec,
 		});
-		expect(hooks.input?.command).toEqual(["/tmp/hook", "--flag"]);
+		expect(hooks.input?.command).toEqual(["/tmp/hook"]);
 	});
 
 	it("loadHooks rejects hooks in non-global scope manifests", () => {
@@ -1595,7 +1644,7 @@ system_prompt_mode = "append"
 		).not.toThrow();
 	});
 
-	it("user scope templates override bundled templates", () => {
+	it("user scope templates do not override bundled templates", () => {
 		const dataDir = "/tmp/pdx-layer-test";
 		const userDir = `${dataDir}/config`;
 		const rendered = renderAgent(
@@ -1630,43 +1679,36 @@ system_prompt_mode = "append"
 						: { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` },
 			},
 		);
-		expect(rendered.prompt).toContain("USER_SCOPE_COMMON");
-		expect(rendered.prompt).not.toContain("BUNDLE_COMMON");
+		expect(rendered.prompt).toContain("BUNDLE_COMMON");
+		expect(rendered.prompt).not.toContain("USER_SCOPE_COMMON");
 	});
 
-	it("template.default restores the bundled template file and ignores higher-priority template assets", () => {
+	it("user template replacement is rejected", () => {
 		const dataDir = "/tmp/pdx-template-default";
 		const userDir = `${dataDir}/config`;
-		const rendered = renderAgent(
-			{ ...base, agent: "war", mode: "afk" },
-			{
-				readText: (path: string) => {
-					if (path === `${dataDir}/agents.toml`)
-						return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
-					if (path === `${userDir}/agents.toml`) return "[agents.war]\ntemplate.default = true\n";
-					if (path === `${userDir}/templates/war.md`) return "USER_TEMPLATE";
-					if (path === `${dataDir}/templates/_common.md`) return "BUNDLE_COMMON";
-					if (path === `${dataDir}/templates/war.md`)
-						return "BUNDLED_TEMPLATE {{claim_command}}\n{{command_cards}}";
-					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-						code: "ENOENT",
-					});
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				{
+					readText: (path: string) => {
+						if (path === `${dataDir}/agents.toml`)
+							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+						if (path === `${userDir}/agents.toml`) return '[agents.war]\ntemplate = "war.md"\n';
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					realPath: (path: string) => path,
+					env: (key: string) => {
+						if (key === "PDX_DATA_DIR") return dataDir;
+						if (key === "PDX_USER_DATA_DIR") return userDir;
+						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+						return undefined;
+					},
+					execFile: noopExec,
 				},
-				realPath: (path: string) => path,
-				env: (key: string) => {
-					if (key === "PDX_DATA_DIR") return dataDir;
-					if (key === "PDX_USER_DATA_DIR") return userDir;
-					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-					return undefined;
-				},
-				execFile: (file: string, args: readonly string[]) =>
-					file.split("/").at(-1) === "pithos" && args[0] === "--help-json"
-						? { status: 0, stdout: pithosHelpJson, stderr: "" }
-						: { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` },
-			},
-		);
-		expect(rendered.prompt).toContain("BUNDLED_TEMPLATE");
-		expect(rendered.prompt).not.toContain("USER_TEMPLATE");
+			),
+		).toThrow("user manifest may not configure");
 	});
 
 	it("appends render after template body joined by separator in declared order", () => {
@@ -1736,7 +1778,7 @@ system_prompt_mode = "append"
 					execFile: noopExec,
 				},
 			),
-		).toThrow("cannot remove absent value");
+		).toThrow("user manifest may not configure");
 	});
 
 	it("prompt without appends has no separator", () => {
@@ -1789,82 +1831,52 @@ system_prompt_mode = "append"
 						: { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` },
 			},
 		);
-		expect(rendered.prompt).toContain("PROJECT_SCOPE_TEMPLATE PROJECT_SCOPE_COMMON");
+		expect(rendered.prompt).toContain("BUNDLED_TEMPLATE BUNDLED_COMMON");
+		expect(rendered.prompt).not.toContain("PROJECT_SCOPE_TEMPLATE");
 		const provenance = rendered.provenance;
 		expect(provenance).toBeDefined();
-		expect(provenance!.layers.map((layer) => layer.kind)).toEqual([
-			"bundled",
-			"user",
-			"user-scope",
-			"project",
-			"project-scope",
-		]);
-		expect(provenance!.template.resolved.path).toBe(`${repoDir}/.pdx/scopes/repo/templates/war.md`);
+		expect(provenance!.layers.map((layer) => layer.kind)).toEqual(["bundled", "user"]);
+		expect(provenance!.template.resolved.path).toBe(`${dataDir}/templates/war.md`);
 		expect(provenance!.template.resolved.source).toMatchObject({
 			type: "layer",
-			kind: "project-scope",
-			scopeKind: "repo",
-			rootDir: `${repoDir}/.pdx/scopes/repo`,
+			kind: "bundled",
+			scopeKind: "global",
+			rootDir: dataDir,
 		});
 		expect(provenance!.includes).toEqual([
 			{
 				reference: "_common.md",
-				path: `${repoDir}/.pdx/scopes/repo/templates/_common.md`,
+				path: `${dataDir}/templates/_common.md`,
 				source: {
 					type: "layer",
-					kind: "project-scope",
-					scopeKind: "repo",
-					rootDir: `${repoDir}/.pdx/scopes/repo`,
+					kind: "bundled",
+					scopeKind: "global",
+					rootDir: dataDir,
 				},
 			},
 		]);
 	});
 
-	it("requires parentRepoPath for worktree layered config resolution", () => {
+	it("does not require parentRepoPath for worktree render config resolution", () => {
 		expect(() =>
 			renderAgent(
 				{ ...base, agent: "war", mode: "afk", scopeId: "worktree:/tmp/wt", cwd: "/tmp/wt" },
 				fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
 			),
-		).toThrow("requires parentRepoPath");
+		).not.toThrow();
 	});
 
-	it("rejects project-local .pdx/scopes/global manifests for repo renders", () => {
-		const dataDir = "/tmp/pdx-project-global-repo";
+	it("ignores project-local .pdx/scopes/global manifests for repo renders", () => {
 		const repoDir = "/tmp/repos/demo";
 		expect(() =>
 			renderAgent(
 				{ ...base, agent: "war", mode: "afk", scopeId: `repo:${repoDir}`, cwd: repoDir },
-				{
-					readText: (path: string) => {
-						if (path === `${dataDir}/agents.toml`) {
-							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
-						}
-						if (path === `${repoDir}/.pdx/scopes/global/agents.toml`) {
-							return '[agents.war]\ntemplate = "war.md"\n';
-						}
-						if (path === `${dataDir}/templates/_common.md`) return "BUNDLED_COMMON";
-						if (path === `${dataDir}/templates/war.md`) {
-							return "BUNDLED_TEMPLATE {{_common.md}} {{claim_command}}\n{{command_cards}}";
-						}
-						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-							code: "ENOENT",
-						});
-					},
-					realPath: (path: string) => path,
-					env: (key: string) => {
-						if (key === "PDX_DATA_DIR") return dataDir;
-						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-						return undefined;
-					},
-					execFile: noopExec,
-				},
+				fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
 			),
-		).toThrow("project-local .pdx may not define scopes/global");
+		).not.toThrow();
 	});
 
-	it("rejects project-local .pdx/scopes/global manifests for worktree renders", () => {
-		const dataDir = "/tmp/pdx-project-global-worktree";
+	it("ignores project-local .pdx/scopes/global manifests for worktree renders", () => {
 		const worktreeDir = "/tmp/wt/demo";
 		const parentRepoDir = "/tmp/repos/demo";
 		expect(() =>
@@ -1877,32 +1889,9 @@ system_prompt_mode = "append"
 					cwd: worktreeDir,
 					parentRepoPath: parentRepoDir,
 				},
-				{
-					readText: (path: string) => {
-						if (path === `${dataDir}/agents.toml`) {
-							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
-						}
-						if (path === `${parentRepoDir}/.pdx/scopes/global/agents.toml`) {
-							return '[agents.war]\ntemplate = "war.md"\n';
-						}
-						if (path === `${dataDir}/templates/_common.md`) return "BUNDLED_COMMON";
-						if (path === `${dataDir}/templates/war.md`) {
-							return "BUNDLED_TEMPLATE {{_common.md}} {{claim_command}}\n{{command_cards}}";
-						}
-						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-							code: "ENOENT",
-						});
-					},
-					realPath: (path: string) => path,
-					env: (key: string) => {
-						if (key === "PDX_DATA_DIR") return dataDir;
-						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-						return undefined;
-					},
-					execFile: noopExec,
-				},
+				fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
 			),
-		).toThrow("project-local .pdx may not define scopes/global");
+		).not.toThrow();
 	});
 
 	it("uses parent repo config for worktree previews and reports absolute-template provenance", () => {
@@ -1950,28 +1939,22 @@ system_prompt_mode = "append"
 						: { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` },
 			},
 		);
-		expect(rendered.prompt).toContain("ABSOLUTE_TEMPLATE WORKTREE_COMMON");
+		expect(rendered.prompt).toContain("BUNDLED_TEMPLATE BUNDLED_COMMON");
+		expect(rendered.prompt).not.toContain("ABSOLUTE_TEMPLATE");
+		expect(rendered.prompt).not.toContain("WORKTREE_COMMON");
 		const provenance = rendered.provenance;
 		expect(provenance).toBeDefined();
-		expect(provenance!.layers.map((layer) => layer.kind)).toEqual([
-			"bundled",
-			"user",
-			"user-scope",
-			"project",
-			"project-scope",
-		]);
-		expect(provenance!.template).toEqual({
-			reference: absoluteTemplate,
-			pinnedToBundled: false,
+		expect(provenance!.layers.map((layer) => layer.kind)).toEqual(["bundled", "user"]);
+		expect(provenance!.template).toMatchObject({
+			reference: "war.md",
 			resolved: {
-				reference: absoluteTemplate,
-				path: absoluteTemplate,
-				source: { type: "absolute" },
+				path: `${dataDir}/templates/war.md`,
+				source: { type: "layer", kind: "bundled", scopeKind: "global", rootDir: dataDir },
 			},
 		});
 		expect(provenance!.includes[0]).toMatchObject({
-			path: `${userDir}/scopes/worktree/templates/_common.md`,
-			source: { type: "layer", kind: "user-scope", scopeKind: "worktree" },
+			path: `${dataDir}/templates/_common.md`,
+			source: { type: "layer", kind: "bundled", scopeKind: "global" },
 		});
 	});
 
@@ -1981,7 +1964,7 @@ system_prompt_mode = "append"
 				{ ...base, agent: "war", mode: "afk" },
 				{
 					readText: (path: string) => {
-						if (path.endsWith("agents.toml")) {
+						if (path === "/tmp/pdx-missing-template/agents.toml") {
 							return agentsFile({
 								agent: "war",
 								mode: "afk",
@@ -1989,7 +1972,7 @@ system_prompt_mode = "append"
 								includes: ["missing.md"],
 							});
 						}
-						if (path.endsWith("war.md"))
+						if (path === "/tmp/pdx-missing-template/templates/war.md")
 							return "{{missing.md}} {{claim_command}}\n{{command_cards}}";
 						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
 							code: "ENOENT",
@@ -2005,7 +1988,7 @@ system_prompt_mode = "append"
 					execFile: noopExec,
 				},
 			),
-		).toThrow("template asset not found in any config layer: missing.md");
+		).toThrow("/tmp/pdx-missing-template/templates/missing.md");
 	});
 });
 
@@ -2027,7 +2010,6 @@ describe("launchRenderedAgent", () => {
 				layers: [],
 				template: {
 					reference: "war.md",
-					pinnedToBundled: false,
 					resolved: {
 						reference: "war.md",
 						path: "/tmp/war.md",

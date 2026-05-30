@@ -32,6 +32,15 @@ No HITL slices are required: the target behavior is captured in `specs/agent-con
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 21 implementation — 2026-05-30
+
+- Spawner render config now resolves only bundled defaults plus `$PDX_USER_DATA_DIR/agents.toml`; user scope directories and project-local `.pdx` manifests are ignored for prompt/Harness render resolution.
+- User manifest prompt composition fields (`agents.<kind>.template`, `includes`, `appends`) now fail validation; Harness fields and existing top-level hook loading remain available from the user manifest.
+- Relative prompt assets resolve from the bundled template directory, so same-path user `templates/agents/war.md` and `templates/common/base.md` files cannot shadow bundled War/base prompts.
+- Preview provenance now reports only bundled/user manifest layers and bundled prompt asset paths.
+- Validation passed: `pnpm --filter @pdx/spawner test -- spawner.test.ts`; `pnpm verify`.
+- Follow-up simplification removed pre-policy-pack `*.default` scalar handling and the template pinning flag because user prompt composition fields are now rejected instead of merged.
+
 ### Policy configuration task plan amendment — 2026-05-30
 
 - Added Tasks 21–26 for the policy-pack configuration model.

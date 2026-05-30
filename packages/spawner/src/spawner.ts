@@ -63,14 +63,13 @@ interface RenderedAgentFields {
 	readonly prompt: string;
 	readonly provenance?: {
 		readonly layers: readonly {
-			readonly kind: "bundled" | "user" | "user-scope" | "project" | "project-scope";
+			readonly kind: "bundled" | "user";
 			readonly scopeKind: "global" | "repo" | "worktree";
 			readonly rootDir: string;
 			readonly agentsPath: string;
 		}[];
 		readonly template: {
 			readonly reference: string;
-			readonly pinnedToBundled: boolean;
 			readonly resolved: TemplateProvenance;
 		};
 		readonly includes: readonly TemplateProvenance[];
@@ -87,7 +86,7 @@ interface TemplateProvenance {
 		| { readonly type: "absolute" | "home" }
 		| {
 				readonly type: "layer";
-				readonly kind: "bundled" | "user" | "user-scope" | "project" | "project-scope";
+				readonly kind: "bundled" | "user";
 				readonly scopeKind: "global" | "repo" | "worktree";
 				readonly rootDir: string;
 		  };
@@ -722,9 +721,7 @@ export const renderAgent = (
 	);
 	const claimCommand = `pithos task claim --run ${input.runId} --scope ${input.scopeId} --capability ${claim}`;
 	const commandCards = renderCommandCards(input.agent, services);
-	const templateAsset = resolveTemplateAsset(manifest.template, resolved, services, {
-		pinToBundled: manifest.templatePinnedToBundled,
-	});
+	const templateAsset = resolveTemplateAsset(manifest.template, resolved, services);
 	const renderedTemplate = renderTemplate(templateAsset.content, {
 		...includes,
 		agent: input.agent,
@@ -778,7 +775,6 @@ export const renderAgent = (
 			})),
 			template: {
 				reference: manifest.template,
-				pinnedToBundled: manifest.templatePinnedToBundled,
 				resolved: templateProvenance(templateAsset),
 			},
 			includes: includeAssets.map(templateProvenance),

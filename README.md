@@ -90,11 +90,11 @@ Typical files:
 - `<user-data-dir>/CLAUDE.md` — same pointer for Claude direct sessions
 - `<user-data-dir>/agents.toml` — scaffolded user-wide manifest partial
 - `<user-data-dir>/PANDORA.md` — installed config reference, overwritten on `pdx init` / `pdx open`
-- `<user-data-dir>/templates/` — optional user-wide prompt assets
-- `<user-data-dir>/scopes/global|repo|worktree/` — scope-kind overrides
-
-Project-local overrides live in `<repo-root>/.pdx/` and are layered for repo
-and worktree launches.
+  User config may customize Harness launch settings in `agents.toml` (Agent kind,
+  model, system prompt mode, tools, argv, and the existing global input hook). It
+  cannot replace bundled Agent prompts, shared prompt fragments, or generated
+  command cards; same-path files under `<user-data-dir>/templates/` and
+  project-local `.pdx` manifests are ignored by Spawner render resolution.
 
 You can also ask an agent to reconfigure Pandora's Box for you:
 

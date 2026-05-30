@@ -102,7 +102,7 @@ tasks:
   - id: 21
     description: Lock bundled prompt foundation
     task_file: tasks/021-lock-bundled-prompt-foundation.md
-    status: pending
+    status: complete
     blocked_by: []
   - id: 22
     description: Add user policy packs

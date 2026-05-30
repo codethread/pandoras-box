@@ -7,7 +7,7 @@ Launcher-only package for rendering and launching Pandora's Box agent harness se
 - Bin: `pandora-spawn`
 - CLI surface: `pandora-spawn preview ...` only
 - Library surface: `renderAgent(input)`, `launchRenderedAgent(rendered)`, `launchAgent(input)`, `renderSessionTranscript(input)`, `LiveSpawnerServices`, `makeFakeSpawnerServices`
-- Config API: repo-root `resources/data-dir/agents.toml` plus `resources/data-dir/templates/` defaults are copied into bundle-owned `<PDX_DATA_DIR>/agents.toml` and `<PDX_DATA_DIR>/templates/`; render then merges layered user/project `agents.toml` partials and resolves `templates/` assets by scope-aware precedence
+- Config API: bundled prompt defaults come from `resources/data-dir/agents.toml` plus `resources/data-dir/templates/`; render reads only bundled defaults plus optional `$PDX_USER_DATA_DIR/agents.toml` for Harness settings and existing hooks. User/project `template`, `includes`, `appends`, same-path `templates/`, scope directories, and project-local `.pdx` manifests are not prompt customization surfaces.
 
 ## Manual test
 
