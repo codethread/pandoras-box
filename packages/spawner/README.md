@@ -11,7 +11,7 @@ pandora-spawn --help
 pandora-spawn preview --help
 ```
 
-Preview renders the Agent run plan as JSON, including bundled prompt provenance and user Harness overrides. It does not mutate Pithos, create a Run, touch tmux, or launch a Harness session.
+Preview renders the Agent run plan as JSON, including bundled prompt provenance, selected user policy packs, and user Harness overrides. It does not mutate Pithos, create a Run, touch tmux, or launch a Harness session.
 
 For the actual agent manifest and prompt-template contract, see the repo-root
 [`resources/`](../../resources/) directory and [`resources/README.md`](../../resources/README.md).
@@ -21,7 +21,8 @@ For the actual agent manifest and prompt-template contract, see the repo-root
 Spawner owns:
 
 - Agent manifest loading from bundled defaults plus `$PDX_USER_DATA_DIR/agents.toml`
-- prompt rendering from bundled templates, including generated Markdown command references for `{{command_cards}}`
+- user policy-pack registry and `[policy]` / `[agents.<kind>.policy]` add/remove selection
+- prompt rendering from bundled templates, including generated Markdown command references for `{{command_cards}}` and verbatim selected policy Markdown
 - Harness argv/env construction
 - expected Harness session log paths
 - AFK mode process launch mechanics
@@ -134,5 +135,8 @@ If you want preview to use the same seeded bundled defaults as `pdx`, set
 `PDX_DATA_DIR` and ensure `<data-dir>/agents.toml` plus `<data-dir>/templates/`
 have already been seeded. User manifest prompt fields and same-path user
 `templates/` files are rejected or ignored; only bundled prompt assets render.
+User policy packs declared under `[policies.<id>]` may be selected with `[policy]`
+or `[agents.<kind>.policy]` `add`/`remove`; selected Markdown is appended
+verbatim after the bundled prompt and generated command reference.
 
 Use fake services for deterministic render/launch tests. Do not require live model credentials for package tests.

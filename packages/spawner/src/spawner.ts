@@ -74,6 +74,10 @@ interface RenderedAgentFields {
 		};
 		readonly includes: readonly TemplateProvenance[];
 		readonly appends: readonly TemplateProvenance[];
+		readonly policies: readonly {
+			readonly id: string;
+			readonly path: string;
+		}[];
 	};
 }
 
@@ -740,9 +744,11 @@ export const renderAgent = (
 		resolveTemplateAsset(append, resolved, services),
 	);
 	const appendTexts = appendAssets.map((appendAsset) => appendAsset.content);
+	const policyTexts = manifest.policies.map((policy) => policy.content);
+	const extraTexts = [...appendTexts, ...policyTexts];
 	const prompt =
-		appendTexts.length > 0
-			? `${renderedTemplate}\n\n---\n\n${appendTexts.join("\n\n---\n\n")}`
+		extraTexts.length > 0
+			? `${renderedTemplate}\n\n---\n\n${extraTexts.join("\n\n---\n\n")}`
 			: renderedTemplate;
 	const env = {
 		PITHOS_DB: config.pithosDb,
@@ -779,6 +785,7 @@ export const renderAgent = (
 			},
 			includes: includeAssets.map(templateProvenance),
 			appends: appendAssets.map(templateProvenance),
+			policies: manifest.policies.map((policy) => ({ id: policy.id, path: policy.path })),
 		},
 	};
 };

@@ -107,7 +107,7 @@ tasks:
   - id: 22
     description: Add user policy packs
     task_file: tasks/022-add-user-policy-packs.md
-    status: pending
+    status: complete
     blocked_by: [21]
   - id: 23
     description: Add policy match rules

@@ -914,6 +914,212 @@ describe("renderAgent", () => {
 		);
 	});
 
+	it("appends user-wide and agent-specific policy packs with provenance", () => {
+		const dataDir = "/tmp/pdx-policy-data";
+		const userDir = "/tmp/pdx-policy-user";
+		const services = {
+			...fakeRenderServices(agentsFile({ agent: "toil", mode: "afk", harnessKind: "pi" })),
+			readText: (path: string) => {
+				if (path === `${dataDir}/agents.toml`)
+					return agentsFile({ agent: "toil", mode: "afk", harnessKind: "pi" });
+				if (path === `${userDir}/agents.toml`)
+					return `
+[policies.global-flow]
+file = "policies/global.md"
+[policies.toil-only]
+file = "policies/toil.md"
+[policy]
+add = ["global-flow"]
+[agents.toil.policy]
+add = ["toil-only"]
+`;
+				if (path === `${userDir}/policies/global.md`) return "GLOBAL {{agent}} POLICY";
+				if (path === `${userDir}/policies/toil.md`) return "TOIL ONLY POLICY";
+				if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+				if (path === `${dataDir}/templates/toil.md` || path === `${dataDir}/templates/war.md`)
+					return "{{claim_command}}\n{{command_cards}}";
+				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+					code: "ENOENT",
+				});
+			},
+			env: (key: string) => {
+				if (key === "PDX_DATA_DIR") return dataDir;
+				if (key === "PDX_USER_DATA_DIR") return userDir;
+				if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+				return undefined;
+			},
+		};
+		const toil = renderAgent({ ...base, agent: "toil", mode: "afk" }, services);
+		const war = renderAgent({ ...base, agent: "war", mode: "afk" }, services);
+		expect(toil.prompt).toContain("\n\n---\n\nGLOBAL {{agent}} POLICY\n\n---\n\nTOIL ONLY POLICY");
+		expect(war.prompt).toContain("GLOBAL {{agent}} POLICY");
+		expect(war.prompt).not.toContain("TOIL ONLY POLICY");
+		expect(toil.provenance?.policies).toEqual([
+			{ id: "global-flow", path: `${userDir}/policies/global.md` },
+			{ id: "toil-only", path: `${userDir}/policies/toil.md` },
+		]);
+	});
+
+	it("removes a globally selected policy for one agent", () => {
+		const dataDir = "/tmp/pdx-policy-remove-data";
+		const userDir = "/tmp/pdx-policy-remove-user";
+		const services = {
+			...fakeRenderServices(agentsFile({ agent: "toil", mode: "afk", harnessKind: "pi" })),
+			readText: (path: string) => {
+				if (path === `${dataDir}/agents.toml`)
+					return agentsFile({ agent: "toil", mode: "afk", harnessKind: "pi" });
+				if (path === `${userDir}/agents.toml`)
+					return `
+[policies.global-flow]
+file = "global.md"
+[policy]
+add = ["global-flow"]
+[agents.toil.policy]
+remove = ["global-flow"]
+`;
+				if (path === `${userDir}/global.md`) return "GLOBAL POLICY";
+				if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+				if (path === `${dataDir}/templates/toil.md` || path === `${dataDir}/templates/war.md`)
+					return "{{claim_command}}\n{{command_cards}}";
+				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+					code: "ENOENT",
+				});
+			},
+			env: (key: string) =>
+				key === "PDX_DATA_DIR"
+					? dataDir
+					: key === "PDX_USER_DATA_DIR"
+						? userDir
+						: key === "PITHOS_DB"
+							? `${dataDir}/pithos.sqlite`
+							: undefined,
+		};
+		expect(renderAgent({ ...base, agent: "toil", mode: "afk" }, services).prompt).not.toContain(
+			"GLOBAL POLICY",
+		);
+		expect(renderAgent({ ...base, agent: "war", mode: "afk" }, services).prompt).toContain(
+			"GLOBAL POLICY",
+		);
+	});
+
+	it.each([
+		[
+			"missing definition",
+			'[policy]\nadd = ["missing-policy"]',
+			/no policies\.missing-policy\.file declaration/,
+		],
+		[
+			"duplicate add",
+			'[policies.git-flow]\nfile = "p.md"\n[policy]\nadd = ["git-flow", "git-flow"]',
+			/duplicate value/,
+		],
+		[
+			"duplicate final add",
+			'[policies.git-flow]\nfile = "p.md"\n[policy]\nadd = ["git-flow"]\n[agents.war.policy]\nadd = ["git-flow"]',
+			/cannot add duplicate value/,
+		],
+		[
+			"absent remove",
+			'[policies.git-flow]\nfile = "p.md"\n[policy]\nremove = ["git-flow"]',
+			/cannot remove absent value/,
+		],
+		["invalid id", '[policies.Bad]\nfile = "p.md"', /invalid policy id 'Bad'/],
+		["replace", '[policy]\nreplace = ["git-flow"]', /policy\.replace is not supported/],
+	])("fails loudly for invalid policy config: %s", (_name, userToml, error) => {
+		const dataDir = "/tmp/pdx-policy-invalid-data";
+		const userDir = "/tmp/pdx-policy-invalid-user";
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				{
+					...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+					readText: (path: string) => {
+						if (path === `${dataDir}/agents.toml`)
+							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+						if (path === `${userDir}/agents.toml`) return userToml;
+						if (path === `${userDir}/p.md`) return "POLICY";
+						if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+						if (path === `${dataDir}/templates/war.md`)
+							return "{{claim_command}}\n{{command_cards}}";
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					env: (key: string) =>
+						key === "PDX_DATA_DIR"
+							? dataDir
+							: key === "PDX_USER_DATA_DIR"
+								? userDir
+								: key === "PITHOS_DB"
+									? `${dataDir}/pithos.sqlite`
+									: undefined,
+				},
+			),
+		).toThrow(error);
+	});
+
+	it("rejects relative policy files that escape the user data dir", () => {
+		const dataDir = "/tmp/pdx-policy-escape-data";
+		const userDir = "/tmp/pdx-policy-escape-user";
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				{
+					...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+					readText: (path: string) => {
+						if (path === `${dataDir}/agents.toml`)
+							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+						if (path === `${userDir}/agents.toml`)
+							return '[policies.git-flow]\nfile = "../outside.md"\n[policy]\nadd = ["git-flow"]\n';
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					env: (key: string) =>
+						key === "PDX_DATA_DIR"
+							? dataDir
+							: key === "PDX_USER_DATA_DIR"
+								? userDir
+								: key === "PITHOS_DB"
+									? `${dataDir}/pithos.sqlite`
+									: undefined,
+				},
+			),
+		).toThrow("must resolve under");
+	});
+
+	it("fails loudly when a selected policy file is missing", () => {
+		const dataDir = "/tmp/pdx-policy-missing-file-data";
+		const userDir = "/tmp/pdx-policy-missing-file-user";
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				{
+					...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+					readText: (path: string) => {
+						if (path === `${dataDir}/agents.toml`)
+							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+						if (path === `${userDir}/agents.toml`)
+							return '[policies.git-flow]\nfile = "missing.md"\n[policy]\nadd = ["git-flow"]\n';
+						if (path === `${dataDir}/templates/war.md`)
+							return "{{claim_command}}\n{{command_cards}}";
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					env: (key: string) =>
+						key === "PDX_DATA_DIR"
+							? dataDir
+							: key === "PDX_USER_DATA_DIR"
+								? userDir
+								: key === "PITHOS_DB"
+									? `${dataDir}/pithos.sqlite`
+									: undefined,
+				},
+			),
+		).toThrow(`${userDir}/missing.md`);
+	});
+
 	it("same-path user templates do not shadow bundled War prompt assets", () => {
 		const dataDir = "/tmp/pdx-shadow-data";
 		const userDir = "/tmp/pdx-shadow-user";
@@ -2018,6 +2224,7 @@ describe("launchRenderedAgent", () => {
 				},
 				includes: [],
 				appends: [],
+				policies: [],
 			},
 			cwd: `/tmp/pdx-spawner-missing-cwd-test-${process.pid.toString()}`,
 		};

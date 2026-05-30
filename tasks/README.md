@@ -32,6 +32,14 @@ No HITL slices are required: the target behavior is captured in `specs/agent-con
 
 Append notes here. Do not rewrite earlier notes.
 
+### Task 22 implementation — 2026-05-30
+
+- Added user manifest policy declarations and user-wide / Agent-specific policy selection with `add`/`remove`; `replace`, duplicate adds, absent removes, invalid ids, missing definitions, and missing files fail loudly with tagged Spawner validation/template errors.
+- Policy files resolve relative to `$PDX_USER_DATA_DIR`, or by absolute / `~/...` path, and are appended verbatim after the bundled prompt and generated command cards with `\n\n---\n\n` separators.
+- Preview provenance now reports selected policy ids and resolved file paths alongside existing bundled template provenance.
+- Harness customization remains layered through the user manifest; focused Spawner tests and full `pnpm verify` passed.
+- Deep review flagged that the broader policy spec and installed user reference already describe match rules; those remain deferred to Tasks 23 and 25 rather than expanded in this slice.
+
 ### Task 21 implementation — 2026-05-30
 
 - Spawner render config now resolves only bundled defaults plus `$PDX_USER_DATA_DIR/agents.toml`; user scope directories and project-local `.pdx` manifests are ignored for prompt/Harness render resolution.

@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { BUILTIN_SPAWNABLE_AGENT_KINDS, type SpawnableAgentKind } from "@pdx/pithos/builtins";
 import { Either, ParseResult, Schema } from "effect";
 import * as Toml from "@iarna/toml";
@@ -23,6 +23,14 @@ const ListOpsSchema = Schema.Struct({
 	remove: Schema.optional(NonEmptyStringArray),
 	add: Schema.optional(NonEmptyStringArray),
 });
+const PolicyListOpsSchema = Schema.Struct({
+	replace: Schema.optional(NonEmptyStringArray),
+	remove: Schema.optional(NonEmptyStringArray),
+	add: Schema.optional(NonEmptyStringArray),
+});
+const PolicyDeclarationSchema = Schema.Struct({
+	file: Schema.NonEmptyString,
+});
 const ArgvListOpsSchema = Schema.Struct({
 	replace: Schema.optional(NonEmptyStringArray),
 	add: Schema.optional(NonEmptyStringArray),
@@ -42,6 +50,7 @@ const PartialAgentSchema = Schema.Struct({
 	template: Schema.optional(Schema.NonEmptyString),
 	includes: Schema.optional(ListOpsSchema),
 	appends: Schema.optional(ListOpsSchema),
+	policy: Schema.optional(PolicyListOpsSchema),
 	harness: Schema.optional(PartialHarnessSchema),
 });
 
@@ -63,6 +72,8 @@ const PartialAgentsTableSchema = Schema.Struct({
 });
 
 const PartialAgentsFileSchema = Schema.Struct({
+	policies: Schema.optional(Schema.Record({ key: Schema.String, value: PolicyDeclarationSchema })),
+	policy: Schema.optional(PolicyListOpsSchema),
 	agents: Schema.optional(PartialAgentsTableSchema),
 	hooks: Schema.optional(PartialHooksSchema),
 });
@@ -92,7 +103,13 @@ const ResolvedHooksSchema = Schema.Struct({
 });
 
 export type HooksConfig = Schema.Schema.Type<typeof ResolvedHooksSchema>;
-export type ResolvedAgentManifest = Schema.Schema.Type<typeof ResolvedAgentSchema>;
+export type ResolvedAgentManifest = Schema.Schema.Type<typeof ResolvedAgentSchema> & {
+	readonly policies: readonly {
+		readonly id: string;
+		readonly path: string;
+		readonly content: string;
+	}[];
+};
 
 interface ConfigLayer {
 	readonly rootDir: string;
@@ -118,6 +135,9 @@ export interface ResolvedTemplateAsset {
 }
 
 type PartialAgentsFile = Schema.Schema.Type<typeof PartialAgentsFileSchema>;
+type PolicyOps = Schema.Schema.Type<typeof PolicyListOpsSchema>;
+
+const POLICY_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 interface ResolvedConfig {
 	readonly layers: readonly ConfigLayer[];
@@ -222,6 +242,17 @@ const validateListOps = (
 };
 
 const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void => {
+	for (const policyId of Object.keys(file.policies ?? {})) {
+		if (!POLICY_ID_PATTERN.test(policyId)) {
+			throw new SpawnerError({
+				code: "VALIDATION_ERROR",
+				message: `${layer.agentsPath}: invalid policy id '${policyId}'; expected lowercase kebab-case`,
+			});
+		}
+	}
+	if (file.policy !== undefined) {
+		validatePolicyOps(file.policy, "policy", layer.agentsPath);
+	}
 	for (const [agent, partial] of Object.entries(file.agents ?? {})) {
 		if (partial === undefined) continue;
 		if (partial.includes !== undefined) {
@@ -229,6 +260,9 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 		}
 		if (partial.appends !== undefined) {
 			validateListOps(partial.appends, `agents.${agent}.appends`, layer.agentsPath, true, false);
+		}
+		if (partial.policy !== undefined) {
+			validatePolicyOps(partial.policy, `agents.${agent}.policy`, layer.agentsPath);
 		}
 		if (partial.harness?.tools !== undefined) {
 			validateListOps(
@@ -269,6 +303,24 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 			code: "VALIDATION_ERROR",
 			message: `${layer.agentsPath}: user manifest may not configure agents.<kind>.template, agents.<kind>.includes, or agents.<kind>.appends`,
 		});
+	}
+};
+
+const validatePolicyOps = (ops: PolicyOps, field: string, path: string): void => {
+	if (ops.replace !== undefined) {
+		throw new SpawnerError({
+			code: "VALIDATION_ERROR",
+			message: `${path}: ${field}.replace is not supported`,
+		});
+	}
+	validateListOps(ops, field, path, true, false);
+	for (const policyId of [...(ops.add ?? []), ...(ops.remove ?? [])]) {
+		if (!POLICY_ID_PATTERN.test(policyId)) {
+			throw new SpawnerError({
+				code: "VALIDATION_ERROR",
+				message: `${path}: invalid policy id '${policyId}'; expected lowercase kebab-case`,
+			});
+		}
 	}
 };
 
@@ -313,6 +365,19 @@ const mergeArgvList = (
 	if (ops === undefined) return current;
 	if (ops.replace !== undefined) return ops.replace;
 	return [...current, ...(ops.add ?? [])];
+};
+
+const resolvePolicyPath = (reference: string, layer: ConfigLayer): string => {
+	if (reference === "~") return homedir();
+	if (reference.startsWith("~/")) return join(homedir(), reference.slice(2));
+	if (isAbsolute(reference)) return reference;
+	if (reference.split("/").includes("..")) {
+		throw new SpawnerError({
+			code: "VALIDATION_ERROR",
+			message: `${layer.agentsPath}: policy file '${reference}' must resolve under ${layer.rootDir}`,
+		});
+	}
+	return join(layer.rootDir, reference);
 };
 
 const resolveLayer = (
@@ -402,6 +467,7 @@ const buildResolvedConfig = (
 				template: bundledAgent.template,
 				includes: bundledAgent.includes?.replace ?? [],
 				appends: bundledAgent.appends?.replace ?? [],
+				policyIds: [] as readonly string[],
 				harness: {
 					kind: bundledAgent.harness?.kind,
 					model: bundledAgent.harness?.model,
@@ -418,6 +484,7 @@ const buildResolvedConfig = (
 			template: string | undefined;
 			includes: readonly string[];
 			appends: readonly string[];
+			policyIds: readonly string[];
 			harness: {
 				kind: "claude" | "pi" | undefined;
 				model: string | undefined;
@@ -433,11 +500,27 @@ const buildResolvedConfig = (
 		bundledLayer.agentsPath,
 	);
 
+	const policyDeclarations = new Map<string, string>();
 	for (const [layer, file] of layerFiles.slice(1)) {
+		for (const [policyId, declaration] of Object.entries(file.policies ?? {})) {
+			policyDeclarations.set(policyId, resolvePolicyPath(declaration.file, layer));
+		}
 		for (const agent of BUILTIN_SPAWNABLE_AGENT_KINDS) {
 			const partial = file.agents?.[agent];
-			if (partial === undefined) continue;
 			const current = agents[agent];
+			current.policyIds = mergeUniqueList(
+				current.policyIds,
+				file.policy,
+				"policy",
+				layer.agentsPath,
+			);
+			if (partial === undefined) continue;
+			current.policyIds = mergeUniqueList(
+				current.policyIds,
+				partial.policy,
+				`agents.${agent}.policy`,
+				layer.agentsPath,
+			);
 
 			if (partial.harness?.kind !== undefined) current.harness.kind = partial.harness.kind;
 			if (partial.harness?.model !== undefined) current.harness.model = partial.harness.model;
@@ -467,6 +550,20 @@ const buildResolvedConfig = (
 	const resolvedAgents = Object.fromEntries(
 		BUILTIN_SPAWNABLE_AGENT_KINDS.map((agent) => {
 			const current = agents[agent];
+			const policies = current.policyIds.map((policyId) => {
+				const declaration = policyDeclarations.get(policyId);
+				if (declaration === undefined) {
+					throw new SpawnerError({
+						code: "VALIDATION_ERROR",
+						message: `${bundledLayer.agentsPath}: selected policy '${policyId}' has no policies.${policyId}.file declaration`,
+					});
+				}
+				return {
+					id: policyId,
+					path: declaration,
+					content: readPolicyText(declaration, services),
+				};
+			});
 			const resolved = decode(
 				ResolvedAgentSchema,
 				{
@@ -492,9 +589,9 @@ const buildResolvedConfig = (
 					bundledLayer.agentsPath,
 				);
 			}
-			return [agent, resolved];
+			return [agent, { ...resolved, policies }];
 		}),
-	) as Readonly<Record<SpawnableAgentKind, ResolvedAgentManifest>>;
+	) as unknown as Readonly<Record<SpawnableAgentKind, ResolvedAgentManifest>>;
 	return { layers, bundledLayer, hooks, agents: resolvedAgents };
 };
 
@@ -513,13 +610,44 @@ const readText = (path: string, services: RenderServices): string => {
 	}
 };
 
+const readPolicyText = (path: string, services: RenderServices): string => {
+	try {
+		return services.readText(path);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new SpawnerError({ code: "VALIDATION_ERROR", message: `${path}: ${message}` });
+	}
+};
+
 export const loadResolvedAgentConfig = (
 	input: RenderAgentInput,
 	services: RenderServices,
 ): ResolvedConfig => buildResolvedConfig(layerOrderForRender(input, services), services);
 
-export const loadResolvedHooks = (services: RenderServices): HooksConfig =>
-	buildResolvedConfig(hookLayers(services), services).hooks;
+export const loadResolvedHooks = (services: RenderServices): HooksConfig => {
+	const layerFiles = readLayerFiles(hookLayers(services), services);
+	const bundledLayerEntry = layerFiles[0];
+	if (bundledLayerEntry === undefined) {
+		throw new SpawnerError({ code: "VALIDATION_ERROR", message: "missing bundled agents.toml" });
+	}
+	const [bundledLayer, bundledFile] = bundledLayerEntry;
+	let hooks: HooksConfig = decode(
+		ResolvedHooksSchema,
+		bundledFile.hooks ?? {},
+		bundledLayer.agentsPath,
+	);
+	for (const [layer, file] of layerFiles.slice(1)) {
+		const hookInput = file.hooks?.input;
+		if (hookInput !== undefined) {
+			const nextInput = {
+				enabled: hookInput.enabled ?? hooks.input?.enabled,
+				command: hookInput.command ?? hooks.input?.command,
+			};
+			hooks = decode(ResolvedHooksSchema, { input: nextInput }, layer.agentsPath);
+		}
+	}
+	return hooks;
+};
 
 export const resolveTemplateAsset = (
 	reference: string,
