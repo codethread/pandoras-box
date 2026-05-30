@@ -1,85 +1,93 @@
-# Agent Configuration
+# Agent Policy Configuration
 
 **Status:** Implemented
-**Last Updated:** 2026-05-27
+**Last Updated:** 2026-05-30
 
 ## 1. Overview
 
 ### Purpose
 
-Agent configuration defines how Spawner renders Pandora's Box Agent prompts and Harness launch arguments while giving users a safe, discoverable place to edit those settings with a direct Agent session. The configuration model separates pdx-owned runtime data from user-owned config, uses TOML partials instead of whole-file JSON replacement, and resolves config by scope kind without relying on ephemeral worktree files.
+Agent policy configuration defines how Spawner combines Pandora's Box's bundled Agent prompts with user-owned workflow policy and Harness launch settings. The bundled prompts are the stable Pithos operating contract: claim work, inspect graph/task state, respect scopes and fencing tokens, compose Pithos commands, and complete or fail held work. User configuration adds policy packs for local workflow preferences such as git flow, review expectations, artifact habits, intake routing, release style, and organization context.
 
 ### Goals
 
-- Give users an obvious CWD for direct config-editing Agents with a tiny `AGENTS.md` pointer and installed `PANDORA.md` reference.
-- Keep config-editing guidance out of `$PDX_DATA_DIR` root so supervised global Agents do not accidentally auto-read it.
-- Let users keep global config outside the pdx runtime dir through `PDX_USER_DATA_DIR`, commonly for version control.
-- Replace whole-file `agents.json` overrides with mergeable `agents.toml` partials to avoid drift after bundled template upgrades.
-- Support scope-kind-specific defaults for `global`, `repo`, and `worktree` launches through a consistent `scopes/<kind>/` layout.
-- Keep canonical bundled config reseeded and readable for upgrade comparison.
-- Preserve fail-loud behavior for malformed config, unknown keys, missing referenced files, and invalid merge operations.
+- Keep bundled Agent prompts and shared Pithos operating rules as the non-shadowed foundation for every rendered Agent prompt.
+- Let users compose workflow preferences through named policy packs rather than replacing prompt internals.
+- Keep all user-wide and path-specific policy in a single user-owned `agents.toml` registry.
+- Support project-specific behavior from the user config through explicit path and glob match rules.
+- Preserve simple Harness customization for model, runtime kind, tools, argv, and system prompt mode.
+- Keep invalid config fail-loud: unknown keys, missing policy definitions, missing policy files, invalid list operations, bad match rules, unsupported argv expansion, and malformed hooks stop render/supervision with tagged errors.
+- Keep Pithos as the durable source of authorization truth for Agent kinds, Capabilities, claims, enqueues, scopes, and graph transitions.
 
 ### Non-Goals
 
-- No automatic semantic migration of old `extensions/templates` edits; this is a clean break.
-- No arbitrary process-CWD discovery for config. Resolution uses pdx/Spawner launch context, not whichever shell directory started pdx.
-- No hidden template merging. Template files remain whole-file assets; only `agents.toml` is merged.
-- No worktree-local config requirement. Worktrees are often ephemeral; user `scopes/worktree` is the durable default place for worktree policy.
-- No authorization policy in config. Pithos built-ins remain the durable source of Agent kinds, Capabilities, claims, and enqueues.
+- No user replacement of bundled Agent templates, shared base prompts, generated command references, or built-in Pithos operating rules.
+- No implicit file shadowing by path. A file existing at the same path as a bundled prompt has no effect.
+- No prompt content merge language beyond ordered policy pack concatenation.
+- No project-local `.pdx` config layer. Project-specific policy is selected from user config by path/glob rules.
+- No scope-directory cascade. Scope kind is a match predicate in `agents.toml`, not a directory layout.
+- No authorization policy in config. Pithos built-ins define which Agent kinds exist and what they may claim/enqueue.
 
 ## 2. Design Decisions
 
-- **Decision:** Introduce `PDX_USER_DATA_DIR` as the user-owned configuration root.
-  - **Rationale:** `$PDX_DATA_DIR` is runtime state; users need an optionally version-controlled config location such as `~/.config/pdx`. Defaulting `PDX_USER_DATA_DIR` to `$PDX_DATA_DIR/config` keeps first-run discovery simple while still allowing full relocation through the environment.
+- **Decision:** Bundled prompts are fixed foundations, not configurable template references.
+  - **Rationale:** Pandora's Box owns the tool contract. Allowing users to shadow `agents/*.md` or `common/base.md` makes it too easy to lose claim/fencing/scope/graph correctness and forces users to rewrite the manual the bundle already provides.
 
-- **Decision:** Place only a minimal bundle-owned `AGENTS.md` runtime note in `$PDX_DATA_DIR` root, and keep config-editing guidance in `$PDX_USER_DATA_DIR/PANDORA.md`.
-  - **Rationale:** Supervised global Agents spawn with CWD at the pdx data dir. Harnesses commonly auto-read `AGENTS.md` from CWD, so any root-level file there must stay minimal and safe for runtime inspection rather than config editing.
+- **Decision:** Rename user prompt additions to policy packs.
+  - **Rationale:** User files usually describe workflow policy, not reusable template internals. Naming the surface `policy` makes intent clear: users add instructions after the base prompt; they do not edit prompt composition machinery.
 
-- **Decision:** Use `agents.toml` everywhere instead of `agents.json`.
-  - **Rationale:** JSON whole-file replacement forces users to copy the full bundled manifest and then manually track upstream changes. TOML supports comments and small partial files that express only intentional user deltas.
+- **Decision:** Policies are declared by id in `agents.toml`.
+  - **Rationale:** A policy id is auditable and explicit. Spawner does not discover arbitrary files or search for first matching names. A policy can be used only after `agents.toml` declares where its file lives.
 
-- **Decision:** Merge only the Agent manifest; do not merge template file contents.
-  - **Rationale:** Prompt text merging is ambiguous and order-sensitive. Users can compose prompts through `includes` and `appends`; the files those paths name remain whole assets selected by the resolver.
+- **Decision:** Policy files resolve relative to the manifest that declares them.
+  - **Rationale:** This avoids silent shadowing. If a policy id is declared in `$PDX_USER_DATA_DIR/agents.toml`, its relative `file` path is loaded under `$PDX_USER_DATA_DIR`; it is not searched through other roots.
 
-- **Decision:** Scope-kind config lives under `scopes/<kind>/`, not a special top-level `global/` directory.
-  - **Rationale:** `global/` alone makes Pandora configuration ambiguous. A complete `scopes/global`, `scopes/repo`, `scopes/worktree` family says the directory is scope-kind-specific, while root config remains user-wide defaults.
+- **Decision:** User config is centralized in `PDX_USER_DATA_DIR`.
+  - **Rationale:** Users can version-control one config tree, review all workflow policy in one place, and target project-specific behavior with match rules instead of scattering `.pdx` directories across repositories.
 
-- **Decision:** Project-local `.pdx` is optional and skips `scopes/global`.
-  - **Rationale:** Global scope has no project root. Repo-specific behavior belongs in a durable repo root's `.pdx`, while worktree roots are commonly disposable and should not affect prompt rendering through untracked local files.
+- **Decision:** Path/glob match rules select project-specific policy.
+  - **Rationale:** Most project customization is driven by where the Agent is launched. Matching recorded scope/cwd paths keeps project policy explicit without introducing another config layer or directory cascade.
 
-- **Decision:** Worktree scope uses a durable parent repo config root, not `<worktree>/.pdx`.
-  - **Rationale:** War commonly runs in disposable linked worktrees, but teams still need repo-owned execution policy. Pithos should model the durable parent repo for worktree scopes so Spawner can layer `<parent-repo>/.pdx` without inferring from the ephemeral worktree runtime path.
+- **Decision:** Keep `add` and `remove` list operations for policy selection.
+  - **Rationale:** Users need a generic workflow policy and a way for narrower path rules to subtract it before adding project-specific policy. Full list replacement encourages taking ownership of the base composition and is not part of the policy surface.
 
-- **Decision:** Resolve configuration from launch scope context, not from the supervisor process CWD.
-  - **Rationale:** pdx may run from its data dir while launching Agents for many scopes. Spawner must receive enough launch context to select deterministic config layers.
+- **Decision:** Keep Harness configuration separate from prompt policy.
+  - **Rationale:** Choosing Claude/Pi, model, tools, argv, and prompt mode is launch configuration, not workflow policy. These fields remain in `agents.toml` but do not affect the bundled prompt foundation.
 
-- **Decision:** Use `pandora-spawn preview` for config provenance in this phase.
-  - **Rationale:** Preview already renders a single Agent plan from supplied launch context without mutating Pithos or starting a Harness. Adding resolved layer/file provenance there keeps scope smaller than introducing a new `pdx config inspect` command.
-
-- **Decision:** `pdx init --nuke` must preserve `$PDX_USER_DATA_DIR`, including the default nested `$PDX_DATA_DIR/config` path.
-  - **Rationale:** If the default user config path is `$PDX_DATA_DIR/config`, a literal `rm -rf $PDX_DATA_DIR` would destroy user-owned config. Clean-break ownership requires a precise destructive-operation contract rather than a broad recursive delete.
+- **Decision:** Hooks remain global supervisor config.
+  - **Rationale:** Input hooks feed global intake Tasks and are supervised by pdx, not by a particular project Agent launch.
 
 ## 3. Directory Model
 
-### Bundled canonical config
+### Bundled runtime config
 
-`$PDX_DATA_DIR` remains pdx-owned runtime state. On `pdx init` and `pdx open`, pdx reseeds canonical bundled config here:
+`$PDX_DATA_DIR` is pdx-owned runtime state. On `pdx init` and `pdx open`, pdx reseeds bundled runtime resources:
 
 ```text
 $PDX_DATA_DIR/
-  agents.toml        # canonical complete Agent render manifest, read-only/reseeded
-  templates/         # canonical bundled prompt files, read-only/reseeded
+  agents.toml        # complete bundled Agent/Harness defaults
+  templates/         # bundled base prompts and shared includes, read-only/reseeded
+  AGENTS.md          # minimal runtime note
   pithos.sqlite
   pdx.sock
   pdx.jsonl
   runs/
 ```
 
-The data dir root contains only a minimal bundle-owned `AGENTS.md` runtime note and no `CLAUDE.md`.
+Bundled templates are loaded by Spawner directly from the canonical bundle. User files do not shadow these paths.
 
 ### User-owned config
 
 `PDX_USER_DATA_DIR` is parsed from the environment. When unset, it defaults to `$PDX_DATA_DIR/config`.
+
+```text
+$PDX_USER_DATA_DIR/
+  AGENTS.md          # direct-agent pointer, scaffolded once
+  CLAUDE.md          # Claude direct-agent pointer, scaffolded once
+  agents.toml        # user policy registry and Harness partials, scaffolded once
+  PANDORA.md         # installed config reference, re-seeded on init/open
+  policies/          # user-owned policy pack Markdown files
+```
 
 Path validation is part of config parsing:
 
@@ -88,294 +96,258 @@ Path validation is part of config parsing:
 - an explicit `PDX_USER_DATA_DIR` inside `$PDX_DATA_DIR` is valid only when it resolves to `$PDX_DATA_DIR/config`
 - outside `$PDX_DATA_DIR`, any absolute or `~/` user data dir is allowed
 
-Invalid path relationships fail loudly before scaffolding or launch. This prevents config-editing `AGENTS.md` from landing in a CWD used by supervised global Agents.
-
-```text
-$PDX_USER_DATA_DIR/
-  AGENTS.md          # tiny direct-agent pointer scaffolded once
-  CLAUDE.md          # Claude direct-agent pointer scaffolded once
-  agents.toml        # user-wide partial manifest scaffolded once
-  PANDORA.md         # installed config reference, re-seeded on init/open
-  templates/         # optional user-wide prompt/include/append files
-  scopes/
-    global/
-      agents.toml    # optional global-scope partial manifest
-      templates/
-    repo/
-      agents.toml    # optional repo-scope partial manifest
-      templates/
-    worktree/
-      agents.toml    # optional worktree-scope partial manifest
-      templates/
-```
-
-Users can run a direct Agent from this directory:
-
-```sh
-cd "$PDX_USER_DATA_DIR"
-claude   # or pi / another configured Harness
-```
-
-`AGENTS.md` tells that Agent to read `PANDORA.md` for the real reference. `PANDORA.md` explains:
-
-- canonical bundled config lives at `$PDX_DATA_DIR/agents.toml` and `$PDX_DATA_DIR/templates`
-- the data-dir root `AGENTS.md` is runtime guidance, not a customization surface
-- user config lives in the current `$PDX_USER_DATA_DIR`
-- scope-kind overrides live under `scopes/<global|repo|worktree>`
-- do not edit `$PDX_DATA_DIR` canonical files
-- compare user partials with canonical config after upgrades
-- validate changes with `pandora-spawn preview`
-
-### Project-local config
-
-Repo scopes carry project-local config at the repo scope runtime path. Worktree scopes carry project-local config at their required recorded parent repo root:
-
-```text
-<repo-root>/.pdx/
-  AGENTS.md          # optional guide for direct project config editing
-  README.md          # optional project-local notes
-  agents.toml        # optional project-wide partial manifest
-  templates/         # optional project-wide prompt files
-  scopes/
-    repo/
-      agents.toml
-      templates/
-    worktree/
-      agents.toml
-      templates/
-```
-
-`<repo-root>/.pdx/scopes/global` is invalid. A launch that selects project-local `.pdx` validates the project config root and fails loudly if unsupported `scopes/global` is present.
-
-Project-local config is eligible for repo scope launches and for all worktree scope launches through their required recorded parent repo root. Global scope never consults a project `.pdx` directory. Worktree scope never consults `<worktree-root>/.pdx` directly. Legacy worktree scopes without parent repo metadata must be migrated or fail before launch.
-
-### Lifecycle ownership
-
-`$PDX_USER_DATA_DIR` is user-owned. pdx may create scaffold files there when the directory is missing, but it must not overwrite existing user files.
-
-`pdx init --clean` removes runtime state only: the Pithos DB, runs directory, supervisor log, and socket if present. It preserves `$PDX_USER_DATA_DIR`, `$PDX_DATA_DIR/agents.toml`, and `$PDX_DATA_DIR/templates/`.
-
-This spec supersedes the older unconditional data-dir deletion model. `pdx init --nuke` removes pdx-owned runtime and canonical bundle state while preserving `$PDX_USER_DATA_DIR`:
-
-- if `$PDX_USER_DATA_DIR` resolves outside `$PDX_DATA_DIR`, pdx may remove and recreate `$PDX_DATA_DIR`
-- if `$PDX_USER_DATA_DIR` resolves to `$PDX_DATA_DIR/config`, pdx deletes every immediate child of `$PDX_DATA_DIR` except `config`
-- pdx must not follow symlinks while deleting data-dir children
-- explicit nested user dirs other than `$PDX_DATA_DIR/config` are invalid at config-parse time
-- if path normalization cannot prove one of the valid relationships above, `--nuke` fails before deleting anything
-
-After deletion, init reseeds `$PDX_DATA_DIR/agents.toml` and `$PDX_DATA_DIR/templates/`, initializes Pithos, recreates runtime directories, and leaves existing user config untouched.
+Users can run a direct Agent from this directory. `AGENTS.md` points that Agent to `PANDORA.md`, which documents the policy registry, preview command, and user-owned editing surface.
 
 ## 4. Resolution Model
 
-Spawner builds an ordered list of config layers for each launch. Layers are applied from lowest priority to highest priority.
+Spawner resolves each launch from three inputs:
 
-### Global scope
+1. bundled Agent prompt and Harness defaults from `$PDX_DATA_DIR/agents.toml`
+2. user policy/Harness config from `$PDX_USER_DATA_DIR/agents.toml`
+3. launch context: Agent kind, scope kind, recorded scope path/cwd, run id, session id, selected capability when needed, and Pithos authorization-derived claims/enqueues
 
-```text
-1. $PDX_DATA_DIR
-2. $PDX_USER_DATA_DIR
-3. $PDX_USER_DATA_DIR/scopes/global
+There is no project-local config discovery. Project behavior is selected by user-declared rules.
+
+### Merge order
+
+Within `$PDX_USER_DATA_DIR/agents.toml`, Spawner applies config in this order:
+
+1. top-level defaults and Agent config
+2. matching `[[rules]]` in file order
+3. matching Agent-specific config inside those rules
+
+Rules later in the file can remove policy ids added by earlier defaults/rules.
+
+### Match rules
+
+A rule applies when every specified predicate matches the launch context. Supported predicates:
+
+- `path` — exact normalized launch path match; supports `~` expansion
+- `path_glob` — normalized path glob; supports `~` expansion
+- `scope_kind` — one of `global`, `repo`, or `worktree`
+- `agent` — one built-in Agent kind
+
+Examples:
+
+```toml
+[[rules]]
+path_glob = "~/work/**"
+policy.add = ["perkbox"]
+
+[[rules]]
+path = "~/work/app/docs/docs-shared"
+agents.toil.policy.remove = ["git-flow"]
+agents.toil.policy.add = ["docs-release"]
+
+[[rules]]
+scope_kind = "worktree"
+agent = "war"
+agents.war.policy.add = ["worktree-execution"]
 ```
 
-### Repo scope
+Invalid globs, unsupported predicates, relative paths that cannot be normalized, and unknown Agent kinds fail validation.
 
-```text
-1. $PDX_DATA_DIR
-2. $PDX_USER_DATA_DIR
-3. $PDX_USER_DATA_DIR/scopes/repo
-4. <scope-root>/.pdx
-5. <scope-root>/.pdx/scopes/repo
-```
+### Policy rendering order
 
-### Worktree scope
+For a given Agent, the final policy list is ordered by merge sequence:
 
-```text
-1. $PDX_DATA_DIR
-2. $PDX_USER_DATA_DIR
-3. $PDX_USER_DATA_DIR/scopes/worktree
-4. <parent-repo-root>/.pdx
-5. <parent-repo-root>/.pdx/scopes/worktree
-```
+1. global policy defaults from `[policy]`
+2. Agent policy from `[agents.<kind>.policy]`
+3. matching rule-level `[rules.policy]` additions/removals
+4. matching rule Agent policy additions/removals
 
-`<scope-root>` is the runtime path recorded on the Pithos worktree Scope / Agent Run and is used as the Agent launch CWD, but it is not used for config discovery. `<parent-repo-root>` is required durable scope metadata recorded when the worktree scope is created. Missing, unnormalizable, or non-existent parent repo metadata is a validation/launch-precondition failure; Spawner must not silently fall back to user-only worktree config. If the scope root is missing, pdx already treats the work as a launch-precondition repair case before Spawner renders.
+Spawner reads each policy file in final order and appends it to the rendered prompt after bundled base content and generated command cards, separated by `\n\n---\n\n`.
 
-### Manifest resolution
-
-For every eligible layer, Spawner reads `agents.toml` if present. Missing `agents.toml` files are skipped. The canonical `$PDX_DATA_DIR/agents.toml` must exist and must resolve to complete Agent render config after all layers are merged.
-
-`hooks.input` is singleton supervisor configuration, not per-launch Agent configuration. pdx resolves hooks only through the global layer order (`$PDX_DATA_DIR`, `$PDX_USER_DATA_DIR`, `$PDX_USER_DATA_DIR/scopes/global`). `hooks.input` is invalid in project-local `.pdx`, `scopes/repo`, or `scopes/worktree` manifests.
-
-### Template path resolution
-
-Template references from the resolved manifest use the same layer order, highest priority first:
-
-1. if the reference is absolute or `~/...`, read that exact path and do not use layer fallback
-2. otherwise, search each eligible layer's `templates/<reference>` from highest priority to lowest
-3. if no layer contains the file, fail render loudly
-
-Template references are overlay keys, not source-relative imports. A higher-priority `templates/<reference>` file intentionally overrides that reference even when a lower-priority manifest layer introduced the path. Preview/provenance output must show the final file path used for each reference so shadowing is visible.
-
-User-wide worktree defaults can override `agents/war.md` for all worktree launches by providing `$PDX_USER_DATA_DIR/scopes/worktree/templates/agents/war.md`. Repo-owned worktree policy can override it for a repo's worktrees through `<parent-repo-root>/.pdx/scopes/worktree/templates/agents/war.md`.
+A policy id may appear at most once in the final list. Adding an already-present policy id or removing an absent policy id fails loudly.
 
 ## 5. `agents.toml` Contract
 
-`agents.toml` is render configuration, not durable authorization truth. Pithos built-ins define which Agent kinds exist and what they may claim/enqueue.
+`agents.toml` is render and launch configuration, not durable authorization truth.
 
-### Shape
+### Policy declarations
 
-The canonical manifest must define complete config for every spawnable Agent kind. User, scope, and project manifests may define partial tables.
+Every policy id used by `policy.add` must be declared:
 
 ```toml
-[agents.war]
-template = "agents/war.md"
-includes.replace = ["common/base.md", "common/afk.md"]
-appends.replace = []
+[policies.git-flow]
+file = "policies/git-flow.md"
 
-[agents.war.harness]
-kind = "pi"
-model = "openai-codex/gpt-5.4"
+[policies.perkbox]
+file = "policies/perkbox.md"
+```
+
+Policy ids use lowercase kebab-case. Policy files may be relative, absolute, or `~/...` paths:
+
+- relative paths resolve under `$PDX_USER_DATA_DIR`
+- absolute paths read exactly that path
+- `~/...` expands to the current user's home directory
+
+Missing policy files fail render loudly. Policy Markdown is appended verbatim; Spawner does not render variables inside policy files.
+
+### Policy selection
+
+Policy lists support two operations:
+
+- `add = [...]` — append policy ids
+- `remove = [...]` — remove policy ids already selected
+
+Supported policy selection fields:
+
+- `[policy]` — policies for every Agent launch
+- `[agents.<kind>.policy]` — policies for one Agent kind
+- `[[rules]].policy` — policies for launches matching the rule
+- `[[rules]].agents.<kind>.policy` — policies for one Agent kind when the rule matches
+
+`replace` is not part of policy selection.
+
+Example:
+
+```toml
+[policies.git-flow]
+file = "policies/git-flow.md"
+
+[policies.perkbox]
+file = "policies/perkbox.md"
+
+[policies.docs-release]
+file = "policies/projects/docs-release.md"
+
+[policy]
+add = ["git-flow"]
+
+[agents.greed.policy]
+add = ["lightweight-artifacts"]
+
+[[rules]]
+path_glob = "~/work/**"
+policy.add = ["perkbox"]
+
+[[rules]]
+path = "~/work/app/docs/docs-shared"
+agents.toil.policy.remove = ["git-flow"]
+agents.toil.policy.add = ["docs-release"]
+```
+
+### Harness configuration
+
+Harness fields remain partial Agent config:
+
+```toml
+[agents.greed.harness]
+kind = "claude"
+model = "opus"
 system_prompt_mode = "append"
-tools.replace = ["bash", "read"]
-argv.replace = []
+tools.add = ["Skill"]
+argv.add = ["--effort", "high", "--name", "Greed"]
+```
 
-[agents.pandora]
-appends.add = ["pandora-local.md"]
+Scalar fields replace bundled defaults when present:
 
+- `agents.<kind>.harness.kind`
+- `agents.<kind>.harness.model`
+- `agents.<kind>.harness.system_prompt_mode`
+
+List fields use operation tables:
+
+- `agents.<kind>.harness.tools.add`
+- `agents.<kind>.harness.tools.remove`
+- `agents.<kind>.harness.argv.add`
+
+`tools` is a unique list: removing an absent tool or adding an already-present tool fails. `argv` preserves argv-array behavior, supports `add`, and allows duplicate tokens. `argv` does not support `remove`.
+
+Spawner applies only path-oriented expansion for `$PDX_DATA_DIR`, `${PDX_DATA_DIR}`, `$PDX_USER_DATA_DIR`, `${PDX_USER_DATA_DIR}`, `~`, and `~/...`; unsupported or unset `$VARS` fail render loudly. No shell evaluation, globbing, command substitution, or quote parsing is performed.
+
+### Hooks
+
+`hooks.input` is singleton supervisor configuration:
+
+```toml
 [hooks.input]
 command = ["/Users/me/bin/pdx-inbox-watch"]
 ```
 
-Allowed top-level tables:
+`hooks.input.enabled` is an optional boolean. `hooks.input.command` is an optional non-empty argv array. If a final command exists and `enabled` is unset, the hook is enabled. If no command exists, the hook is disabled. A layer may not set `enabled = false` and `command = [...]` together.
 
-- `agents.<agent-kind>` — partial render config for a built-in spawnable Agent
-- `hooks.input` — optional input hook command config
+Rules do not configure hooks. Hooks are user-wide supervisor config.
 
-Unknown top-level keys, unknown Agent kinds, and unknown fields fail validation.
+## 6. Prompt Composition
 
-### Merge semantics
+Spawner renders prompts in this order:
 
-Tables merge recursively by field. A higher-priority table does not replace an entire lower-priority object merely by existing; only the fields present in that table participate in the merge.
+1. bundled Agent template
+2. bundled shared runtime includes (`common/base.md`, `common/afk.md` or `common/hitl.md`)
+3. generated command reference (`{{command_cards}}`)
+4. selected policy packs in final order
 
-Scalar fields replace lower-priority values when present:
+Bundled templates use simple `{{variable}}` substitutions. Unknown variables fail loudly. Policy packs are appended verbatim and do not receive template variables.
 
-- `agents.<kind>.template`
-- `agents.<kind>.harness.kind`
-- `agents.<kind>.harness.model`
-- `agents.<kind>.harness.system_prompt_mode`
-- `hooks.input.enabled`
-- `hooks.input.command`
+Available bundled template variables:
 
-A scalar may also reset to the canonical bundled value with `default = true` using the scalar field as a dotted table:
+- `agent`
+- `run_id`
+- `session_id`
+- `scope_id`
+- `cwd`
+- `claim_command`
+- `command_cards`
+- `claims` (derived from built-in Pithos authorization)
+- `enqueues` (derived from built-in Pithos authorization)
+- `model`
+- `tools_csv`
 
-```toml
-[agents.war.harness]
-model.default = true
+Templates receive launch/self-claim context only. They do not receive Task bodies.
 
-[agents.war]
-template.default = true
-```
+## 7. Lifecycle Ownership
 
-`default = true` is mutually exclusive with setting the scalar value in the same layer. It ignores all non-bundled lower-priority overrides for that field and restores the canonical bundled state from `$PDX_DATA_DIR/agents.toml`. If the canonical manifest omits an optional scalar, reset restores that absence; if the final resolved config then lacks a required scalar, resolved-config validation fails. This lets a narrower scope undo a user-wide scalar override without copying the bundled value and drifting after upgrades.
+`$PDX_USER_DATA_DIR` is user-owned. pdx may scaffold files when the directory is missing, but it must not overwrite existing user files except for the installed `PANDORA.md` reference.
 
-For the path-like `agents.<kind>.template` scalar, `template.default = true` also pins asset resolution to the canonical bundled template file for that Agent. It does not continue searching higher-priority user/project `resources/` directories for the restored canonical path.
+`pdx init` and `pdx open` re-seed bundled canonical config/templates and scaffold missing user config files. `--clean` removes runtime state only. `--nuke` removes pdx-owned runtime/bundled state while preserving `$PDX_USER_DATA_DIR`.
 
-`mode` is not configurable in `agents.toml`; pdx/Pithos launch policy supplies the mode for each Agent kind.
+## 8. Preview and Direct-Agent UX
 
-### List fields
+`pandora-spawn preview` renders a single Agent plan from supplied launch context without mutating Pithos or starting a Harness. Preview output includes:
 
-List fields use explicit operations:
+- final Harness config
+- matched rules
+- selected policy ids in order
+- policy declaration file paths
+- rendered prompt
 
-- `replace = [...]` — replace the current list
-- `remove = [...]` — remove items from the current list
-- `add = [...]` — append items to the current list
+A direct config-editing Agent can run from `$PDX_USER_DATA_DIR`, read `PANDORA.md`, edit `agents.toml` and policy files, then validate with `pandora-spawn preview`.
 
-Supported list fields:
+## 9. Code Locations
 
-- `agents.<kind>.includes`
-- `agents.<kind>.appends`
-- `agents.<kind>.harness.tools`
-- `agents.<kind>.harness.argv`
+| File / Directory                       | Responsibility                                                                                        |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `packages/spawner/src/manifest.ts`     | Parse user `agents.toml`, validate policy declarations/rules, merge policy and Harness config.        |
+| `packages/spawner/src/paths.ts`        | Resolve bundled resources, user config roots, policy file paths, and argv path expansion.             |
+| `packages/spawner/src/spawner.ts`      | Render bundled prompts, generated command cards, selected policies, Harness argv/env, and provenance. |
+| `packages/spawner/src/main.ts`         | `pandora-spawn preview` CLI boundary.                                                                 |
+| `packages/spawner/src/spawner.test.ts` | Policy selection, rule matching, validation, prompt rendering, and preview provenance tests.          |
+| `packages/pdx/src/config.ts`           | Parse `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, derived defaults, and invalid path relationships.          |
+| `packages/pdx/src/live.ts`             | Re-seed canonical config/templates and scaffold user config files.                                    |
+| `packages/pdx/src/controller.ts`       | Preserve user config during clean/nuke and pass launch context to Spawner.                            |
+| `resources/README.md`                  | Resource ownership map and pointers to this spec plus installed user reference docs.                  |
+| `resources/data-dir/`                  | Bundled canonical Agent defaults, prompts, and runtime `AGENTS.md` note.                              |
+| `resources/user-data-dir/PANDORA.md`   | User-facing policy registry, hook, preview, and lifecycle reference.                                  |
+| `resources/user-data-dir/`             | User config scaffold files and installed reference assets.                                            |
 
-Within one layer and field:
+## 10. Testing
 
-- `replace` may not be combined with `add` or `remove`
-- `add` and `remove` may coexist
-- when `add` and `remove` coexist, `remove` applies first, then `add`
-- duplicate items inside one operation fail validation, except for `harness.argv`
+Automated tests cover:
 
-Across layers, operations apply in layer order. For unique-list fields, `remove` of an absent item fails loudly because it usually means bundled config changed and the user partial needs review; `add` of an already-present item also fails loudly. Unique-list fields are `includes`, `appends`, and `harness.tools`.
+- Config path parsing for `PDX_DATA_DIR` and `PDX_USER_DATA_DIR`.
+- Policy declaration validation: unknown ids, duplicate ids, invalid id syntax, missing files, unsupported relative paths, and unreadable files.
+- Match rule validation and matching for exact path, glob path, scope kind, and Agent kind.
+- Policy merge behavior: top-level defaults, Agent-specific defaults, ordered rules, add/remove behavior, duplicate final policy detection, and removing absent policies.
+- Harness merge behavior: scalar replacement, tool add/remove, argv add and path expansion.
+- Prompt composition order: bundled base before generated command cards before policy packs.
+- No user file can shadow bundled `agents/*.md` or `common/*.md` prompts.
+- Hook configuration validation and supervisor behavior.
+- `pandora-spawn preview` provenance for matched rules and selected policies.
 
-`harness.argv` preserves argv-array behavior. It supports `replace` and `add`, does not support `remove`, and allows duplicate tokens. Spawner applies only path-oriented expansion for `$PDX_DATA_DIR`, `${PDX_DATA_DIR}`, `$PDX_USER_DATA_DIR`, `${PDX_USER_DATA_DIR}`, `~`, and `~/...`; unsupported or unset `$VARS` fail render loudly. No shell evaluation, globbing, command substitution, or quote parsing is performed.
+Manual smoke validation uses isolated `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR` as described in `AGENTS.md`.
 
-### Hook merge semantics
-
-`hooks.input.enabled` is an optional boolean. `hooks.input.command` is an optional non-empty argv array. Both merge field-by-field using scalar replacement.
-
-Final hook state:
-
-- if no final `command` exists, the hook is disabled regardless of `enabled`
-- if a final `command` exists and no layer set `enabled`, the hook is enabled
-- if a final `command` exists and the highest-priority `enabled` value is `true`, the hook is enabled
-- if a final `command` exists and the highest-priority `enabled` value is `false`, the hook is disabled
-
-A layer may set both `enabled = true` and `command = [...]`. A layer may not set `enabled = false` and `command = [...]` together. To re-enable a hook disabled by a lower-priority layer, a higher-priority layer must set `enabled = true`.
-
-## 6. Upgrade and Direct-Agent UX
-
-A typical upgrade review flow is:
-
-```sh
-cd "$PDX_USER_DATA_DIR"
-claude
-# Ask: "I updated Pandora's Box. Compare my agents.toml/templates with
-# $PDX_DATA_DIR/agents.toml and $PDX_DATA_DIR/templates. Am I missing important behavior?"
-```
-
-Because user config is partial TOML, the direct Agent can focus on intentional deltas rather than diffing copied full manifests. It can inspect canonical bundled config through `$PDX_DATA_DIR` and edit only `$PDX_USER_DATA_DIR` or project `.pdx` files.
-
-The scaffolded `AGENTS.md` and `CLAUDE.md` are tiny pointers to `PANDORA.md`; the installed `PANDORA.md` carries concise examples and direct-editing guidance.
-
-## 7. Implementation Notes
-
-The implementation lives at the package boundaries listed below. Spawner owns TOML parsing, manifest merging, template resolution, preview provenance, hook loading, and rendered Harness argv/env construction. pdx owns path parsing, bundled resource materialization, user config scaffolding, and lifecycle preservation. Pithos owns durable scope metadata, including the parent repo path required for worktree config layering.
-
-The older `extensions/templates` and `agents.json` model is not part of the implemented contract. Current bundled defaults live under `resources/data-dir/agents.toml` and `resources/data-dir/templates/`; user scaffolds live under `resources/user-data-dir/`.
-
-## 8. Code Locations
-
-| File / Directory                       | Responsibility                                                                                       |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `packages/spawner/src/manifest.ts`     | Parse and merge `agents.toml`, select config layers, load hooks, resolve template assets.            |
-| `packages/spawner/src/paths.ts`        | Resolve bundled data-dir resources, templates, manifest paths, and default user config roots.        |
-| `packages/spawner/src/spawner.ts`      | Render prompts, Harness argv/env, session log paths, and config/template provenance.                 |
-| `packages/spawner/src/main.ts`         | `pandora-spawn preview` CLI boundary, including worktree parent repo and selected-capability inputs. |
-| `packages/spawner/src/spawner.test.ts` | Layering, merge, validation, preview provenance, launch, and transcript tests.                       |
-| `packages/pdx/src/config.ts`           | Parse `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, derived defaults, and invalid path relationships.         |
-| `packages/pdx/src/live.ts`             | Re-seed canonical config/templates and scaffold user config files.                                   |
-| `packages/pdx/src/controller.ts`       | Preserve user config during clean/nuke and pass scope/parent-repo context to Spawner.                |
-| `packages/pithos/src/db.ts`            | Scope table parent repo metadata column and integrity checks.                                        |
-| `packages/pithos/src/engine.ts`        | Scope upsert validation for repo/worktree paths and parent repo metadata.                            |
-| `packages/pdx/README.md`               | pdx package runtime/config developer notes.                                                          |
-| `packages/spawner/README.md`           | Spawner render/launch boundary and config pointers.                                                  |
-| `resources/README.md`                  | Operator-facing manifest, template, hook, and lifecycle contract.                                    |
-| `resources/data-dir/`                  | Bundled canonical `agents.toml`, templates, and runtime `AGENTS.md` note.                            |
-| `resources/user-data-dir/`             | User config scaffold files and installed `PANDORA.md` reference.                                     |
-
-## 9. Testing
-
-Automated tests should cover user-visible and invariant-bearing behavior:
-
-- Config path parsing: env override, default `$PDX_DATA_DIR/config`, outside-data-dir path, and invalid equal/ancestor/unsupported nested paths.
-- Layer selection for global, repo, and worktree scopes.
-- Project `.pdx` used for repo scope and for worktree scopes with valid recorded parent repo roots; missing/invalid worktree parent metadata fails loudly; project `.pdx` is ignored for global scope and never read from the worktree root itself.
-- TOML validation failures: unknown fields, unknown agents, malformed list ops, duplicate final unique lists, removing absent values, and `hooks.input` in non-global layers.
-- Merge behavior: recursive table merge, scalar replacement, scalar canonical reset including optional absence and template asset pinning, list replace/add/remove across multiple layers, argv duplicate handling, hook replacement/disable/re-enable.
-- Template resolution priority and direct absolute/`~/` path behavior.
-- Lifecycle preservation of `$PDX_USER_DATA_DIR` during `--clean` and `--nuke`, including the exact nested-default deletion algorithm.
-- `pandora-spawn preview` output showing enough provenance to debug which layer won.
-
-Manual smoke validation should use isolated `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR` as described in `AGENTS.md`.
-
-## 10. Open Questions
+## 11. Open Questions
 
 None.

@@ -2,7 +2,7 @@
 
 This file is installed into `<user-data-dir>/PANDORA.md` by `pdx init` / `pdx open`.
 It is bundle-owned reference material and may be overwritten on upgrade or re-init.
-Do not customize Pandora's Box here; put your changes in user-owned or project-owned config files instead.
+Do not customize Pandora's Box here; put your changes in user-owned config files instead.
 If you version-control your config directory, add `PANDORA.md` to `.gitignore` unless you intentionally track bundled reference docs.
 
 ## What Pandora's Box is
@@ -20,7 +20,6 @@ If you version-control your config directory, add `PANDORA.md` to `.gitignore` u
   `pdx init` and `pdx open` overwrite `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`.
 - `<user-data-dir>/` is user-owned config.
   `pdx` scaffolds `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, and `<user-data-dir>/agents.toml` once and re-seeds this `PANDORA.md` reference on `init` / `open`.
-- `<repo-root>/.pdx/` is optional project-local config for repo/worktree launches.
 
 Defaults and related env vars:
 
@@ -28,57 +27,114 @@ Defaults and related env vars:
 - `PDX_USER_DATA_DIR` sets `<user-data-dir>`; default is `<data-dir>/config`
 - `PITHOS_DB` points at the Pithos SQLite DB used by CLIs and agents
 
-## Layer order
+## Prompt defaults
 
-Only `agents.toml` merges across layers. Template assets are whole files selected by reference name.
+Bundled Agent prompts are intentionally light on workflow preference. They teach Agents the Pithos basics: claim work, inspect the graph/task, respect scopes and fencing tokens, enqueue durable follow-up work, then complete or fail the held task.
 
-Global scope launches read:
+They do not own your habits for artifacts, review cadence, fan-out shape, handoff format, Git flow, intake routing, or project-specific release rules. Put those preferences in user-owned policy packs.
 
-1. `<data-dir>`
-2. `<user-data-dir>`
-3. `<user-data-dir>/scopes/global`
+The CLI and Pithos authorization remain the enforcement layer for invalid commands, unsupported capabilities, stale tokens, and malformed graph operations.
 
-Repo scope launches read:
+## Policy packs
 
-1. `<data-dir>`
-2. `<user-data-dir>`
-3. `<user-data-dir>/scopes/repo`
-4. `<repo-root>/.pdx`
-5. `<repo-root>/.pdx/scopes/repo`
+Policy packs are Markdown files appended after the bundled prompt and generated command reference. Use them for workflow preference, not for replacing the Pithos operating contract.
 
-Worktree scope launches read:
+Example layout:
 
-1. `<data-dir>`
-2. `<user-data-dir>`
-3. `<user-data-dir>/scopes/worktree`
-4. `<parent-repo-root>/.pdx`
-5. `<parent-repo-root>/.pdx/scopes/worktree`
+```text
+<user-data-dir>/
+  agents.toml
+  policies/
+    git-flow.md
+    perkbox.md
+    projects/docs-release.md
+```
 
-## `agents.toml` basics
+Declare policies in `agents.toml`:
 
-User and project manifests are partials. Change only the fields you intend to override.
+```toml
+[policies.git-flow]
+file = "policies/git-flow.md"
 
-Scalar fields replace lower-priority values when present, such as:
+[policies.perkbox]
+file = "policies/perkbox.md"
 
-- `agents.<kind>.template`
+[policies.docs-release]
+file = "policies/projects/docs-release.md"
+```
+
+Select policies with `add` and `remove`:
+
+```toml
+[policy]
+add = ["git-flow"]
+
+[agents.toil.policy]
+add = ["perkbox"]
+
+[[rules]]
+path = "~/work/app/docs/docs-shared"
+agents.toil.policy.remove = ["git-flow"]
+agents.toil.policy.add = ["docs-release"]
+```
+
+Good policy pack examples:
+
+- "Always create a design artifact before asking for sign-off."
+- "For this repo, enqueue review after production-code execution tasks."
+- "For CI failure intake, route directly to triage unless the failure mentions credentials."
+- "War should summarize changed files and validation commands in its final task-facing summary."
+
+## Match rules
+
+Rules apply in file order when all predicates match the Agent launch context.
+
+Supported predicates:
+
+- `path` — exact launch path match; supports `~`
+- `path_glob` — path glob; supports `~`
+- `scope_kind` — `global`, `repo`, or `worktree`
+- `agent` — one built-in Agent kind
+
+Examples:
+
+```toml
+[[rules]]
+path_glob = "~/work/**"
+policy.add = ["perkbox"]
+
+[[rules]]
+scope_kind = "worktree"
+agent = "war"
+agents.war.policy.add = ["worktree-execution"]
+```
+
+A final rendered prompt may contain a policy id only once. Adding an already-selected policy or removing an absent policy fails loudly.
+
+## Harness settings
+
+Harness config is separate from prompt policy:
+
+```toml
+[agents.greed.harness]
+kind = "claude"
+model = "opus"
+system_prompt_mode = "append"
+tools.add = ["Skill"]
+argv.add = ["--effort", "high", "--name", "Greed"]
+```
+
+Scalar fields replace bundled defaults when present:
+
 - `agents.<kind>.harness.kind`
 - `agents.<kind>.harness.model`
 - `agents.<kind>.harness.system_prompt_mode`
-- `hooks.input.enabled`
-- `hooks.input.command`
 
-List fields use explicit list operations:
+List fields use operations:
 
-- `replace = [...]`
-- `add = [...]`
-- `remove = [...]`
-
-Supported list fields:
-
-- `agents.<kind>.includes`
-- `agents.<kind>.appends`
-- `agents.<kind>.harness.tools`
-- `agents.<kind>.harness.argv`
+- `agents.<kind>.harness.tools.add`
+- `agents.<kind>.harness.tools.remove`
+- `agents.<kind>.harness.argv.add`
 
 `harness.argv` is an argv array, not a shell string. Supported expansion is terse and path-oriented only:
 
@@ -88,39 +144,16 @@ Supported list fields:
 
 Other `$VARS` fail render; no shell eval, globbing, or quote parsing.
 
-Example:
-
-```toml
-[agents.war.harness.tools]
-add = ["edit", "write"]
-
-[agents.war.appends]
-add = ["war-local.md"]
-```
-
-## Template asset basics
-
-- Put user-wide template files under `<user-data-dir>/templates/`
-- Put scope-kind template files under `<user-data-dir>/scopes/<global|repo|worktree>/templates/`
-- Put project-local template files under `<repo-root>/.pdx/templates/` or `.pdx/scopes/<repo|worktree>/templates/`
-- Asset references like `agents/war.md` or `common/base.md` resolve by reference name through the eligible layers from highest priority to lowest
-- Template files do not merge; the first matching file wins
-- Use `appends` when you want additive prompt text without replacing the main template file
-
 ## Hooks
 
-Input hooks let an external watcher feed signals to Envy. Configure them in a
-config layer that applies to global scope, usually `<user-data-dir>/agents.toml`
-or `<user-data-dir>/scopes/global/agents.toml`:
+Input hooks let an external watcher feed signals to Envy. Configure them in `<user-data-dir>/agents.toml`:
 
 ```toml
 [hooks.input]
 command = ["/path/to/watcher", "--flag"]
 ```
 
-`command` is an argv array. It is not run through a shell, so include the
-executable and each argument as separate strings. To disable a lower-layer hook
-without replacing it:
+`command` is an argv array. It is not run through a shell, so include the executable and each argument as separate strings. To disable a configured hook:
 
 ```toml
 [hooks.input]
@@ -129,9 +162,7 @@ enabled = false
 
 Do not set `enabled = false` together with `command`.
 
-The input hook runs as a long-lived producer after Pandora is live. pdx closes
-hook stdin, reads hook stdout as newline-delimited JSON, and writes hook stderr
-to `<data-dir>/runs/hook.stderr.log`.
+The input hook runs as a long-lived producer after Pandora is live. pdx closes hook stdin, reads hook stdout as newline-delimited JSON, and writes hook stderr to `<data-dir>/runs/hook.stderr.log`.
 
 Each stdout line must be one JSON object:
 
@@ -144,19 +175,9 @@ Required fields:
 - `title` — non-empty string used as the intake Task title
 - `body` — non-empty string used as the intake Task body
 
-For each valid line, pdx creates a global `intake` Task. Envy claims that Task,
-classifies the signal, and enqueues one downstream Task: `triage`, `design`, or
-`escalate`. Put workflow-specific classification rules in Envy template
-overrides/appends.
+For each valid line, pdx creates a global `intake` Task. Envy claims that Task and classifies the signal. Put workflow-specific classification rules in Envy policy packs.
 
-Invalid JSON or invalid fields are logged and skipped; the hook keeps running.
-If the hook exits, pdx restarts it with backoff. Repeated crashes create an
-`input_hook_stuck` Repair Alert for Pandora and stop restarts. After fixing the
-hook script, use `pdx hook restart` to resume supervision without a full pdx
-restart, or `pdx hook stop` to disable it. A full `pdx close && pdx open` also
-clears the crash-loop state.
-
-Hooks belong in global config layers only, not repo/worktree project layers.
+Invalid JSON or invalid fields are logged and skipped; the hook keeps running. If the hook exits, pdx restarts it with backoff. Repeated crashes create an `input_hook_stuck` Repair Alert for Pandora and stop restarts. After fixing the hook script, use `pdx hook restart` to resume supervision without a full pdx restart, or `pdx hook stop` to disable it. A full `pdx close && pdx open` also clears the crash-loop state.
 
 ## Validation
 
@@ -172,10 +193,12 @@ pandora-spawn preview \
   --cwd "$PWD"
 ```
 
+Preview shows the final Harness config, matched rules, selected policy ids, policy file paths, and rendered prompt.
+
 ## Reset behavior
 
 - `pdx init` / `pdx open` re-seed bundle-owned canonical config and this reference file
 - `--clean` wipes runtime state only: DB, runs, logs, socket
 - `--nuke` wipes pdx-owned runtime/bundled state while preserving `<user-data-dir>`, then re-seeds canonicals
 
-Prefer editing user-owned `agents.toml`, user-owned `templates/`, or project-local `.pdx/` files instead of editing bundle-owned reference material.
+Prefer editing user-owned `agents.toml` and user-owned `policies/` files instead of editing bundle-owned reference material.

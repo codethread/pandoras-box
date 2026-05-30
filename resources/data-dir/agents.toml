@@ -35,7 +35,7 @@ argv.replace = []
 
 [agents.war]
 template = "agents/war.md"
-includes.replace = ["common/base.md", "common/afk.md", "war/cwd-guard.md"]
+includes.replace = ["common/base.md", "common/afk.md"]
 appends.replace = []
 
 [agents.war.harness]

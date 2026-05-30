@@ -515,12 +515,12 @@ const makeLaunchServices = (
 
 describe("bundled agent templates", () => {
 	it.each([
-		["pandora", "hitl", false],
-		["toil", "afk", false],
-		["greed", "hitl", false],
-		["war", "afk", true],
-		["envy", "afk", false],
-	] as const)("render %s bundled template", (agent, mode, expectsCwdGuard) => {
+		["pandora", "hitl"],
+		["toil", "afk"],
+		["greed", "hitl"],
+		["war", "afk"],
+		["envy", "afk"],
+	] as const)("render %s bundled template", (agent, mode) => {
 		const input: Parameters<typeof renderAgent>[0] =
 			agent === "greed"
 				? { ...base, agent, mode, selectedCapability: "design" }
@@ -541,7 +541,7 @@ describe("bundled agent templates", () => {
 			},
 		});
 
-		expect(rendered.prompt.includes("cwd/scope guard")).toBe(expectsCwdGuard);
+		expect(rendered.prompt).not.toContain("cwd/scope guard");
 		expect(rendered.prompt).not.toContain("Repository default-branch guard");
 	});
 
@@ -563,7 +563,7 @@ describe("bundled agent templates", () => {
 		);
 		expect(rendered.prompt).toContain("## Design mode (`design`)");
 		expect(rendered.prompt).toContain("## Review mode (`review`)");
-		expect(rendered.prompt).toContain("Attach artifacts when suitable and complete");
+		expect(rendered.prompt).toContain("Record the review outcome and complete");
 		expect(rendered.prompt).toContain("If the user rejects the work or asks for changes");
 	});
 
@@ -613,7 +613,7 @@ describe("bundled agent templates", () => {
 		expect(toil.prompt).toContain(
 			"Enqueue `review` only when triage instructions or the user request",
 		);
-		expect(toil.prompt).toContain("do not add review gates by default");
+		expect(toil.prompt).toContain("do not enqueue review tasks by default");
 	});
 
 	it("keeps bundled Pandora sitrep flow aligned with briefing before graph inspect", () => {
@@ -676,7 +676,7 @@ describe("bundled agent templates", () => {
 		expect(templateText).toContain(
 			"`task inspect` renders a single-task Markdown dossier by default",
 		);
-		expect(templateText).toContain("Use the fencing token returned by claim");
+		expect(templateText).toContain("Keep the task id and fencing token returned by claim");
 		expect(templateText).toContain(
 			"A task chain is the inspectable history the user will review later",
 		);

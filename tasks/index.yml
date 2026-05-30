@@ -99,3 +99,33 @@ tasks:
     task_file: tasks/020-verify-replay-integration.md
     status: complete
     blocked_by: [19]
+  - id: 21
+    description: Lock bundled prompt foundation
+    task_file: tasks/021-lock-bundled-prompt-foundation.md
+    status: pending
+    blocked_by: []
+  - id: 22
+    description: Add user policy packs
+    task_file: tasks/022-add-user-policy-packs.md
+    status: pending
+    blocked_by: [21]
+  - id: 23
+    description: Add policy match rules
+    task_file: tasks/023-add-policy-match-rules.md
+    status: pending
+    blocked_by: [22]
+  - id: 24
+    description: Centralize hook configuration
+    task_file: tasks/024-centralize-hook-configuration.md
+    status: pending
+    blocked_by: [23]
+  - id: 25
+    description: Update policy scaffolds and docs
+    task_file: tasks/025-update-policy-scaffolds-and-docs.md
+    status: pending
+    blocked_by: [24]
+  - id: 26
+    description: Verify policy configuration integration
+    task_file: tasks/026-verify-policy-configuration-integration.md
+    status: pending
+    blocked_by: [25]

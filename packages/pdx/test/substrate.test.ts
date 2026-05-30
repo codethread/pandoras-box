@@ -937,9 +937,6 @@ describe("pdx substrate", () => {
 		expect(await readFile(join(dataDir, "templates", "agents", "war.md"), "utf8")).not.toHaveLength(
 			0,
 		);
-		expect(await readFile(join(dataDir, "templates", "war", "cwd-guard.md"), "utf8")).toContain(
-			"cwd/scope guard",
-		);
 	});
 
 	it("materializes templates as read-only (0555 dir, 0444 files)", async () => {

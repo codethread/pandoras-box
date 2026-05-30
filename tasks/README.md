@@ -4,31 +4,39 @@
 
 The completed first plan implemented the scoped `review` capability change. The completed second plan implemented the typed-edge Task graph redesign now folded into `specs/task-graph.md` and `specs/control-plane-supervision.md`. The completed graph-map refinement made readable `pithos graph inspect` a relationship map.
 
-The current MVP implements Task Replay, now folded into the canonical specs: Pandora can resolve a held Repair Alert by resetting the same broken Task back to queued work with a fresh retry budget, without Supersession, while preserving audit history. The foundational claim identity split separates resettable `attempts` from monotonic `claim_sequence` so replay can reset retry budget without deleting gate-release snapshots.
+The current MVP implements the Agent policy configuration model captured in `specs/agent-configuration.md`: bundled prompts remain the fixed Pithos operating foundation, while user-owned policy packs selected from `<user-data-dir>/agents.toml` add workflow preferences. The change removes template/appends/scoped-directory/project `.pdx` prompt customization in favor of a central policy registry plus path/glob match rules.
 
 ## Important references
 
-- `specs/task-graph.md` — canonical durable typed-edge Task graph semantics, including Task Replay, `claim_sequence`, replay validation/events, and gate-release identity.
-- `specs/control-plane-supervision.md` — canonical Repair Alert and pdx integration semantics, including replay as the lightweight same-Task repair path.
-- `UBIQUITOUS_LANGUAGE.md` — canonical domain terminology.
-- `packages/pithos/src/db.ts` — schema and seeded durable contracts.
-- `packages/pithos/src/chain-policy.ts` — enqueue policy and implicit edge behavior.
-- `packages/pithos/src/engine.ts` and `packages/pithos/src/engine/*` — Task transitions, claim loop, read models, graph inspection, renderers, Repair Alerts, and events.
-- `packages/pithos/test/` — behavior, CLI, render, lifecycle, and graph tests.
-- `packages/spawner/src/` and `resources/data-dir/templates/` — Pandora prompt and generated command-card surfaces for replay guidance.
-- Earlier completed review-capability, typed-edge, and graph-map refinement references remain in the Developer Notes history below.
+- `specs/agent-configuration.md` — canonical policy-pack configuration model, prompt composition contract, match rules, Harness fields, hooks, and testing expectations.
+- `specs/agent-command-reference.md` — generated command-card boundary that remains part of bundled prompt rendering.
+- `specs/control-plane-supervision.md` — pdx/Spawner lifecycle and hook supervision context.
+- `resources/user-data-dir/PANDORA.md` — installed user-facing policy registry and machine config reference.
+- `resources/README.md` — resource ownership map and documentation boundary.
+- `packages/spawner/src/manifest.ts` — current manifest parsing, layering, template resolution, hook loading, and Harness merge implementation to replace.
+- `packages/spawner/src/spawner.ts` — prompt render, generated command cards, Harness argv/env, and preview provenance.
+- `packages/spawner/src/paths.ts` — data-dir/user-dir and resource path helpers.
+- `packages/spawner/src/spawner.test.ts` — existing config/render tests to adapt.
+- `packages/pdx/test/substrate.test.ts` — seeded resource and lifecycle tests.
+- Earlier completed review-capability, typed-edge, graph-map, and replay references remain in the Developer Notes history below.
 
 ## Task strategy
 
-Tasks 1–13 are complete and belong to earlier plans. Tasks 14–20 implement Task Replay as AFK slices.
+Tasks 1–20 are complete and belong to earlier plans.
 
-Task 14 adds the monotonic `claim_sequence` counter to ordinary claim behavior while leaving gate-release identity unchanged. Task 15 moves gate-release and late-growth identity from retry-cycle attempt to lifetime claim sequence. Task 16 adds the Engine replay transaction behind Pandora-held Repair Alert validation. Task 17 exposes the CLI contract. Task 18 teaches Pandora the workflow and command surface. Task 19 folds the completed behavior into canonical docs and retires the temporary change spec. Task 20 verifies the integration with focused tests, full verification, and an isolated CLI smoke.
+Tasks 21–26 implement the Agent policy configuration model as AFK slices. Task 21 locks bundled prompt rendering and removes implicit template/appends/scope/project customization. Task 22 adds named user policy packs and user-wide/Agent-specific selection. Task 23 adds ordered path/scope/agent match rules. Task 24 centralizes hook config under the user manifest. Task 25 aligns seeded user docs and package docs. Task 26 verifies the integration with focused tests, full validation, and isolated preview smokes.
 
-No HITL slices are required: the replay design decisions are now captured in the canonical Task graph and control-plane specs. The temporary replay change spec was removed after fold-in; the alpha DB reset/no migration assumption is retained in task history notes.
+No HITL slices are required: the target behavior is captured in `specs/agent-configuration.md`, and the user explicitly requested a breaking change with no migration/back-compat work.
 
 ## Developer Notes
 
 Append notes here. Do not rewrite earlier notes.
+
+### Policy configuration task plan amendment — 2026-05-30
+
+- Added Tasks 21–26 for the policy-pack configuration model.
+- This plan intentionally removes implicit prompt shadowing, user `template`/`includes`/`appends`, scope-directory config, project-local `.pdx` config, and scoped/project hook config from the active implementation path.
+- The customization surface is named policy packs selected from `<user-data-dir>/agents.toml` with `add`/`remove` and ordered match rules. Do not add migration or compatibility behavior unless the spec changes.
 
 ### Task 20 verification — 2026-05-26
 
