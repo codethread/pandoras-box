@@ -122,7 +122,7 @@ tasks:
   - id: 25
     description: Update policy scaffolds and docs
     task_file: tasks/025-update-policy-scaffolds-and-docs.md
-    status: pending
+    status: complete
     blocked_by: [24]
   - id: 26
     description: Verify policy configuration integration

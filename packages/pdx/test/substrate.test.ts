@@ -509,12 +509,17 @@ describe("pdx substrate", () => {
 		expect(await readFile(join(userDataDir, "CLAUDE.md"), "utf8")).toContain(
 			"See `PANDORA.md` for the installed configuration reference.",
 		);
-		expect(await readFile(join(userDataDir, "agents.toml"), "utf8")).toContain(
-			"User-wide Pandora's Box manifest overrides.",
-		);
-		expect(await readFile(join(userDataDir, "PANDORA.md"), "utf8")).toContain(
-			"Pandora's Box config reference",
-		);
+		const userManifest = await readFile(join(userDataDir, "agents.toml"), "utf8");
+		expect(userManifest).toContain("User-wide Pandora's Box manifest partial.");
+		expect(userManifest).toContain("[policies.git-flow]");
+		expect(userManifest).toContain('[policy]\n# add = ["git-flow"]');
+		expect(userManifest).toContain("[[rules]]");
+		expect(userManifest).toContain("[agents.greed.harness]");
+		expect(userManifest).toContain("[hooks.input]");
+		const userReference = await readFile(join(userDataDir, "PANDORA.md"), "utf8");
+		expect(userReference).toContain("Pandora's Box config reference");
+		expect(userReference).toContain("--scope-kind repo");
+		expect(userReference).toContain('--scope-path "$PWD"');
 		expect(existsSync(join(dataDir, "CLAUDE.md"))).toBe(false);
 		expect(existsSync(join(dataDir, "runs"))).toBe(true);
 		expect(existsSync(join(tmux.binDir, "tmux.log"))).toBe(false);

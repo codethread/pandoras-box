@@ -264,3 +264,12 @@ Append notes here. Do not rewrite earlier notes.
 - Validation passed: `pnpm verify`; `pnpm --filter @pdx/pithos test -- test/foundation.test.ts test/chain-policy.test.ts test/task-lifecycle.test.ts test/render.test.ts test/cli.test.ts`; `pnpm --filter @pdx/pdx test -- --run`; `pnpm --filter @pdx/spawner test -- --run`.
 - Isolated smoke passed with temp `PITHOS_DB`, `PDX_DATA_DIR`, and `PDX_USER_DATA_DIR`: `pithos init --fresh`, `pdx init`, Pithos help surfaces, and War/Pandora `pandora-spawn preview` typed-edge prompt checks.
 - No temporary typed-edge diff spec remains in `specs/` or `specs/README.md`; no repairs or snapshot updates were needed.
+
+### Task 25 implementation — 2026-05-30
+
+- Expanded the scaffolded `<user-data-dir>/agents.toml` comments to demonstrate policy declarations, `policy.add`, Agent-specific policy selection, ordered match rules, Harness settings, hook configuration, and preview provenance.
+- Updated user-facing package/root docs to point customization at `<user-data-dir>/agents.toml` plus declared `policies/` files, with `resources/README.md` remaining only an ownership/spec pointer.
+- Removed stale active guidance for user template overrides/appends, user template shadowing, scope/project `.pdx` layering, and optional user prompt assets from docs/resources; bundled prompt templates remain pdx-owned seeded internals.
+- Validation passed: `pnpm --filter @pdx/pdx test -- substrate.test.ts`; `pnpm --filter @pdx/spawner test -- spawner.test.ts`; `pnpm verify`.
+- Deep-review follow-up fixed the installed `PANDORA.md` preview example to use `--scope-kind`/`--scope-path`, declared every policy id used by the scaffold examples, and strengthened seeded scaffold assertions for representative policy/rule/Harness/hook markers.
+- YAGNI pass simplified the scaffold back to minimal representative examples and removed negative test assertions that duplicated the broader stale-guidance `rg` check.

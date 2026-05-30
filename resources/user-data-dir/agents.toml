@@ -1,11 +1,55 @@
-# User-wide Pandora's Box manifest overrides.
-# Add only the partial config you want to customize; bundled defaults stay in
-# <data-dir>/agents.toml and <data-dir>/templates/.
+# User-wide Pandora's Box manifest partial.
+# Customize workflow with declared policy packs plus optional Harness and hook
+# settings. Bundled Agent prompts and generated command cards stay fixed.
 #
-# Example:
-# [agents.war.harness.tools]
-# add = ["edit", "write"]
+# Declare policies before selecting them. Relative files resolve from this
+# <user-data-dir>.
+#
+# [policies.git-flow]
+# file = "policies/git-flow.md"
+#
+# [policies.war-style]
+# file = "policies/war-style.md"
+#
+# [policies.worktree-execution]
+# file = "policies/worktree-execution.md"
+#
+# Add policies globally or for one Agent kind.
+#
+# [policy]
+# add = ["git-flow"]
+#
+# [agents.war.policy]
+# add = ["war-style"]
+#
+# Add project-specific behavior with ordered match rules.
+#
+# [[rules]]
+# path_glob = "~/work/**"
+# policy.add = ["worktree-execution"]
+#
+# [[rules]]
+# scope_kind = "worktree"
+# agent = "war"
+# agents.war.policy.add = ["worktree-execution"]
+#
+# Harness settings stay separate from prompt policy.
+#
+# [agents.greed.harness]
+# kind = "claude"
+# model = "opus"
+# system_prompt_mode = "append"
+# tools.add = ["Skill"]
+# argv.add = ["--effort", "high"]
+#
+# Configure the optional global input hook here.
+#
+# [hooks.input]
+# command = ["/Users/me/bin/pdx-inbox-watch"]
 #
 # Validate rendering with `pandora-spawn preview` before reopening the box.
+# Preview reports matched rules, selected policy ids, policy file paths, final
+# Harness config, and the rendered prompt.
+#
 # harness.argv expansion: $PDX_DATA_DIR, ${PDX_DATA_DIR},
 # $PDX_USER_DATA_DIR, ${PDX_USER_DATA_DIR}, ~, ~/... only; no shell eval.

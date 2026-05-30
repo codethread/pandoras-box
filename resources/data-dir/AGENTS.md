@@ -5,6 +5,6 @@ Prefer `pithos` and `pdx` CLI inspection over reading or editing runtime files d
 
 - `agents.toml` and `templates/` here are bundle-owned canonical reference files and are overwritten on `pdx init` / `pdx open`.
 - User-owned config lives in `$PDX_USER_DATA_DIR` or, by default, `$PDX_DATA_DIR/config`.
-- Project-specific behavior is selected from the user manifest with `[[rules]]`; project-local `.pdx` files are not loaded.
+- Project-specific behavior is selected from the user manifest with `[[rules]]`.
 
 Do not treat this file as a customization surface.

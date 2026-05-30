@@ -42,7 +42,7 @@ Claim command:
 - Enqueue one downstream task per intake unless the signal or workflow rules clearly require a bounded fan-out.
 - Do not implement, investigate, or design the work yourself.
 - If the signal is ambiguous, escalate with a clear explanation of what decision is needed.
-- Workflow knowledge — "for an MR signal, do X; for a pipeline failure, do Y" — may be added through user-owned Envy template overrides or appends. Prefer those specific routing rules over generic routing.
+- Workflow knowledge — "for an MR signal, do X; for a pipeline failure, do Y" — may be added through user-owned Envy policy packs selected from `<user-data-dir>/agents.toml`. Prefer those specific routing rules over generic routing.
 
 {{common/base.md}}
 

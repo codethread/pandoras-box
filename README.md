@@ -88,13 +88,14 @@ Typical files:
 
 - `<user-data-dir>/AGENTS.md` — tiny user-owned pointer to `PANDORA.md`
 - `<user-data-dir>/CLAUDE.md` — same pointer for Claude direct sessions
-- `<user-data-dir>/agents.toml` — scaffolded user-wide manifest partial
+- `<user-data-dir>/agents.toml` — scaffolded user-wide policy registry and Harness partial
 - `<user-data-dir>/PANDORA.md` — installed config reference, overwritten on `pdx init` / `pdx open`
-  User config may customize Harness launch settings in `agents.toml` (Agent kind,
-  model, system prompt mode, tools, argv, and the existing global input hook). It
-  cannot replace bundled Agent prompts, shared prompt fragments, or generated
-  command cards; same-path files under `<user-data-dir>/templates/` and
-  project-local `.pdx` manifests are ignored by Spawner render resolution.
+
+Customize behavior with named policy packs declared in
+`<user-data-dir>/agents.toml` and stored in user-owned `policies/*.md` files.
+Use `policy.add` / `policy.remove`, Agent-specific policy selection, and ordered
+match rules for project-specific behavior. User config may also customize
+Harness launch settings and the global input hook in `agents.toml`.
 
 You can also ask an agent to reconfigure Pandora's Box for you:
 

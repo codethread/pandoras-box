@@ -175,9 +175,9 @@ For a data dir `<data-dir>` (`~/.pdx` by default):
 <data-dir>/AGENTS.md              # bundle-owned runtime note for global-agent cwd
 <user-data-dir>/AGENTS.md         # direct-agent pointer scaffolded once
 <user-data-dir>/CLAUDE.md         # Claude direct-agent pointer scaffolded once
-<user-data-dir>/agents.toml       # user-wide manifest partial scaffolded once
+<user-data-dir>/agents.toml       # user policy registry and Harness partial scaffolded once
 <user-data-dir>/PANDORA.md        # installed user-config reference, re-seeded on init/open
-<user-data-dir>/templates/*.md    # optional user-wide prompt assets
+<user-data-dir>/policies/*.md     # user-owned policy packs declared from agents.toml
 ```
 
 HITL mode runtime state lives in tmux targets. AFK mode runtime state lives in pid/stdout/stderr files plus the daemon Registry while live. Harness session transcripts live at harness-native session log paths returned by Spawner and stored on Pithos Runs.

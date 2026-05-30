@@ -187,7 +187,9 @@ Validate rendering with `pandora-spawn preview`:
 pandora-spawn preview \
   --agent war \
   --mode afk \
-  --scope repo:$PWD \
+  --scope scope_repo_preview \
+  --scope-kind repo \
+  --scope-path "$PWD" \
   --run run_preview \
   --session-id 123e4567-e89b-12d3-a456-426614174000 \
   --cwd "$PWD"
