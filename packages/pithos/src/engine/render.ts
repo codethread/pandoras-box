@@ -11,29 +11,19 @@ import type {
 	TaskSummaryOutput,
 } from "./types.js";
 
-const effectiveTaskStatus = (task: {
-	readonly status: TaskStatus;
-	readonly unresolved_dependency_ids?: readonly string[];
-}): string =>
-	task.status === "queued" && (task.unresolved_dependency_ids ?? []).length > 0
-		? "blocked"
-		: task.status;
-
 const taskTitleLine = (task: {
 	readonly id: string;
 	readonly capability: Capability;
 	readonly status: TaskStatus;
 	readonly title: string;
-	readonly unresolved_dependency_ids?: readonly string[];
-}): string => `${task.id} [${task.capability}] [${effectiveTaskStatus(task)}] ${task.title}`;
+}): string => `${task.id} [${task.capability}] [${task.status}] ${task.title}`;
 
 const graphTaskTitleLine = (task: {
 	readonly id: string;
 	readonly capability: Capability;
 	readonly status: TaskStatus;
 	readonly title: string;
-	readonly unresolved_dependency_ids?: readonly string[];
-}): string => `${task.id} [${task.capability}] [${effectiveTaskStatus(task)}] ${task.title}`;
+}): string => `${task.id} [${task.capability}] [${task.status}] ${task.title}`;
 
 const ansi = {
 	reset: "\u001b[0m",
@@ -75,13 +65,11 @@ const graphTaskTitleLineColored = (
 		readonly capability: Capability;
 		readonly status: TaskStatus;
 		readonly title: string;
-		readonly unresolved_dependency_ids?: readonly string[];
 	},
 	enabled: boolean,
 ): string => {
 	if (!enabled) return graphTaskTitleLine(task);
-	const status = effectiveTaskStatus(task);
-	return `${color(enabled, taskStatusColor(task.status), task.id)} ${color(enabled, capabilityColor(), `[${task.capability}]`)} [${status}] ${task.title}`;
+	return `${color(enabled, taskStatusColor(task.status), task.id)} ${color(enabled, capabilityColor(), `[${task.capability}]`)} [${task.status}] ${task.title}`;
 };
 
 const fencedMarkdown = (body: string): string => {
@@ -96,10 +84,7 @@ const fencedMarkdown = (body: string): string => {
 const renderArtifactMarkdown = (artifact: ArtifactOutput): string =>
 	`Artifact ${artifact.id} [${artifact.kind}] ${artifact.title}:\n\n${fencedMarkdown(artifact.body)}`;
 
-const renderTaskBullet = (
-	task: TaskDetailOutput,
-	unresolvedDependencyIds: readonly string[] = [],
-): string => `- ${taskTitleLine({ ...task, unresolved_dependency_ids: unresolvedDependencyIds })}`;
+const renderTaskBullet = (task: TaskDetailOutput): string => `- ${taskTitleLine(task)}`;
 
 const sourceKindLabel = (kind: "about" | "repair"): string =>
 	kind === "about" ? "about" : "repair";
@@ -211,15 +196,11 @@ export const renderTaskInspectMarkdown = (inspect: TaskInspectOutput): string =>
 		"Direct after dependencies:",
 		inspect.dependencies.length === 0
 			? "- none"
-			: inspect.dependencies.map((task) => renderTaskBullet(task)).join("\n"),
+			: inspect.dependencies.map(renderTaskBullet).join("\n"),
 		"Direct after dependents:",
 		inspect.dependents.length === 0
 			? "- none"
-			: inspect.dependents
-					.map((task) =>
-						renderTaskBullet(task, inspect.task.status === "done" ? [] : [inspect.task.id]),
-					)
-					.join("\n"),
+			: inspect.dependents.map(renderTaskBullet).join("\n"),
 		"Coordination gates:",
 		inspect.task.gates.length === 0
 			? "- none"

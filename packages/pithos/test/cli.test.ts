@@ -704,13 +704,13 @@ describe("pithos cli", () => {
 		const inspect = await runCli(["task", "inspect", current], dbPath);
 		const output = inspect.stdout[0] ?? "";
 
-		expect(output.startsWith(`# ${current} [triage] [blocked] Current handoff\n`)).toBe(true);
+		expect(output.startsWith(`# ${current} [triage] [queued] Current handoff\n`)).toBe(true);
 		expect(() => {
 			JSON.parse(output) as unknown;
 		}).toThrow();
 		expect(output).not.toContain(`### ${origin} [triage] [queued] Original request`);
 		expect(normalizeGeneratedIds(output)).toMatchInlineSnapshot(`
-			"# task_cli_N [triage] [blocked] Current handoff
+			"# task_cli_N [triage] [queued] Current handoff
 
 			Body:
 
@@ -732,7 +732,7 @@ describe("pithos cli", () => {
 
 			Direct after dependents:
 
-			- task_cli_N [triage] [blocked] Dependent follow-up
+			- task_cli_N [triage] [queued] Dependent follow-up
 
 			Coordination gates:
 
@@ -847,7 +847,7 @@ describe("pithos cli", () => {
 		expect(inspect.stdout[0]).not.toContain("Original request");
 		expect(inspect.stdout[0]).not.toContain("Triage plan");
 		expect(normalizeGeneratedIds(inspect.stdout[0] ?? "")).toMatchInlineSnapshot(`
-			"# task_cli_N [triage] [blocked] Follow-up verification
+			"# task_cli_N [triage] [queued] Follow-up verification
 
 			Body:
 
@@ -946,23 +946,23 @@ describe("pithos cli", () => {
 			  scope: repo:/tmp/pithos-cli
 			  preview: Triage readable inspect API
 			  artifacts: none
-			  - after ← task_cli_N [design] [blocked] Design output mode contract
+			  - after ← task_cli_N [design] [queued] Design output mode contract
 			    scope: repo:/tmp/pithos-cli
 			    preview: Design output mode contract
 			    artifacts: none
-			    - after ← task_cli_N [execute] [blocked] Execute A task inspect renderer
+			    - after ← task_cli_N [execute] [queued] Execute A task inspect renderer
 			      scope: repo:/tmp/pithos-cli
 			      preview: Execute A task inspect renderer
 			      artifacts: none
-			      - after ← task_cli_N [execute] [blocked] Follow-up A docs for inspect
+			      - after ← task_cli_N [execute] [queued] Follow-up A docs for inspect
 			        scope: repo:/tmp/pithos-cli
 			        preview: Follow-up A docs for inspect
 			        artifacts: none
-			    - after ← task_cli_N [execute] [blocked] Execute B graph briefing help
+			    - after ← task_cli_N [execute] [queued] Execute B graph briefing help
 			      scope: repo:/tmp/pithos-cli
 			      preview: Execute B graph briefing help
 			      artifacts: none
-			      - after ← task_cli_N [execute] [blocked] Follow-up B prompt verification
+			      - after ← task_cli_N [execute] [queued] Follow-up B prompt verification
 			        scope: repo:/tmp/pithos-cli
 			        preview: Follow-up B prompt verification
 			        artifacts: none
@@ -1012,7 +1012,7 @@ describe("pithos cli", () => {
 			  scope: global
 			  preview: Ready triage
 			  artifacts: none
-			  - after ← task_cli_N [triage] [blocked] Blocked triage
+			  - after ← task_cli_N [triage] [queued] Blocked triage
 			    scope: global
 			    preview: Blocked triage
 			    artifacts: none
@@ -1076,7 +1076,7 @@ describe("pithos cli", () => {
 			- task_cli_N [triage] [queued] Ready triage
 
 			## Blocked
-			- task_cli_N [triage] [blocked] Blocked triage
+			- task_cli_N [triage] [queued] Blocked triage
 			  - after blocker task_cli_N [queued] scope=global
 
 			## Recently Completed

@@ -12,7 +12,7 @@ legend: ↑ already shown · ↻ supersession history
   scope: repo:/work
   preview: Task preview
   artifacts: none
-  - after ← task_b [execute] [blocked] B
+  - after ← task_b [execute] [queued] B
     scope: repo:/work
     preview: Task preview
     artifacts: none
