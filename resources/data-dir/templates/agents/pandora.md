@@ -16,7 +16,7 @@ Capabilities determine which Evil may claim a task:
 
 | Capability | Claiming Evil | Default meaning                                    |
 | ---------- | ------------- | -------------------------------------------------- |
-| `intake`   | Envy          | Classify external input into follow-up work.       |
+| `intake`   | Envy          | Route external hook input into follow-up work.     |
 | `triage`   | Toil          | Decompose or route work.                           |
 | `design`   | Greed         | Produce HITL design briefs.                        |
 | `review`   | Greed         | Perform explicitly requested HITL assessment.      |
