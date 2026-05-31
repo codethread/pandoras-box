@@ -107,34 +107,139 @@ policy.add = ["perkbox"]
 scope_kind = "worktree"
 agent = "war"
 agents.war.policy.add = ["worktree-execution"]
+
+[[rules]]
+path_glob = "~/work/**"
+agents.war.harness.kind = "claude"
+agents.greed.harness.kind = "claude"
+
+[[rules]]
+path_glob = "~/dev/**"
+agents.war.harness.kind = "pi"
+agents.greed.harness.kind = "pi"
 ```
 
 A final rendered prompt may contain a policy id only once. Adding an already-selected policy or removing an absent policy fails loudly.
 
 ## Harness settings
 
-Harness config is separate from prompt policy:
+Harness config is separate from prompt policy. Bundled config keeps the Agent templates but does **not** choose a Harness runtime for you. `pdx open` fails until the launch it needs has user Harness config, starting with Pandora.
+
+### All-Pi example
 
 ```toml
+[agents.pandora.harness]
+kind = "pi"
+model = "deepseek-v4-pro"
+system_prompt_mode = "replace"
+tools.add = ["bash", "read"]
+
+[agents.toil.harness]
+kind = "pi"
+model = "openai-codex/gpt-5.4"
+system_prompt_mode = "append"
+tools.add = ["bash", "read", "grep", "find", "ls", "subagent"]
+
+[agents.greed.harness]
+kind = "pi"
+model = "openai-codex/gpt-5.5"
+system_prompt_mode = "replace"
+
+[agents.war.harness]
+kind = "pi"
+model = "openai-codex/gpt-5.4"
+system_prompt_mode = "append"
+
+[agents.envy.harness]
+kind = "pi"
+model = "openai-codex/gpt-5.4"
+system_prompt_mode = "append"
+```
+
+### All-Claude example
+
+This mirrors a real config shape with Claude skills exposed to Pandora through a plugin directory under `<user-data-dir>`.
+
+```toml
+[agents.pandora.harness]
+kind = "claude"
+model = "sonnet"
+system_prompt_mode = "replace"
+tools.add = ["Bash", "Read", "Skill"]
+argv.add = ["--name", "Pandora", "--effort", "high", "--plugin-dir", "$PDX_USER_DATA_DIR/claude-pandora"]
+
+[agents.toil.harness]
+kind = "claude"
+model = "sonnet"
+system_prompt_mode = "append"
+argv.add = ["--effort", "high", "--name", "Toil"]
+
 [agents.greed.harness]
 kind = "claude"
 model = "opus"
 system_prompt_mode = "append"
-tools.add = ["Skill"]
+tools.add = ["Agent", "Bash", "Glob", "Grep", "Read", "Skill"]
 argv.add = ["--effort", "high", "--name", "Greed"]
+
+[agents.war.harness]
+kind = "claude"
+model = "sonnet"
+system_prompt_mode = "append"
+argv.add = ["--effort", "high", "--name", "War"]
+
+[agents.envy.harness]
+kind = "claude"
+model = "sonnet"
+system_prompt_mode = "append"
+argv.add = ["--effort", "high", "--name", "Envy"]
 ```
 
-Scalar fields replace bundled defaults when present:
+Useful Pandora Claude skills are ordinary Claude plugin skills. For example, `$PDX_USER_DATA_DIR/claude-pandora/skills/sitrep/SKILL.md` can contain a short “Sitrep” instruction, while `pandora-smoke` can encode your local smoke-test runbook and `tidyup` can encode your end-of-day cleanup routine.
+
+### Mixed/path-targeted example
+
+```toml
+[agents.pandora.harness]
+kind = "claude"
+model = "sonnet"
+system_prompt_mode = "replace"
+tools.add = ["Bash", "Read", "Skill"]
+argv.add = ["--name", "Pandora", "--plugin-dir", "$PDX_USER_DATA_DIR/claude-pandora"]
+
+[agents.war.harness]
+kind = "pi"
+model = "openai-codex/gpt-5.4"
+system_prompt_mode = "append"
+
+[[rules]]
+path_glob = "~/work/**"
+agents.war.harness.kind = "claude"
+agents.war.harness.model = "sonnet"
+agents.war.harness.argv.add = ["--effort", "high", "--name", "War"]
+
+[[rules]]
+path_glob = "~/dev/**"
+agents.war.harness.kind = "pi"
+agents.war.harness.model = "openai-codex/gpt-5.4"
+```
+
+Required scalar fields for a launched Agent are `kind`, `model`, and `system_prompt_mode`. Matching rule values can target the actual Harness controls for launches under specific paths:
 
 - `agents.<kind>.harness.kind`
 - `agents.<kind>.harness.model`
 - `agents.<kind>.harness.system_prompt_mode`
+- `rules.agents.<kind>.harness.kind`
+- `rules.agents.<kind>.harness.model`
+- `rules.agents.<kind>.harness.system_prompt_mode`
 
 List fields use operations:
 
 - `agents.<kind>.harness.tools.add`
 - `agents.<kind>.harness.tools.remove`
 - `agents.<kind>.harness.argv.add`
+- `rules.agents.<kind>.harness.tools.add`
+- `rules.agents.<kind>.harness.tools.remove`
+- `rules.agents.<kind>.harness.argv.add`
 
 `harness.argv` is an argv array, not a shell string. Supported expansion is terse and path-oriented only:
 

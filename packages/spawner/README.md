@@ -21,9 +21,9 @@ installed reference at [`resources/user-data-dir/PANDORA.md`](../../resources/us
 
 Spawner owns:
 
-- Agent manifest loading from bundled defaults plus `$PDX_USER_DATA_DIR/agents.toml`
+- Agent manifest loading from bundled prompt defaults plus user-owned Harness/policy config in `$PDX_USER_DATA_DIR/agents.toml`
 - user policy-pack registry and `[policy]` / `[agents.<kind>.policy]` add/remove selection
-- ordered `[[rules]]` policy selection by normalized launch path, path glob, scope kind, and Agent kind
+- ordered `[[rules]]` policy and Harness selection by normalized launch path, path glob, scope kind, and Agent kind
 - prompt rendering from bundled templates, including generated Markdown command references for `{{command_cards}}` and verbatim selected policy Markdown
 - Harness argv/env construction
 - expected Harness session log paths
@@ -67,7 +67,7 @@ Specs describe the full control plane: [`../../specs/control-plane-supervision.m
 | `src/errors.ts`             | `SpawnerError` codes and CLI exit mapping                                |
 | `src/help.ts`               | re-exports shared descriptor-driven terminal help renderer               |
 | `../../resources/README.md` | resource ownership map and documentation boundary                        |
-| `../../resources/`          | bundled defaults and user config scaffolds                               |
+| `../../resources/`          | bundled prompt defaults and user config scaffolds                        |
 | `src/spawner.test.ts`       | behavior examples for render, launch, transcript, and manifest failures  |
 
 ## Public library surface
@@ -96,7 +96,7 @@ Use those docs for:
 
 - policy declarations and `policy.add` / `policy.remove` selection
 - Agent-specific policy selection and ordered match rules
-- Harness settings and supported argv path expansion
+- Harness settings, rule-targeted Harness overrides, and supported argv path expansion
 - input hook configuration
 - preview provenance fields for matched rules, selected policy ids, policy files, Harness config, and rendered prompt
 
@@ -137,9 +137,10 @@ pnpm --filter @pdx/spawner start -- preview \
   --cwd "$PWD" | jq .
 ```
 
-If you want preview to use the same seeded bundled defaults as `pdx`, set
+If you want preview to use the same seeded bundled prompt defaults as `pdx`, set
 `PDX_DATA_DIR` and ensure `<data-dir>/agents.toml` plus `<data-dir>/templates/`
-have already been seeded. User policy packs declared under `[policies.<id>]` may
+have already been seeded. Also set `PDX_USER_DATA_DIR` with Harness config for
+the previewed Agent; bundled config does not choose a runtime. User policy packs declared under `[policies.<id>]` may
 be selected with `[policy]`, `[agents.<kind>.policy]`, `[[rules]].policy`, or
 `[[rules]].agents.<kind>.policy` `add`/`remove`; selected Markdown is appended
 verbatim after the bundled prompt and generated command reference. Rule predicates

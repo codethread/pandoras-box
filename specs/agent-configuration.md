@@ -1,13 +1,13 @@
 # Agent Policy Configuration
 
 **Status:** Implemented
-**Last Updated:** 2026-05-30
+**Last Updated:** 2026-05-31
 
 ## 1. Overview
 
 ### Purpose
 
-Agent policy configuration defines how Spawner combines Pandora's Box's bundled Agent prompts with user-owned workflow policy and Harness launch settings. The bundled prompts are the stable Pithos operating contract: claim work, inspect graph/task state, respect scopes and fencing tokens, compose Pithos commands, and complete or fail held work. User configuration adds policy packs for local workflow preferences such as git flow, review expectations, artifact habits, intake routing, release style, and organization context.
+Agent policy configuration defines how Spawner combines Pandora's Box's bundled Agent prompts with user-owned workflow policy and Harness launch settings. The bundled prompts are the stable Pithos operating contract: claim work, inspect graph/task state, respect scopes and fencing tokens, compose Pithos commands, and complete or fail held work. User configuration chooses the actual Harness for each Agent launch and adds policy packs for local workflow preferences such as git flow, review expectations, artifact habits, intake routing, release style, and organization context.
 
 ### Goals
 
@@ -15,7 +15,8 @@ Agent policy configuration defines how Spawner combines Pandora's Box's bundled 
 - Let users compose workflow preferences through named policy packs rather than replacing prompt internals.
 - Keep all user-wide and path-specific policy in a single user-owned `agents.toml` registry.
 - Support project-specific behavior from the user config through explicit path and glob match rules.
-- Preserve simple Harness customization for model, runtime kind, tools, argv, and system prompt mode.
+- Require user config to choose Harness kind/model/prompt-mode for launched Agents so `pdx open` cannot silently pick a runtime.
+- Preserve simple Harness customization for model, runtime kind, tools, argv, and system prompt mode, including path-targeted overrides for the actual Harness kind.
 - Keep invalid config fail-loud: unknown keys, missing policy definitions, missing policy files, invalid list operations, bad match rules, unsupported argv expansion, and malformed hooks stop render/supervision with tagged errors.
 - Keep Pithos as the durable source of authorization truth for Agent kinds, Capabilities, claims, enqueues, scopes, and graph transitions.
 
@@ -65,7 +66,7 @@ Agent policy configuration defines how Spawner combines Pandora's Box's bundled 
 
 ```text
 $PDX_DATA_DIR/
-  agents.toml        # complete bundled Agent/Harness defaults
+  agents.toml        # bundled Agent prompt defaults; no Harness runtime defaults
   templates/         # bundled base prompts and shared includes, read-only/reseeded
   AGENTS.md          # minimal runtime note
   pithos.sqlite
@@ -102,7 +103,7 @@ Users can run a direct Agent from this directory. `AGENTS.md` points that Agent 
 
 Spawner resolves each launch from three inputs:
 
-1. bundled Agent prompt and Harness defaults from `$PDX_DATA_DIR/agents.toml`
+1. bundled Agent prompt defaults from `$PDX_DATA_DIR/agents.toml`
 2. user policy/Harness config from `$PDX_USER_DATA_DIR/agents.toml`
 3. launch context: Agent kind, scope kind, recorded scope path/cwd, run id, session id, selected capability when needed, and Pithos authorization-derived claims/enqueues
 
@@ -116,7 +117,7 @@ Within `$PDX_USER_DATA_DIR/agents.toml`, Spawner applies config in this order:
 2. matching `[[rules]]` in file order
 3. matching Agent-specific config inside those rules
 
-Rules later in the file can remove policy ids added by earlier defaults/rules.
+Rules later in the file can remove policy ids added by earlier defaults/rules and can override Harness scalars selected by earlier defaults/rules.
 
 ### Match rules
 
@@ -143,6 +144,16 @@ agents.toil.policy.add = ["docs-release"]
 scope_kind = "worktree"
 agent = "war"
 agents.war.policy.add = ["worktree-execution"]
+
+[[rules]]
+path_glob = "~/dev/**"
+agents.war.harness.kind = "pi"
+agents.greed.harness.kind = "pi"
+
+[[rules]]
+path_glob = "~/work/**"
+agents.war.harness.kind = "claude"
+agents.greed.harness.kind = "claude"
 ```
 
 Invalid globs, unsupported predicates, relative paths that cannot be normalized, and unknown Agent kinds fail validation.
@@ -230,7 +241,7 @@ agents.toil.policy.add = ["docs-release"]
 
 ### Harness configuration
 
-Harness fields remain partial Agent config:
+Harness fields are user-owned launch config and may be declared globally for an Agent or under a matching rule's Agent-specific table. Bundled config does not choose a Harness; rendering a launch whose final config lacks `agents.<kind>.harness.kind` fails, so `pdx open` fails until at least Pandora's Harness is configured.
 
 ```toml
 [agents.greed.harness]
@@ -241,17 +252,23 @@ tools.add = ["Skill"]
 argv.add = ["--effort", "high", "--name", "Greed"]
 ```
 
-Scalar fields replace bundled defaults when present:
+Required scalar fields for a launched Agent are `kind`, `model`, and `system_prompt_mode`. Scalar fields replace earlier values when present, and matching rule values replace earlier scalar values:
 
 - `agents.<kind>.harness.kind`
 - `agents.<kind>.harness.model`
 - `agents.<kind>.harness.system_prompt_mode`
+- `rules.agents.<kind>.harness.kind`
+- `rules.agents.<kind>.harness.model`
+- `rules.agents.<kind>.harness.system_prompt_mode`
 
 List fields use operation tables:
 
 - `agents.<kind>.harness.tools.add`
 - `agents.<kind>.harness.tools.remove`
 - `agents.<kind>.harness.argv.add`
+- `rules.agents.<kind>.harness.tools.add`
+- `rules.agents.<kind>.harness.tools.remove`
+- `rules.agents.<kind>.harness.argv.add`
 
 `tools` is a unique list: removing an absent tool or adding an already-present tool fails. `argv` preserves argv-array behavior, supports `add`, and allows duplicate tokens. `argv` does not support `remove`.
 
@@ -328,7 +345,7 @@ A direct config-editing Agent can run from `$PDX_USER_DATA_DIR`, read `PANDORA.m
 | `packages/pdx/src/live.ts`             | Re-seed canonical config/templates and scaffold user config files.                                    |
 | `packages/pdx/src/controller.ts`       | Preserve user config during clean/nuke and pass launch context to Spawner.                            |
 | `resources/README.md`                  | Resource ownership map and pointers to this spec plus installed user reference docs.                  |
-| `resources/data-dir/`                  | Bundled canonical Agent defaults, prompts, and runtime `AGENTS.md` note.                              |
+| `resources/data-dir/`                  | Bundled canonical Agent prompt defaults, templates, and runtime `AGENTS.md` note.                     |
 | `resources/user-data-dir/PANDORA.md`   | User-facing policy registry, hook, preview, and lifecycle reference.                                  |
 | `resources/user-data-dir/`             | User config scaffold files and installed reference assets.                                            |
 
@@ -340,8 +357,9 @@ Automated tests cover:
 - Policy declaration validation: unknown ids, duplicate ids, invalid id syntax, missing files, unsupported relative paths, and unreadable files.
 - Match rule validation and matching for exact path, glob path, scope kind, and Agent kind.
 - Policy merge behavior: top-level defaults, Agent-specific defaults, ordered rules, add/remove behavior, duplicate final policy detection, and removing absent policies.
-- Harness merge behavior: scalar replacement, tool add/remove, argv add and path expansion.
+- Harness merge behavior: scalar replacement, rule-targeted scalar replacement, tool add/remove, argv add, and path expansion.
 - Prompt composition order: bundled base before generated command cards before policy packs.
+- Missing user Harness configuration fails render/open loudly instead of selecting a bundled runtime.
 - No user file can shadow bundled `agents/*.md` or `common/*.md` prompts.
 - Hook configuration validation and supervisor behavior.
 - `pandora-spawn preview` provenance for matched rules and selected policies.

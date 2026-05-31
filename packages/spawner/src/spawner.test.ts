@@ -434,6 +434,55 @@ const agentsFile = (input: {
 		.join("\n");
 };
 
+const userHarnessToml = `
+[agents.pandora.harness]
+kind = "pi"
+model = "model_test"
+system_prompt_mode = "replace"
+
+[agents.toil.harness]
+kind = "pi"
+model = "model_test"
+system_prompt_mode = "append"
+
+[agents.greed.harness]
+kind = "pi"
+model = "model_test"
+system_prompt_mode = "replace"
+
+[agents.war.harness]
+kind = "pi"
+model = "model_test"
+system_prompt_mode = "append"
+
+[agents.envy.harness]
+kind = "pi"
+model = "model_test"
+system_prompt_mode = "append"
+`;
+
+const liveTemplateServices = () => ({
+	readText: (path: string) =>
+		path === "/tmp/pdx-user/agents.toml" ? userHarnessToml : readFileSync(path, "utf8"),
+	realPath: (path: string) => path,
+	env: (key: string) =>
+		key === "PITHOS_DB"
+			? "/tmp/pithos.sqlite"
+			: key === "PDX_USER_DATA_DIR"
+				? "/tmp/pdx-user"
+				: undefined,
+	execFile: (file: string, args: readonly string[]) => {
+		const basename = file.split("/").at(-1);
+		if (basename === "pithos" && args.length === 1 && args[0] === "--help-json") {
+			return { status: 0, stdout: pithosHelpJson, stderr: "" };
+		}
+		if (basename === "pdx" && args.length === 1 && args[0] === "--help-json") {
+			return { status: 0, stdout: pdxHelpJson, stderr: "" };
+		}
+		return { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` };
+	},
+});
+
 const fakeRenderServices = (
 	agentsToml: string,
 	options: {
@@ -519,6 +568,20 @@ const makeLaunchServices = (
 	}) as const;
 
 describe("bundled agent templates", () => {
+	it("fails loudly when user config does not choose a Harness", () => {
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "pandora", mode: "hitl" },
+				{
+					readText: (path: string) => readFileSync(path, "utf8"),
+					realPath: (path: string) => path,
+					env: (key: string) => (key === "PITHOS_DB" ? "/tmp/pithos.sqlite" : undefined),
+					execFile: () => ({ status: 0, stdout: pithosHelpJson, stderr: "" }),
+				},
+			),
+		).toThrow("agents.pandora.harness.kind/model/system_prompt_mode is required in user config");
+	});
+
 	it.each([
 		["pandora", "hitl"],
 		["toil", "afk"],
@@ -530,21 +593,7 @@ describe("bundled agent templates", () => {
 			agent === "greed"
 				? { ...base, agent, mode, selectedCapability: "design" }
 				: { ...base, agent, mode };
-		const rendered = renderAgent(input, {
-			readText: (path: string) => readFileSync(path, "utf8"),
-			realPath: (path: string) => path,
-			env: (key: string) => (key === "PITHOS_DB" ? "/tmp/pithos.sqlite" : undefined),
-			execFile: (file: string, args: readonly string[]) => {
-				const basename = file.split("/").at(-1);
-				if (basename === "pithos" && args.length === 1 && args[0] === "--help-json") {
-					return { status: 0, stdout: pithosHelpJson, stderr: "" };
-				}
-				if (basename === "pdx" && args.length === 1 && args[0] === "--help-json") {
-					return { status: 0, stdout: pdxHelpJson, stderr: "" };
-				}
-				return { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` };
-			},
-		});
+		const rendered = renderAgent(input, liveTemplateServices());
 
 		expect(rendered.prompt).not.toContain("cwd/scope guard");
 		expect(rendered.prompt).not.toContain("Repository default-branch guard");
@@ -553,18 +602,7 @@ describe("bundled agent templates", () => {
 	it("teaches Greed design and review modes in bundled prompt", () => {
 		const rendered = renderAgent(
 			{ ...base, agent: "greed", mode: "hitl", selectedCapability: "review" },
-			{
-				readText: (path: string) => readFileSync(path, "utf8"),
-				realPath: (path: string) => path,
-				env: (key: string) => (key === "PITHOS_DB" ? "/tmp/pithos.sqlite" : undefined),
-				execFile: (file: string, args: readonly string[]) => {
-					const basename = file.split("/").at(-1);
-					if (basename === "pithos" && args.length === 1 && args[0] === "--help-json") {
-						return { status: 0, stdout: pithosHelpJson, stderr: "" };
-					}
-					return { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` };
-				},
-			},
+			liveTemplateServices(),
 		);
 		expect(rendered.prompt).toContain("## Design mode (`design`)");
 		expect(rendered.prompt).toContain("## Review mode (`review`)");
@@ -573,21 +611,7 @@ describe("bundled agent templates", () => {
 	});
 
 	it("teaches Pandora and Toil requested review routing without automatic gates", () => {
-		const services = {
-			readText: (path: string) => readFileSync(path, "utf8"),
-			realPath: (path: string) => path,
-			env: (key: string) => (key === "PITHOS_DB" ? "/tmp/pithos.sqlite" : undefined),
-			execFile: (file: string, args: readonly string[]) => {
-				const basename = file.split("/").at(-1);
-				if (basename === "pithos" && args.length === 1 && args[0] === "--help-json") {
-					return { status: 0, stdout: pithosHelpJson, stderr: "" };
-				}
-				if (basename === "pdx" && args.length === 1 && args[0] === "--help-json") {
-					return { status: 0, stdout: pdxHelpJson, stderr: "" };
-				}
-				return { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` };
-			},
-		};
+		const services = liveTemplateServices();
 		const pandora = renderAgent({ ...base, agent: "pandora", mode: "hitl" }, services);
 		const toil = renderAgent({ ...base, agent: "toil", mode: "afk" }, services);
 		expect(pandora.prompt).toContain(
@@ -624,21 +648,7 @@ describe("bundled agent templates", () => {
 	it("keeps bundled Pandora sitrep flow aligned with briefing before graph inspect", () => {
 		const rendered = renderAgent(
 			{ ...base, agent: "pandora", mode: "hitl" },
-			{
-				readText: (path: string) => readFileSync(path, "utf8"),
-				realPath: (path: string) => path,
-				env: (key: string) => (key === "PITHOS_DB" ? "/tmp/pithos.sqlite" : undefined),
-				execFile: (file: string, args: readonly string[]) => {
-					const basename = file.split("/").at(-1);
-					if (basename === "pithos" && args.length === 1 && args[0] === "--help-json") {
-						return { status: 0, stdout: pithosHelpJson, stderr: "" };
-					}
-					if (basename === "pdx" && args.length === 1 && args[0] === "--help-json") {
-						return { status: 0, stdout: pdxHelpJson, stderr: "" };
-					}
-					return { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` };
-				},
-			},
+			liveTemplateServices(),
 		);
 		expect(rendered.prompt).toContain(
 			"1. `pithos briefing --agent pandora` for claimable/blocked work, user-facing next actions",
@@ -989,6 +999,9 @@ policy.add = ["project"]
 scope_kind = "worktree"
 agent = "war"
 agents.war.policy.add = ["worktree-war"]
+agents.war.harness.kind = "claude"
+agents.war.harness.model = "opus"
+agents.war.harness.argv.add = ["--rule-flag"]
 `;
 		const services = {
 			...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
@@ -1040,6 +1053,9 @@ agents.war.policy.add = ["worktree-war"]
 			"project",
 			"worktree-war",
 		]);
+		expect(war.harness.kind).toBe("claude");
+		expect(war.harness.argv).toContain("opus");
+		expect(war.harness.argv).toContain("--rule-flag");
 
 		const toil = renderAgent(
 			{
@@ -1056,6 +1072,7 @@ agents.war.policy.add = ["worktree-war"]
 		expect(toil.prompt).toContain("PROJECT POLICY");
 		expect(toil.prompt).not.toContain("WORKTREE WAR POLICY");
 		expect(toil.provenance?.policyRules.matched.map((rule) => rule.index)).toEqual([0, 1]);
+		expect(toil.harness.kind).toBe("pi");
 	});
 
 	it("removes a globally selected policy for one agent", () => {
@@ -1241,7 +1258,7 @@ remove = ["global-flow"]
 					if (path === `${dataDir}/agents.toml`)
 						return readFileSync(join(templateDir, "..", "agents.toml"), "utf8");
 					if (path === `${userDir}/agents.toml`)
-						return '[agents.war.harness]\nmodel = "user_model"\n';
+						return '[agents.war.harness]\nkind = "pi"\nmodel = "user_model"\nsystem_prompt_mode = "append"\n';
 					if (path === `${userDir}/templates/agents/war.md`) return "USER_WAR_TEMPLATE";
 					if (path === `${userDir}/templates/common/base.md`) return "USER_BASE_TEMPLATE";
 					if (path.startsWith(`${dataDir}/templates/`)) {

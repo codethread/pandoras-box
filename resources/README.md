@@ -15,7 +15,7 @@ resources/
 `resources/data-dir/` contains bundle-owned runtime defaults. `pdx init` and
 `pdx open` re-seed these files into `<data-dir>`:
 
-- `agents.toml` — canonical bundled Agent/Harness defaults
+- `agents.toml` — canonical bundled Agent prompt defaults; Harness runtimes are user-configured
 - `templates/agents/*.md` — bundled Agent prompts
 - `templates/common/*.md` — bundled shared prompt fragments
 - `AGENTS.md` — minimal data-dir runtime note

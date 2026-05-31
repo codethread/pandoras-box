@@ -1,7 +1,77 @@
 # User-wide Pandora's Box manifest partial.
-# Customize workflow with declared policy packs plus optional Harness and hook
-# settings. Bundled Agent prompts and generated command cards stay fixed.
+# Bundled Agent prompts stay fixed, but bundled config does not choose a
+# Harness runtime. Configure at least Pandora before `pdx open`; configure the
+# other Agents before they need to launch.
 #
+# Validate rendering with `pandora-spawn preview` before reopening the box.
+
+# --- Pi Harness starter ----------------------------------------------------
+# Uncomment and adjust for an all-Pi setup.
+#
+# [agents.pandora.harness]
+# kind = "pi"
+# model = "deepseek-v4-pro"
+# system_prompt_mode = "replace"
+# tools.add = ["bash", "read"]
+#
+# [agents.toil.harness]
+# kind = "pi"
+# model = "openai-codex/gpt-5.4"
+# system_prompt_mode = "append"
+# tools.add = ["bash", "read", "grep", "find", "ls", "subagent"]
+#
+# [agents.greed.harness]
+# kind = "pi"
+# model = "openai-codex/gpt-5.5"
+# system_prompt_mode = "replace"
+#
+# [agents.war.harness]
+# kind = "pi"
+# model = "openai-codex/gpt-5.4"
+# system_prompt_mode = "append"
+#
+# [agents.envy.harness]
+# kind = "pi"
+# model = "openai-codex/gpt-5.4"
+# system_prompt_mode = "append"
+
+# --- Claude Harness starter ------------------------------------------------
+# Uncomment and adjust for an all-Claude setup. The plugin-dir example lets
+# Pandora load user-owned Claude skills from <user-data-dir>/claude-pandora.
+#
+# [agents.pandora.harness]
+# kind = "claude"
+# model = "sonnet"
+# system_prompt_mode = "replace"
+# tools.add = ["Bash", "Read", "Skill"]
+# argv.add = ["--name", "Pandora", "--effort", "high", "--plugin-dir", "$PDX_USER_DATA_DIR/claude-pandora"]
+#
+# [agents.toil.harness]
+# kind = "claude"
+# model = "sonnet"
+# system_prompt_mode = "append"
+# argv.add = ["--effort", "high", "--name", "Toil"]
+#
+# [agents.greed.harness]
+# kind = "claude"
+# model = "opus"
+# system_prompt_mode = "append"
+# tools.add = ["Agent", "Bash", "Glob", "Grep", "Read", "Skill"]
+# argv.add = ["--effort", "high", "--name", "Greed"]
+#
+# [agents.war.harness]
+# kind = "claude"
+# model = "sonnet"
+# system_prompt_mode = "append"
+# argv.add = ["--effort", "high", "--name", "War"]
+#
+# [agents.envy.harness]
+# kind = "claude"
+# model = "sonnet"
+# system_prompt_mode = "append"
+# argv.add = ["--effort", "high", "--name", "Envy"]
+
+# --- Policy packs -----------------------------------------------------------
 # Declare policies before selecting them. Relative files resolve from this
 # <user-data-dir>.
 #
@@ -11,45 +81,36 @@
 # [policies.war-style]
 # file = "policies/war-style.md"
 #
-# [policies.worktree-execution]
-# file = "policies/worktree-execution.md"
-#
-# Add policies globally or for one Agent kind.
-#
 # [policy]
 # add = ["git-flow"]
 #
 # [agents.war.policy]
 # add = ["war-style"]
-#
-# Add project-specific behavior with ordered match rules.
+
+# --- Path-targeted rules ----------------------------------------------------
+# Rules can target policy and Harness controls. This example defaults War to Pi
+# above, but uses Claude for work repos and Pi for dev repos.
 #
 # [[rules]]
 # path_glob = "~/work/**"
 # policy.add = ["worktree-execution"]
+# agents.war.harness.kind = "claude"
+# agents.war.harness.model = "sonnet"
+# agents.war.harness.argv.add = ["--effort", "high", "--name", "War"]
+#
+# [[rules]]
+# path_glob = "~/dev/**"
+# agents.war.harness.kind = "pi"
+# agents.war.harness.model = "openai-codex/gpt-5.4"
 #
 # [[rules]]
 # scope_kind = "worktree"
 # agent = "war"
 # agents.war.policy.add = ["worktree-execution"]
-#
-# Harness settings stay separate from prompt policy.
-#
-# [agents.greed.harness]
-# kind = "claude"
-# model = "opus"
-# system_prompt_mode = "append"
-# tools.add = ["Skill"]
-# argv.add = ["--effort", "high"]
-#
-# Configure the optional global input hook here.
-#
+
+# --- Input hook -------------------------------------------------------------
 # [hooks.input]
 # command = ["/Users/me/bin/pdx-inbox-watch"]
-#
-# Validate rendering with `pandora-spawn preview` before reopening the box.
-# Preview reports matched rules, selected policy ids, policy file paths, final
-# Harness config, and the rendered prompt.
 #
 # harness.argv expansion: $PDX_DATA_DIR, ${PDX_DATA_DIR},
 # $PDX_USER_DATA_DIR, ${PDX_USER_DATA_DIR}, ~, ~/... only; no shell eval.

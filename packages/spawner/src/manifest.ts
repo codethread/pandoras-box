@@ -451,15 +451,50 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 					layer.agentsPath,
 				);
 			}
+			if (partial?.harness?.tools !== undefined) {
+				if (
+					layer.kind === "user" &&
+					Object.prototype.hasOwnProperty.call(partial.harness.tools, "replace")
+				) {
+					throw new SpawnerError({
+						code: "VALIDATION_ERROR",
+						message: `${layer.agentsPath}: user manifest may not configure rules[${index.toString()}].agents.${agent}.harness.tools.replace`,
+					});
+				}
+				validateListOps(
+					partial.harness.tools,
+					`rules[${index.toString()}].agents.${agent}.harness.tools`,
+					layer.agentsPath,
+					true,
+					false,
+				);
+			}
+			if (partial?.harness?.argv !== undefined) {
+				if (
+					layer.kind === "user" &&
+					Object.prototype.hasOwnProperty.call(partial.harness.argv, "replace")
+				) {
+					throw new SpawnerError({
+						code: "VALIDATION_ERROR",
+						message: `${layer.agentsPath}: user manifest may not configure rules[${index.toString()}].agents.${agent}.harness.argv.replace`,
+					});
+				}
+				validateListOps(
+					partial.harness.argv,
+					`rules[${index.toString()}].agents.${agent}.harness.argv`,
+					layer.agentsPath,
+					false,
+					true,
+				);
+			}
 			if (
 				partial?.template !== undefined ||
 				partial?.includes !== undefined ||
-				partial?.appends !== undefined ||
-				partial?.harness !== undefined
+				partial?.appends !== undefined
 			) {
 				throw new SpawnerError({
 					code: "VALIDATION_ERROR",
-					message: `${layer.agentsPath}: rules[${index.toString()}].agents.${agent} may only configure policy`,
+					message: `${layer.agentsPath}: rules[${index.toString()}].agents.${agent} may only configure policy or harness`,
 				});
 			}
 		}
@@ -594,6 +629,31 @@ const mergeArgvList = (
 	if (ops === undefined) return current;
 	if (ops.replace !== undefined) return ops.replace;
 	return [...current, ...(ops.add ?? [])];
+};
+
+const applyPartialHarness = (
+	current: {
+		kind: "claude" | "pi" | undefined;
+		model: string | undefined;
+		system_prompt_mode: "replace" | "append" | undefined;
+		tools: readonly string[] | undefined;
+		argv: readonly string[];
+	},
+	partial:
+		| NonNullable<NonNullable<PartialAgentsFile["agents"]>[SpawnableAgentKind]>["harness"]
+		| undefined,
+	field: string,
+	path: string,
+): void => {
+	if (partial?.kind !== undefined) current.kind = partial.kind;
+	if (partial?.model !== undefined) current.model = partial.model;
+	if (partial?.system_prompt_mode !== undefined) {
+		current.system_prompt_mode = partial.system_prompt_mode;
+	}
+	if (partial?.tools !== undefined) {
+		current.tools = mergeUniqueList(current.tools ?? [], partial.tools, `${field}.tools`, path);
+	}
+	current.argv = mergeArgvList(current.argv, partial?.argv);
 };
 
 const resolvePolicyPath = (reference: string, layer: ConfigLayer): string => {
@@ -763,11 +823,17 @@ const buildResolvedConfig = (
 						`rules[${index.toString()}].policy`,
 						layer.agentsPath,
 					);
-					const agentPolicy = rule.agents?.[agent]?.policy;
+					const ruleAgentConfig = rule.agents?.[agent];
 					current.policyIds = mergeUniqueList(
 						current.policyIds,
-						agentPolicy,
+						ruleAgentConfig?.policy,
 						`rules[${index.toString()}].agents.${agent}.policy`,
+						layer.agentsPath,
+					);
+					applyPartialHarness(
+						current.harness,
+						ruleAgentConfig?.harness,
+						`rules[${index.toString()}].agents.${agent}.harness`,
 						layer.agentsPath,
 					);
 					matchedRules.push({
@@ -795,20 +861,12 @@ const buildResolvedConfig = (
 			}
 			if (partial === undefined) continue;
 
-			if (partial.harness?.kind !== undefined) current.harness.kind = partial.harness.kind;
-			if (partial.harness?.model !== undefined) current.harness.model = partial.harness.model;
-			if (partial.harness?.system_prompt_mode !== undefined) {
-				current.harness.system_prompt_mode = partial.harness.system_prompt_mode;
-			}
-			if (partial.harness?.tools !== undefined) {
-				current.harness.tools = mergeUniqueList(
-					current.harness.tools ?? [],
-					partial.harness.tools,
-					`agents.${agent}.harness.tools`,
-					layer.agentsPath,
-				);
-			}
-			current.harness.argv = mergeArgvList(current.harness.argv, partial.harness?.argv);
+			applyPartialHarness(
+				current.harness,
+				partial.harness,
+				`agents.${agent}.harness`,
+				layer.agentsPath,
+			);
 		}
 		const hookInput = file.hooks?.input;
 		if (hookInput !== undefined) hooks = mergeHookInput(hooks.input, hookInput);
@@ -817,6 +875,20 @@ const buildResolvedConfig = (
 	const resolvedAgents = Object.fromEntries(
 		BUILTIN_SPAWNABLE_AGENT_KINDS.map((agent) => {
 			const current = agents[agent];
+			const isSelectedAgent = agent === input.agent;
+			if (isSelectedAgent) {
+				const missingHarnessFields = [
+					...(current.harness.kind === undefined ? ["kind"] : []),
+					...(current.harness.model === undefined ? ["model"] : []),
+					...(current.harness.system_prompt_mode === undefined ? ["system_prompt_mode"] : []),
+				];
+				if (missingHarnessFields.length > 0) {
+					throw new SpawnerError({
+						code: "VALIDATION_ERROR",
+						message: `${bundledLayer.agentsPath}: agents.${agent}.harness.${missingHarnessFields.join("/")} is required in user config; bundled defaults do not choose a Harness`,
+					});
+				}
+			}
 			const policies = current.policyIds.map((policyId) => {
 				const declaration = policyDeclarations.get(policyId);
 				if (declaration === undefined) {
@@ -838,9 +910,9 @@ const buildResolvedConfig = (
 					includes: current.includes,
 					appends: current.appends,
 					harness: {
-						kind: current.harness.kind,
-						model: current.harness.model,
-						system_prompt_mode: current.harness.system_prompt_mode,
+						kind: current.harness.kind ?? "pi",
+						model: current.harness.model ?? "unconfigured",
+						system_prompt_mode: current.harness.system_prompt_mode ?? "append",
 						tools: current.harness.tools,
 						argv: current.harness.argv,
 					},
