@@ -5,6 +5,7 @@ import process from "node:process";
 import { inspect } from "node:util";
 import {
 	closePdx,
+	DAEMON_TARGET,
 	hookRestartPdx,
 	hookStopPdx,
 	initPdx,
@@ -85,6 +86,26 @@ const baseLayer = Layer.mergeAll(
 	Layer.succeed(Ids, IdsLive),
 );
 
+const latestSupervisorError = (raw: string): string | undefined => {
+	const lines = raw.trimEnd().split("\n").reverse();
+	for (const line of lines) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(line);
+		} catch {
+			continue;
+		}
+		if (typeof parsed !== "object" || parsed === null) continue;
+		const record = parsed as Record<string, unknown>;
+		const data = record.data;
+		if (typeof data === "object" && data !== null) {
+			const error = (data as Record<string, unknown>).error;
+			if (typeof error === "string" && error.length > 0) return error;
+		}
+	}
+	return undefined;
+};
+
 const runCommand = (runtime: RuntimeInput, input: CommandInput) =>
 	Effect.gen(function* () {
 		const config = yield* parsePdxConfig({
@@ -95,6 +116,7 @@ const runCommand = (runtime: RuntimeInput, input: CommandInput) =>
 			daemonEntrypoint: runtime.daemonEntrypoint,
 		});
 		const tmux = yield* makeTmux;
+		const fs = yield* FileSystem;
 		const supervisorLog = yield* makeSupervisorLog(config.logPath);
 		const registry = yield* makeRegistry;
 		const clock = yield* Clock;
@@ -129,17 +151,32 @@ const runCommand = (runtime: RuntimeInput, input: CommandInput) =>
 					),
 				);
 				return;
-			case "open":
+			case "open": {
 				yield* openPdx(config, input.maxAfk, input.intervalSeconds, {
 					clean: input.clean,
 					nuke: input.nuke,
 				}).pipe(Effect.provide(provided));
+				const pandoraStarted = yield* tmux.hasSession(PANDORA_TARGET);
+				if (!pandoraStarted) {
+					const detail = yield* fs.readFile(config.logPath).pipe(
+						Effect.map(latestSupervisorError),
+						Effect.catchAll(() => Effect.succeed(undefined)),
+					);
+					yield* tmux.killSession(DAEMON_TARGET).pipe(Effect.catchAll(() => Effect.void));
+					yield* Effect.fail(
+						new PdxError({
+							code: "PANDORA_STARTUP_FAILED",
+							message: `Pandora failed to start. Check user config at ${config.userDataDir}/agents.toml.${detail === undefined ? " Run 'pandora-spawn preview' to validate the configured Harness." : ` ${detail}`}`,
+						}),
+					);
+				}
 				if (runtime.envTmux === undefined) {
 					yield* tmux.attachSession(PANDORA_TARGET);
 				} else {
 					yield* tmux.switchClient(PANDORA_TARGET);
 				}
 				return;
+			}
 			case "close":
 				return yield* closePdx(config).pipe(Effect.provide(provided));
 			case "daemon.status": {
