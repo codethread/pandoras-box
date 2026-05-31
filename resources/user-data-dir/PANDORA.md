@@ -54,14 +54,18 @@ Declare policies in `agents.toml`:
 
 ```toml
 [policies.git-flow]
-file = "policies/git-flow.md"
+files = ["policies/git-flow.md"]
 
 [policies.perkbox]
-file = "policies/perkbox.md"
+files = ["policies/perkbox.md"]
 
 [policies.docs-release]
-file = "policies/projects/docs-release.md"
+files = ["policies/projects/docs-release.md"]
 ```
+
+`files` is a non-empty ordered array. Use multiple entries when one policy pack is
+split across shared and project-specific Markdown files; they are appended in
+array order.
 
 Select policies with `add` and `remove`:
 

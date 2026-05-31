@@ -73,13 +73,13 @@
 
 # --- Policy packs -----------------------------------------------------------
 # Declare policies before selecting them. Relative files resolve from this
-# <user-data-dir>.
+# <user-data-dir>. files is a non-empty ordered array.
 #
 # [policies.git-flow]
-# file = "policies/git-flow.md"
+# files = ["policies/git-flow.md"]
 #
 # [policies.war-style]
-# file = "policies/war-style.md"
+# files = ["policies/war-style.md"]
 #
 # [policy]
 # add = ["git-flow"]

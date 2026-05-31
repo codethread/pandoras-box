@@ -935,15 +935,16 @@ describe("renderAgent", () => {
 				if (path === `${userDir}/agents.toml`)
 					return `
 [policies.global-flow]
-file = "policies/global.md"
+files = ["policies/global.md", "policies/global-extra.md"]
 [policies.toil-only]
-file = "policies/toil.md"
+files = ["policies/toil.md"]
 [policy]
 add = ["global-flow"]
 [agents.toil.policy]
 add = ["toil-only"]
 `;
 				if (path === `${userDir}/policies/global.md`) return "GLOBAL {{agent}} POLICY";
+				if (path === `${userDir}/policies/global-extra.md`) return "GLOBAL EXTRA POLICY";
 				if (path === `${userDir}/policies/toil.md`) return "TOIL ONLY POLICY";
 				if (path === `${dataDir}/templates/_common.md`) return "COMMON";
 				if (path === `${dataDir}/templates/toil.md` || path === `${dataDir}/templates/war.md`)
@@ -961,12 +962,17 @@ add = ["toil-only"]
 		};
 		const toil = renderAgent({ ...base, agent: "toil", mode: "afk" }, services);
 		const war = renderAgent({ ...base, agent: "war", mode: "afk" }, services);
-		expect(toil.prompt).toContain("\n\n---\n\nGLOBAL {{agent}} POLICY\n\n---\n\nTOIL ONLY POLICY");
+		expect(toil.prompt).toContain(
+			"\n\n---\n\nGLOBAL {{agent}} POLICY\n\n---\n\nGLOBAL EXTRA POLICY\n\n---\n\nTOIL ONLY POLICY",
+		);
 		expect(war.prompt).toContain("GLOBAL {{agent}} POLICY");
 		expect(war.prompt).not.toContain("TOIL ONLY POLICY");
 		expect(toil.provenance?.policies).toEqual([
-			{ id: "global-flow", path: `${userDir}/policies/global.md` },
-			{ id: "toil-only", path: `${userDir}/policies/toil.md` },
+			{
+				id: "global-flow",
+				paths: [`${userDir}/policies/global.md`, `${userDir}/policies/global-extra.md`],
+			},
+			{ id: "toil-only", paths: [`${userDir}/policies/toil.md`] },
 		]);
 	});
 
@@ -976,13 +982,13 @@ add = ["toil-only"]
 		const repoDir = `${homedir()}/work/app`;
 		const userToml = `
 [policies.git-flow]
-file = "policies/git.md"
+files = ["policies/git.md"]
 [policies.org]
-file = "policies/org.md"
+files = ["policies/org.md"]
 [policies.project]
-file = "policies/project.md"
+files = ["policies/project.md"]
 [policies.worktree-war]
-file = "policies/worktree-war.md"
+files = ["policies/worktree-war.md"]
 [policy]
 add = ["git-flow"]
 
@@ -1086,7 +1092,7 @@ agents.war.harness.argv.add = ["--rule-flag"]
 				if (path === `${userDir}/agents.toml`)
 					return `
 [policies.global-flow]
-file = "global.md"
+files = ["global.md"]
 [policy]
 add = ["global-flow"]
 [agents.toil.policy]
@@ -1121,24 +1127,24 @@ remove = ["global-flow"]
 		[
 			"missing definition",
 			'[policy]\nadd = ["missing-policy"]',
-			/no policies\.missing-policy\.file declaration/,
+			/no policies\.missing-policy\.files declaration/,
 		],
 		[
 			"duplicate add",
-			'[policies.git-flow]\nfile = "p.md"\n[policy]\nadd = ["git-flow", "git-flow"]',
+			'[policies.git-flow]\nfiles = ["p.md"]\n[policy]\nadd = ["git-flow", "git-flow"]',
 			/duplicate value/,
 		],
 		[
 			"duplicate final add",
-			'[policies.git-flow]\nfile = "p.md"\n[policy]\nadd = ["git-flow"]\n[agents.war.policy]\nadd = ["git-flow"]',
+			'[policies.git-flow]\nfiles = ["p.md"]\n[policy]\nadd = ["git-flow"]\n[agents.war.policy]\nadd = ["git-flow"]',
 			/cannot add duplicate value/,
 		],
 		[
 			"absent remove",
-			'[policies.git-flow]\nfile = "p.md"\n[policy]\nremove = ["git-flow"]',
+			'[policies.git-flow]\nfiles = ["p.md"]\n[policy]\nremove = ["git-flow"]',
 			/cannot remove absent value/,
 		],
-		["invalid id", '[policies.Bad]\nfile = "p.md"', /invalid policy id 'Bad'/],
+		["invalid id", '[policies.Bad]\nfiles = ["p.md"]', /invalid policy id 'Bad'/],
 		["replace", '[policy]\nreplace = ["git-flow"]', /policy\.replace is not supported/],
 		["unknown rule predicate", '[[rules]]\nbranch = "main"', /unknown predicate or field 'branch'/],
 		[
@@ -1198,7 +1204,7 @@ remove = ["global-flow"]
 						if (path === `${dataDir}/agents.toml`)
 							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
 						if (path === `${userDir}/agents.toml`)
-							return '[policies.git-flow]\nfile = "../outside.md"\n[policy]\nadd = ["git-flow"]\n';
+							return '[policies.git-flow]\nfiles = ["../outside.md"]\n[policy]\nadd = ["git-flow"]\n';
 						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
 							code: "ENOENT",
 						});
@@ -1228,7 +1234,7 @@ remove = ["global-flow"]
 						if (path === `${dataDir}/agents.toml`)
 							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
 						if (path === `${userDir}/agents.toml`)
-							return '[policies.git-flow]\nfile = "missing.md"\n[policy]\nadd = ["git-flow"]\n';
+							return '[policies.git-flow]\nfiles = ["missing.md"]\n[policy]\nadd = ["git-flow"]\n';
 						if (path === `${dataDir}/templates/war.md`)
 							return "{{claim_command}}\n{{command_cards}}";
 						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {

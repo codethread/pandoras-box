@@ -38,10 +38,10 @@ Agent policy configuration defines how Spawner combines Pandora's Box's bundled 
   - **Rationale:** User files usually describe workflow policy, not reusable template internals. Naming the surface `policy` makes intent clear: users add instructions after the base prompt; they do not edit prompt composition machinery.
 
 - **Decision:** Policies are declared by id in `agents.toml`.
-  - **Rationale:** A policy id is auditable and explicit. Spawner does not discover arbitrary files or search for first matching names. A policy can be used only after `agents.toml` declares where its file lives.
+  - **Rationale:** A policy id is auditable and explicit. Spawner does not discover arbitrary files or search for first matching names. A policy can be used only after `agents.toml` declares which files compose it.
 
-- **Decision:** Policy files resolve relative to the manifest that declares them.
-  - **Rationale:** This avoids silent shadowing. If a policy id is declared in `$PDX_USER_DATA_DIR/agents.toml`, its relative `file` path is loaded under `$PDX_USER_DATA_DIR`; it is not searched through other roots.
+- **Decision:** Policy file entries resolve relative to the manifest that declares them.
+  - **Rationale:** This avoids silent shadowing. If a policy id is declared in `$PDX_USER_DATA_DIR/agents.toml`, its relative `files` entries are loaded under `$PDX_USER_DATA_DIR`; they are not searched through other roots.
 
 - **Decision:** User config is centralized in `PDX_USER_DATA_DIR`.
   - **Rationale:** Users can version-control one config tree, review all workflow policy in one place, and target project-specific behavior with match rules instead of scattering `.pdx` directories across repositories.
@@ -167,7 +167,7 @@ For a given Agent, the final policy list is ordered by merge sequence:
 3. matching rule-level `[rules.policy]` additions/removals
 4. matching rule Agent policy additions/removals
 
-Spawner reads each policy file in final order and appends it to the rendered prompt after bundled base content and generated command cards, separated by `\n\n---\n\n`.
+Spawner reads each selected policy id in final order. For each policy id, it reads the declared `files` entries in order, joins them with `\n\n---\n\n`, and appends the result to the rendered prompt after bundled base content and generated command cards, also separated by `\n\n---\n\n`.
 
 A policy id may appear at most once in the final list. Adding an already-present policy id or removing an absent policy id fails loudly.
 
@@ -181,19 +181,19 @@ Every policy id used by `policy.add` must be declared:
 
 ```toml
 [policies.git-flow]
-file = "policies/git-flow.md"
+files = ["policies/git-flow.md"]
 
 [policies.perkbox]
-file = "policies/perkbox.md"
+files = ["policies/perkbox.md"]
 ```
 
-Policy ids use lowercase kebab-case. Policy files may be relative, absolute, or `~/...` paths:
+Policy ids use lowercase kebab-case. `files` is a non-empty ordered array. Entries may be relative, absolute, or `~/...` paths:
 
 - relative paths resolve under `$PDX_USER_DATA_DIR`
 - absolute paths read exactly that path
 - `~/...` expands to the current user's home directory
 
-Missing policy files fail render loudly. Policy Markdown is appended verbatim; Spawner does not render variables inside policy files.
+Missing policy files fail render loudly. Policy Markdown is appended verbatim in `files` order; Spawner does not render variables inside policy files.
 
 ### Policy selection
 
@@ -215,13 +215,13 @@ Example:
 
 ```toml
 [policies.git-flow]
-file = "policies/git-flow.md"
+files = ["policies/git-flow.md"]
 
 [policies.perkbox]
-file = "policies/perkbox.md"
+files = ["policies/perkbox.md"]
 
 [policies.docs-release]
-file = "policies/projects/docs-release.md"
+files = ["policies/projects/docs-release.md"]
 
 [policy]
 add = ["git-flow"]

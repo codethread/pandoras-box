@@ -78,7 +78,7 @@ interface RenderedAgentFields {
 		readonly appends: readonly TemplateProvenance[];
 		readonly policies: readonly {
 			readonly id: string;
-			readonly path: string;
+			readonly paths: readonly string[];
 		}[];
 		readonly policyRules: {
 			readonly matchPath: string;
@@ -791,7 +791,7 @@ export const renderAgent = (
 			},
 			includes: includeAssets.map(templateProvenance),
 			appends: appendAssets.map(templateProvenance),
-			policies: manifest.policies.map((policy) => ({ id: policy.id, path: policy.path })),
+			policies: manifest.policies.map((policy) => ({ id: policy.id, paths: policy.paths })),
 			policyRules: {
 				matchPath: manifest.ruleMatchPath,
 				matched: manifest.matchedRules,

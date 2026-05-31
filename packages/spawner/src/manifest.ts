@@ -29,7 +29,7 @@ const PolicyListOpsSchema = Schema.Struct({
 	add: Schema.optional(NonEmptyStringArray),
 });
 const PolicyDeclarationSchema = Schema.Struct({
-	file: Schema.NonEmptyString,
+	files: NonEmptyStringArray,
 });
 const ArgvListOpsSchema = Schema.Struct({
 	replace: Schema.optional(NonEmptyStringArray),
@@ -132,7 +132,7 @@ export interface MatchedPolicyRuleProvenance {
 export type ResolvedAgentManifest = Schema.Schema.Type<typeof ResolvedAgentSchema> & {
 	readonly policies: readonly {
 		readonly id: string;
-		readonly path: string;
+		readonly paths: readonly string[];
 		readonly content: string;
 	}[];
 	readonly matchedRules: readonly MatchedPolicyRuleProvenance[];
@@ -790,12 +790,15 @@ const buildResolvedConfig = (
 		bundledLayer.agentsPath,
 	);
 
-	const policyDeclarations = new Map<string, string>();
+	const policyDeclarations = new Map<string, readonly string[]>();
 	const matchedRules: MatchedPolicyRuleProvenance[] = [];
 	const ruleMatchPath = ruleMatchPathForInput(input, bundledLayer.agentsPath);
 	for (const [layer, file] of layerFiles.slice(1)) {
 		for (const [policyId, declaration] of Object.entries(file.policies ?? {})) {
-			policyDeclarations.set(policyId, resolvePolicyPath(declaration.file, layer));
+			policyDeclarations.set(
+				policyId,
+				declaration.files.map((policyFile) => resolvePolicyPath(policyFile, layer)),
+			);
 		}
 		for (const agent of BUILTIN_SPAWNABLE_AGENT_KINDS) {
 			const partial = file.agents?.[agent];
@@ -890,17 +893,19 @@ const buildResolvedConfig = (
 				}
 			}
 			const policies = current.policyIds.map((policyId) => {
-				const declaration = policyDeclarations.get(policyId);
-				if (declaration === undefined) {
+				const paths = policyDeclarations.get(policyId);
+				if (paths === undefined) {
 					throw new SpawnerError({
 						code: "VALIDATION_ERROR",
-						message: `${bundledLayer.agentsPath}: selected policy '${policyId}' has no policies.${policyId}.file declaration`,
+						message: `${bundledLayer.agentsPath}: selected policy '${policyId}' has no policies.${policyId}.files declaration`,
 					});
 				}
 				return {
 					id: policyId,
-					path: declaration,
-					content: readPolicyText(declaration, services),
+					paths,
+					content: paths
+						.map((policyPath) => readPolicyText(policyPath, services))
+						.join("\n\n---\n\n"),
 				};
 			});
 			const resolved = decode(
