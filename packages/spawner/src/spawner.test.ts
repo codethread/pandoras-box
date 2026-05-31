@@ -1727,6 +1727,143 @@ remove = ["global-flow"]
 		},
 	);
 
+	it("rejects user harness.tools.replace", () => {
+		const dataDir = "/tmp/pdx-user-tools-replace-data";
+		const userDir = `${dataDir}/config`;
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				{
+					...fakeRenderServices(
+						agentsFile({
+							agent: "war",
+							mode: "afk",
+							harnessKind: "pi",
+						}),
+					),
+					readText: (path: string) => {
+						if (path === `${dataDir}/agents.toml`) {
+							return agentsFile({
+								agent: "war",
+								mode: "afk",
+								harnessKind: "pi",
+							});
+						}
+						if (path === `${userDir}/agents.toml`) {
+							return `[agents.war.harness]\ntools.replace = ["bash"]\n`;
+						}
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					env: (key: string) => {
+						if (key === "PDX_DATA_DIR") return dataDir;
+						if (key === "PDX_USER_DATA_DIR") return userDir;
+						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+						return undefined;
+					},
+				},
+			),
+		).toThrow("user manifest may not configure agents.war.harness.tools.replace");
+	});
+
+	it("rejects user harness.argv.replace", () => {
+		const dataDir = "/tmp/pdx-user-argv-replace-data";
+		const userDir = `${dataDir}/config`;
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				{
+					...fakeRenderServices(
+						agentsFile({
+							agent: "war",
+							mode: "afk",
+							harnessKind: "pi",
+						}),
+					),
+					readText: (path: string) => {
+						if (path === `${dataDir}/agents.toml`) {
+							return agentsFile({
+								agent: "war",
+								mode: "afk",
+								harnessKind: "pi",
+							});
+						}
+						if (path === `${userDir}/agents.toml`) {
+							return `[agents.war.harness]\nargv.replace = ["--plugin-dir", "/tmp/my-plug"]\n`;
+						}
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					env: (key: string) => {
+						if (key === "PDX_DATA_DIR") return dataDir;
+						if (key === "PDX_USER_DATA_DIR") return userDir;
+						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+						return undefined;
+					},
+					execFile: noopExec,
+				},
+			),
+		).toThrow("user manifest may not configure agents.war.harness.argv.replace");
+	});
+
+	it("applies user harness add operations for tools and argv", () => {
+		const dataDir = "/tmp/pdx-user-harness-ops-data";
+		const userDir = `${dataDir}/config`;
+		const rendered = renderAgent(
+			{ ...base, agent: "war", mode: "afk", scopeId: "scope_repo" },
+			{
+				readText: (path: string) => {
+					if (path === `${dataDir}/agents.toml`) {
+						return agentsFile({
+							agent: "war",
+							mode: "afk",
+							harnessKind: "claude",
+							tools: ["bash"],
+						});
+					}
+					if (path === `${userDir}/agents.toml`) {
+						return `
+[agents.war.harness]
+tools.remove = ["bash"]
+tools.add = ["read"]
+argv.add = ["--plugin-dir", "/tmp/user-plugin"]
+`;
+					}
+					if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+					if (path === `${dataDir}/templates/war.md`) {
+						return "{{tools_csv}} {{_common.md}} {{model}} {{claims}} {{enqueues}} {{claim_command}}";
+					}
+					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+						code: "ENOENT",
+					});
+				},
+				realPath: (path: string) => path,
+				env: (key: string) => {
+					if (key === "PDX_DATA_DIR") return dataDir;
+					if (key === "PDX_USER_DATA_DIR") return userDir;
+					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+					return undefined;
+				},
+				execFile: (file: string, args: readonly string[]) => {
+					const basename = file.split("/").at(-1);
+					if (basename === "pithos" && args.length === 1 && args[0] === "--help-json") {
+						return { status: 0, stdout: pithosHelpJson, stderr: "" };
+					}
+					return { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` };
+				},
+			},
+		);
+		const toolIndex = rendered.harness.argv.indexOf("--tools");
+		const readIndex = rendered.harness.argv.indexOf("read");
+		const pluginIndex = rendered.harness.argv.indexOf("--plugin-dir");
+		expect(toolIndex).toBeGreaterThan(0);
+		expect(readIndex).toBeGreaterThan(toolIndex);
+		expect(pluginIndex).toBeGreaterThan(-1);
+		expect(pluginIndex).toBeLessThan(toolIndex);
+	});
+
 	it.each(["pi", "claude"] as const)(
 		"inserts user argv after binary name and before Spawner flags for %s hitl",
 		(harnessKind) => {

@@ -104,13 +104,13 @@ Pandora's `pithos graph inspect` annotations summarize the implemented graph con
 
 `{{command_cards}}` is the supported variable. Its rendered content is generated Markdown, not raw JSON. `{{command_reference}}` is not supported.
 
-`pandora-spawn preview` returns a JSON `RenderedAgent`; the `prompt` field is the manual verification surface for command-card output. Preview validates manifest/templates/help metadata but does not mutate Pithos, create Runs, touch tmux, or launch a Harness.
+`pandora-spawn preview` returns a JSON `RenderedAgent`; the `prompt` field is the manual verification surface for command-card output. Preview validates bundled prompts, user policy config, and help metadata but does not mutate Pithos, create Runs, touch tmux, or launch a Harness.
 
 ## 7. Code Locations and Tests
 
 - `packages/spawner/src/spawner.ts` — command tree parsing, role filters, annotations, Markdown rendering
 - `packages/spawner/src/spawner.test.ts` — role filtering, raw-JSON regression coverage, annotation validation
-- `resources/README.md` — template variable and extension contract
+- `specs/agent-configuration.md` — bundled prompt, policy-pack, and template variable contract
 - `packages/pithos/src/cli.ts` — Pithos help JSON source
 - `packages/pdx/src/main.ts` — pdx help JSON source
 

@@ -73,7 +73,7 @@ Pithos seeds and enforces the built-in Agent kinds, Capabilities, claim authoriz
 | `greed`    | HITL         | `design`, `review` | `triage`, `design`, `escalate`                      |
 | `war`      | AFK          | `execute`          | `escalate`                                          |
 
-Capabilities are `intake`, `triage`, `design`, `execute`, `review`, and `escalate`. `execute` work must be in repo/worktree Scope. `intake` and `escalate` work lives in global Scope. `review` work may be global, repo, or worktree scoped and is ordinary non-escalation work claimed by Greed. Pithos enforces the durable authorization contract; templates describe workflow policy but are not authorization truth.
+Capabilities are `intake`, `triage`, `design`, `execute`, `review`, and `escalate`. `execute` work must be in repo/worktree Scope. `intake` and `escalate` work lives in global Scope. `review` work may be global, repo, or worktree scoped and is ordinary non-escalation work claimed by Greed. Pithos enforces the durable authorization contract; bundled prompts and user policy packs guide workflow but are not authorization truth.
 
 ## 4. pdx Lifecycle
 
@@ -114,7 +114,7 @@ Registry entries in `launching`, `live`, and `terminating` states count against 
 
 ## 5. Greed Review Lifecycle
 
-Greed handles `review` Tasks as requested HITL assessment: inspect the Task graph and scoped context, prepare the walkthrough, then enqueue a global `escalate` readiness Task so Pandora can route the user to Greed's live session. Greed records the outcome in an artifact and completes the review Task; rejected work is routed onward through Pandora/Toil rather than silently rewriting the chain.
+Greed handles `review` Tasks as requested HITL assessment: inspect the Task graph and scoped context, prepare the walkthrough, then enqueue a global `escalate` readiness Task so Pandora can route the user to Greed's live session. Greed records the outcome durably through the task/session context or an artifact when policy calls for one, then completes the review Task; rejected work is routed onward through Pandora/Toil rather than silently rewriting the chain.
 
 ## 6. Repair Alerts and Broken Chains
 
@@ -193,7 +193,7 @@ pdx reconcile
 
 Spawner owns:
 
-- manifest and template validation
+- manifest, bundled prompt, and policy validation
 - command-card rendering into prompts
 - Harness argv/env construction
 - expected Harness session log paths; Claude paths use the realpath-normalized launch CWD to match Claude Code's project bucket naming
@@ -242,6 +242,7 @@ All commands resolve data dir as `--data-dir`, then `PDX_DATA_DIR`, then `$HOME/
 - `packages/pdx/src/log.ts` — Supervisor log JSONL
 - `packages/pithos/src/engine.ts` and `packages/pithos/src/engine/*` — Run/Task transitions, Repair Alert creation, Task/Scope read models, graph inspection, Engine output contracts, and text renderers
 - `packages/spawner/src/spawner.ts` — render/launch/transcript behavior
-- `resources/README.md` — manifest, layered template/config contract, input hook contract
+- `specs/agent-configuration.md` — manifest policy-pack contract and user `agents.toml` semantics, including harness `tools` / `argv` merge rules
+- `resources/user-data-dir/PANDORA.md` — machine-local user configuration guide and edit-time contract
 
 Automated coverage lives primarily in `packages/pdx/test/substrate.test.ts`, `packages/pithos/test/`, and `packages/spawner/src/spawner.test.ts`.

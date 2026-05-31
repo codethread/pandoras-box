@@ -476,6 +476,15 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 			validatePolicyOps(partial.policy, `agents.${agent}.policy`, layer.agentsPath);
 		}
 		if (partial.harness?.tools !== undefined) {
+			if (
+				layer.kind === "user" &&
+				Object.prototype.hasOwnProperty.call(partial.harness.tools, "replace")
+			) {
+				throw new SpawnerError({
+					code: "VALIDATION_ERROR",
+					message: `${layer.agentsPath}: user manifest may not configure agents.${agent}.harness.tools.replace`,
+				});
+			}
 			validateListOps(
 				partial.harness.tools,
 				`agents.${agent}.harness.tools`,
@@ -485,6 +494,15 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 			);
 		}
 		if (partial.harness?.argv !== undefined) {
+			if (
+				layer.kind === "user" &&
+				Object.prototype.hasOwnProperty.call(partial.harness.argv, "replace")
+			) {
+				throw new SpawnerError({
+					code: "VALIDATION_ERROR",
+					message: `${layer.agentsPath}: user manifest may not configure agents.${agent}.harness.argv.replace`,
+				});
+			}
 			validateListOps(
 				partial.harness.argv,
 				`agents.${agent}.harness.argv`,
