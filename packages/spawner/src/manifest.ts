@@ -470,15 +470,6 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 				);
 			}
 			if (partial?.harness?.argv !== undefined) {
-				if (
-					layer.kind === "user" &&
-					Object.prototype.hasOwnProperty.call(partial.harness.argv, "replace")
-				) {
-					throw new SpawnerError({
-						code: "VALIDATION_ERROR",
-						message: `${layer.agentsPath}: user manifest may not configure rules[${index.toString()}].agents.${agent}.harness.argv.replace`,
-					});
-				}
 				validateListOps(
 					partial.harness.argv,
 					`rules[${index.toString()}].agents.${agent}.harness.argv`,
@@ -529,15 +520,6 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 			);
 		}
 		if (partial.harness?.argv !== undefined) {
-			if (
-				layer.kind === "user" &&
-				Object.prototype.hasOwnProperty.call(partial.harness.argv, "replace")
-			) {
-				throw new SpawnerError({
-					code: "VALIDATION_ERROR",
-					message: `${layer.agentsPath}: user manifest may not configure agents.${agent}.harness.argv.replace`,
-				});
-			}
 			validateListOps(
 				partial.harness.argv,
 				`agents.${agent}.harness.argv`,
@@ -816,6 +798,12 @@ const buildResolvedConfig = (
 					`agents.${agent}.policy`,
 					layer.agentsPath,
 				);
+				applyPartialHarness(
+					current.harness,
+					partial.harness,
+					`agents.${agent}.harness`,
+					layer.agentsPath,
+				);
 			}
 			if (agent === input.agent) {
 				file.rules?.forEach((rule, index) => {
@@ -862,14 +850,6 @@ const buildResolvedConfig = (
 					});
 				});
 			}
-			if (partial === undefined) continue;
-
-			applyPartialHarness(
-				current.harness,
-				partial.harness,
-				`agents.${agent}.harness`,
-				layer.agentsPath,
-			);
 		}
 		const hookInput = file.hooks?.input;
 		if (hookInput !== undefined) hooks = mergeHookInput(hooks.input, hookInput);

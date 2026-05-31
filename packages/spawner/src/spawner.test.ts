@@ -1081,6 +1081,63 @@ agents.war.harness.argv.add = ["--rule-flag"]
 		expect(toil.harness.kind).toBe("pi");
 	});
 
+	it("lets matching rules override top-level harness scalar defaults", () => {
+		const dataDir = "/tmp/pdx-harness-rule-data";
+		const userDir = "/tmp/pdx-harness-rule-user";
+		const devDir = `${homedir()}/dev/project`;
+		const userToml = `
+[agents.war.harness]
+kind = "claude"
+model = "sonnet"
+system_prompt_mode = "append"
+
+[[rules]]
+path_glob = "~/dev/**"
+agents.war.harness.kind = "pi"
+agents.war.harness.model = "openai-codex/gpt-5.4"
+`;
+		const services = {
+			...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+			readText: (path: string) => {
+				if (path === `${dataDir}/agents.toml`)
+					return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+				if (path === `${userDir}/agents.toml`) return userToml;
+				if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+				if (path === `${dataDir}/templates/war.md`) return "{{model}} {{command_cards}}";
+				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+					code: "ENOENT",
+				});
+			},
+			env: (key: string) =>
+				key === "PDX_DATA_DIR"
+					? dataDir
+					: key === "PDX_USER_DATA_DIR"
+						? userDir
+						: key === "PITHOS_DB"
+							? `${dataDir}/pithos.sqlite`
+							: undefined,
+		};
+
+		const war = renderAgent(
+			{
+				...base,
+				agent: "war",
+				mode: "afk",
+				scopeId: "scope_repo",
+				scopeKind: "repo",
+				scopePath: devDir,
+				cwd: "/tmp/fallback",
+			},
+			services,
+		);
+
+		expect(war.provenance?.policyRules.matched.map((rule) => rule.index)).toEqual([0]);
+		expect(war.harness.kind).toBe("pi");
+		expect(war.harness.argv[0]).toBe("pi");
+		expect(war.harness.argv).toContain("openai-codex/gpt-5.4");
+		expect(war.sessionLogPath).toContain("/.pi/agent/sessions/");
+	});
+
 	it("removes a globally selected policy for one agent", () => {
 		const dataDir = "/tmp/pdx-policy-remove-data";
 		const userDir = "/tmp/pdx-policy-remove-user";
@@ -1790,45 +1847,112 @@ remove = ["global-flow"]
 		).toThrow("user manifest may not configure agents.war.harness.tools.replace");
 	});
 
-	it("rejects user harness.argv.replace", () => {
+	it("applies user harness argv.replace", () => {
 		const dataDir = "/tmp/pdx-user-argv-replace-data";
 		const userDir = `${dataDir}/config`;
-		expect(() =>
-			renderAgent(
-				{ ...base, agent: "war", mode: "afk" },
-				{
-					...fakeRenderServices(
-						agentsFile({
+		const rendered = renderAgent(
+			{ ...base, agent: "war", mode: "afk" },
+			{
+				...fakeRenderServices(
+					agentsFile({
+						agent: "war",
+						mode: "afk",
+						harnessKind: "pi",
+						argv: ["--base-flag"],
+					}),
+				),
+				readText: (path: string) => {
+					if (path === `${dataDir}/agents.toml`) {
+						return agentsFile({
 							agent: "war",
 							mode: "afk",
 							harnessKind: "pi",
-						}),
-					),
-					readText: (path: string) => {
-						if (path === `${dataDir}/agents.toml`) {
-							return agentsFile({
-								agent: "war",
-								mode: "afk",
-								harnessKind: "pi",
-							});
-						}
-						if (path === `${userDir}/agents.toml`) {
-							return `[agents.war.harness]\nargv.replace = ["--plugin-dir", "/tmp/my-plug"]\n`;
-						}
-						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-							code: "ENOENT",
+							argv: ["--base-flag"],
 						});
-					},
-					env: (key: string) => {
-						if (key === "PDX_DATA_DIR") return dataDir;
-						if (key === "PDX_USER_DATA_DIR") return userDir;
-						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-						return undefined;
-					},
-					execFile: noopExec,
+					}
+					if (path === `${userDir}/agents.toml`) {
+						return `[agents.war.harness]\nargv.replace = ["--plugin-dir", "/tmp/my-plug"]\n`;
+					}
+					if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+					if (path === `${dataDir}/templates/war.md`) return "STATIC";
+					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+						code: "ENOENT",
+					});
 				},
-			),
-		).toThrow("user manifest may not configure agents.war.harness.argv.replace");
+				env: (key: string) => {
+					if (key === "PDX_DATA_DIR") return dataDir;
+					if (key === "PDX_USER_DATA_DIR") return userDir;
+					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+					return undefined;
+				},
+				execFile: (file: string, args: readonly string[]) => {
+					const basename = file.split("/").at(-1);
+					if (basename === "pithos" && args.length === 1 && args[0] === "--help-json") {
+						return { status: 0, stdout: pithosHelpJson, stderr: "" };
+					}
+					return { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` };
+				},
+			},
+		);
+
+		expect(rendered.harness.argv).not.toContain("--base-flag");
+		expect(rendered.harness.argv[1]).toBe("--plugin-dir");
+		expect(rendered.harness.argv[2]).toBe("/tmp/my-plug");
+	});
+
+	it("lets matching rules replace user harness argv", () => {
+		const dataDir = "/tmp/pdx-rule-argv-replace-data";
+		const userDir = `${dataDir}/config`;
+		const rendered = renderAgent(
+			{
+				...base,
+				agent: "war",
+				mode: "afk",
+				scopeId: "scope_repo",
+				scopeKind: "repo",
+				scopePath: `${homedir()}/dev/project`,
+			},
+			{
+				...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+				readText: (path: string) => {
+					if (path === `${dataDir}/agents.toml`) {
+						return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+					}
+					if (path === `${userDir}/agents.toml`) {
+						return `
+[agents.war.harness]
+argv.add = ["--name", "War"]
+
+[[rules]]
+path_glob = "~/dev/**"
+agents.war.harness.argv.replace = ["--name", "War Dev"]
+`;
+					}
+					if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+					if (path === `${dataDir}/templates/war.md`) return "STATIC";
+					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+						code: "ENOENT",
+					});
+				},
+				env: (key: string) => {
+					if (key === "PDX_DATA_DIR") return dataDir;
+					if (key === "PDX_USER_DATA_DIR") return userDir;
+					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+					return undefined;
+				},
+				execFile: (file: string, args: readonly string[]) => {
+					const basename = file.split("/").at(-1);
+					if (basename === "pithos" && args.length === 1 && args[0] === "--help-json") {
+						return { status: 0, stdout: pithosHelpJson, stderr: "" };
+					}
+					return { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` };
+				},
+			},
+		);
+
+		expect(rendered.harness.argv).not.toContain("War");
+		expect(rendered.harness.argv[1]).toBe("--name");
+		expect(rendered.harness.argv[2]).toBe("War Dev");
 	});
 
 	it("applies user harness add operations for tools and argv", () => {

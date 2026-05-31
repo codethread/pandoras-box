@@ -102,6 +102,7 @@
 # path_glob = "~/dev/**"
 # agents.war.harness.kind = "pi"
 # agents.war.harness.model = "openai-codex/gpt-5.4"
+# agents.war.harness.argv.replace = ["--name", "War"]
 #
 # [[rules]]
 # scope_kind = "worktree"

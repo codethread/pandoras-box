@@ -227,7 +227,7 @@ agents.war.harness.kind = "pi"
 agents.war.harness.model = "openai-codex/gpt-5.4"
 ```
 
-Required scalar fields for a launched Agent are `kind`, `model`, and `system_prompt_mode`. Matching rule values can target the actual Harness controls for launches under specific paths:
+Required scalar fields for a launched Agent are `kind`, `model`, and `system_prompt_mode`. Top-level Agent Harness config is applied first, then matching rules are applied in file order, so narrower path rules can replace earlier scalar values for the actual launch:
 
 - `agents.<kind>.harness.kind`
 - `agents.<kind>.harness.model`
@@ -241,11 +241,13 @@ List fields use operations:
 - `agents.<kind>.harness.tools.add`
 - `agents.<kind>.harness.tools.remove`
 - `agents.<kind>.harness.argv.add`
+- `agents.<kind>.harness.argv.replace`
 - `rules.agents.<kind>.harness.tools.add`
 - `rules.agents.<kind>.harness.tools.remove`
 - `rules.agents.<kind>.harness.argv.add`
+- `rules.agents.<kind>.harness.argv.replace`
 
-`harness.argv` is an argv array, not a shell string. Supported expansion is terse and path-oriented only:
+Use `argv.replace` when a narrower rule must discard earlier Harness-specific flags, such as swapping Claude-only argv for a Pi launch. `harness.argv` is an argv array, not a shell string. Supported expansion is terse and path-oriented only:
 
 - `$PDX_DATA_DIR` / `${PDX_DATA_DIR}`
 - `$PDX_USER_DATA_DIR` / `${PDX_USER_DATA_DIR}`

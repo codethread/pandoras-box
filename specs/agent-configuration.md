@@ -266,11 +266,13 @@ List fields use operation tables:
 - `agents.<kind>.harness.tools.add`
 - `agents.<kind>.harness.tools.remove`
 - `agents.<kind>.harness.argv.add`
+- `agents.<kind>.harness.argv.replace`
 - `rules.agents.<kind>.harness.tools.add`
 - `rules.agents.<kind>.harness.tools.remove`
 - `rules.agents.<kind>.harness.argv.add`
+- `rules.agents.<kind>.harness.argv.replace`
 
-`tools` is a unique list: removing an absent tool or adding an already-present tool fails. `argv` preserves argv-array behavior, supports `add`, and allows duplicate tokens. `argv` does not support `remove`.
+`tools` is a unique list: removing an absent tool or adding an already-present tool fails. `argv` preserves argv-array behavior, supports `add` and `replace`, and allows duplicate tokens. `argv` does not support `remove`.
 
 Spawner applies only path-oriented expansion for `$PDX_DATA_DIR`, `${PDX_DATA_DIR}`, `$PDX_USER_DATA_DIR`, `${PDX_USER_DATA_DIR}`, `~`, and `~/...`; unsupported or unset `$VARS` fail render loudly. No shell evaluation, globbing, command substitution, or quote parsing is performed.
 
@@ -357,7 +359,7 @@ Automated tests cover:
 - Policy declaration validation: unknown ids, duplicate ids, invalid id syntax, missing files, unsupported relative paths, and unreadable files.
 - Match rule validation and matching for exact path, glob path, scope kind, and Agent kind.
 - Policy merge behavior: top-level defaults, Agent-specific defaults, ordered rules, add/remove behavior, duplicate final policy detection, and removing absent policies.
-- Harness merge behavior: scalar replacement, rule-targeted scalar replacement, tool add/remove, argv add, and path expansion.
+- Harness merge behavior: scalar replacement, rule-targeted scalar replacement, tool add/remove, argv add/replace, and path expansion.
 - Prompt composition order: bundled base before generated command cards before policy packs.
 - Missing user Harness configuration fails render/open loudly instead of selecting a bundled runtime.
 - No user file can shadow bundled `agents/*.md` or `common/*.md` prompts.
