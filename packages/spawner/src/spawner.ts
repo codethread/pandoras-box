@@ -652,7 +652,6 @@ const harnessArgv = (
 	input: RenderAgentInput,
 	manifest: ResolvedAgentManifest,
 	config: SpawnerConfig,
-	sessionLogPath: string,
 	prompt: string,
 ): readonly string[] => {
 	const promptFlag =
@@ -689,8 +688,8 @@ const harnessArgv = (
 	const base = [
 		"pi",
 		...userArgv,
-		"--session",
-		sessionLogPath,
+		"--session-id",
+		input.sessionId,
 		"--model",
 		manifest.harness.model,
 		...toolsArgs,
@@ -773,7 +772,7 @@ export const renderAgent = (
 		logicalName: logicalName(input),
 		harness: {
 			kind: manifest.harness.kind,
-			argv: harnessArgv(input, manifest, config, sessionLogPath, prompt),
+			argv: harnessArgv(input, manifest, config, prompt),
 			env,
 		},
 		sessionLogPath,

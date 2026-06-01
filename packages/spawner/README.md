@@ -108,7 +108,7 @@ Read `src/spawner.ts` for exact argv construction. Stable behavior worth knowing
 - AFK mode uses Harness print mode with the message `Claim and process one task, then exit.`
 - HITL mode launches under tmux.
 - HITL prompt delivery uses a temp-file shell wrapper for every Harness to keep rendered prompts out of the `tmux new-session` argv.
-- Session log paths are computed before launch and stored by `pdx` on the Pithos Run. For Claude, Spawner matches Claude Code's project bucket by resolving the launch CWD through `realpath` before slugging every non-alphanumeric/non-hyphen character to `-`.
+- Session log paths are computed before launch and stored by `pdx` on the Pithos Run. For Claude, Spawner matches Claude Code's project bucket by resolving the launch CWD through `realpath` before slugging every non-alphanumeric/non-hyphen character to `-`. For Pi, Spawner passes the Pithos Harness session id through Pi's native `--session-id` flag and keeps the expected project-local JSONL path for transcript lookup.
 - Launch failures are surfaced as tagged Spawner failures. Spawner does not cancel tasks or enqueue escalations; pdx classifies launch-precondition failures such as missing cwd before/around launch and owns the Pithos repair workflow.
 
 ## Development

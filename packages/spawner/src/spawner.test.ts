@@ -745,6 +745,9 @@ describe("renderAgent", () => {
 		expect(rendered.harness.argv.includes("--dangerously-skip-permissions")).toBe(
 			harnessKind === "claude",
 		);
+		expect(rendered.harness.argv).toContain("--session-id");
+		expect(rendered.harness.argv).toContain(base.sessionId);
+		expect(rendered.harness.argv.includes("--session")).toBe(false);
 		expect(rendered.harness.argv).toContain("--tools");
 		expect(rendered.harness.argv).toContain("bash,read");
 		expect(rendered.harness.env).not.toHaveProperty("PITHOS_BIN");
@@ -1799,7 +1802,7 @@ remove = ["global-flow"]
 			expect(argv[1]).toBe("--plugin-dir");
 			expect(argv[2]).toBe("/tmp/my-plug");
 			expect(argv[3]).toBe(
-				harnessKind === "claude" ? "--dangerously-skip-permissions" : "--session",
+				harnessKind === "claude" ? "--dangerously-skip-permissions" : "--session-id",
 			);
 			expect(argv).toContain("--model");
 			expect(argv).toContain("--print");
@@ -2030,7 +2033,7 @@ argv.add = ["--plugin-dir", "/tmp/user-plugin"]
 			expect(argv[1]).toBe("--plugin-dir");
 			expect(argv[2]).toBe("/tmp/my-plug");
 			expect(argv[3]).toBe(
-				harnessKind === "claude" ? "--dangerously-skip-permissions" : "--session",
+				harnessKind === "claude" ? "--dangerously-skip-permissions" : "--session-id",
 			);
 			expect(argv.at(-1)).toBe("begin");
 		},

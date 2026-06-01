@@ -196,7 +196,7 @@ Spawner owns:
 - manifest, bundled prompt, and policy validation
 - command-card rendering into prompts
 - Harness argv/env construction
-- expected Harness session log paths; Claude paths use the realpath-normalized launch CWD to match Claude Code's project bucket naming
+- expected Harness session log paths; Claude paths use the realpath-normalized launch CWD to match Claude Code's project bucket naming, and Pi launches use native `--session-id` with the Pithos Harness session id
 - AFK process launch and HITL tmux launch
 - Harness session transcript parsing for `pdx run transcript`
 
