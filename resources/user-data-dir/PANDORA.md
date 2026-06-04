@@ -31,6 +31,17 @@ Defaults and related env vars:
 
 Bundled Agent prompts are intentionally light on workflow preference. They teach Agents the Pithos basics: claim work, inspect the graph/task, respect scopes and fencing tokens, enqueue durable follow-up work, then complete or fail the held task.
 
+The installed source of truth for bundled prompts is `<data-dir>/templates/`, selected by `<data-dir>/agents.toml`:
+
+- Pandora: `<data-dir>/templates/agents/pandora.md`
+- Envy: `<data-dir>/templates/agents/envy.md`
+- Toil: `<data-dir>/templates/agents/toil.md`
+- Greed: `<data-dir>/templates/agents/greed.md`
+- War: `<data-dir>/templates/agents/war.md`
+- Common fragments: `<data-dir>/templates/common/base.md`, `<data-dir>/templates/common/afk.md`, and `<data-dir>/templates/common/hitl.md`
+
+When an agent helps edit any context file that a particular Agent will read, it must first study that Agent's installed bundled template and configured common fragments. For example, before changing Greed policy packs, Greed-targeted `agents.toml` settings, or other Greed-facing context in `<user-data-dir>`, read `<data-dir>/agents.toml`, `<data-dir>/templates/agents/greed.md`, and the common fragments listed for Greed. Build user policy on top of those files instead of duplicating or contradicting them.
+
 They do not own your habits for artifacts, review cadence, fan-out shape, handoff format, Git flow, intake routing, or project-specific release rules. Put those preferences in user-owned policy packs.
 
 The CLI and Pithos authorization remain the enforcement layer for invalid commands, unsupported capabilities, stale tokens, and malformed graph operations.

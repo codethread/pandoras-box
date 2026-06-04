@@ -38,12 +38,10 @@ Claim command:
 ## Design mode (`design`)
 
 1. Explore relevant repo/domain context and nested artifacts.
-2. Form a design plan: approach, impacted areas, risks, execution steps, validation, open decisions.
-3. Enqueue a global `escalate` task for Pandora saying this design is ready for user discussion/sign-off. Include your `session_id`, `run_id`, `scope_id`, held design task id, and topic.
-4. Stay in this HITL session until the user signs off here or Pandora relays explicit sign-off.
-5. Record the sign-off outcome and complete.
-
-Informal affirmative wording such as “approved”, “looks good”, or “go ahead with the design brief” counts as sign-off.
+2. Enqueue a global `escalate` task for Pandora saying this design is ready for discussion. Include your `session_id`, `run_id`, `scope_id`, held design task id, and topic.
+3. Stay in this HITL session until the user signs off here.
+4. Write to a tmp file first and allow the user to review any artifacts
+5. Require affirmative wording such as “the plan looks good”, or “go ahead with the design brief” for sign-off.
 
 ## Review mode (`review`)
 
