@@ -6,8 +6,6 @@ import { inspect } from "node:util";
 import {
 	closePdx,
 	DAEMON_TARGET,
-	hookRestartPdx,
-	hookStopPdx,
 	initPdx,
 	killPdx,
 	logsShowPdx,
@@ -33,7 +31,6 @@ import {
 	ClockLive,
 	FileSystemLive,
 	IdsLive,
-	LiveHookExecutor,
 	makePithosClientLive,
 	makeSpawnerLive,
 	ProcessLive,
@@ -43,7 +40,6 @@ import { makeNoopLifecycleReporter, makeStdoutLifecycleReporter } from "./lifecy
 import {
 	Clock,
 	FileSystem,
-	HookExecutor,
 	Ids,
 	LifecycleReporter,
 	makeRegistry,
@@ -131,7 +127,6 @@ const runCommand = (runtime: RuntimeInput, input: CommandInput) =>
 			Layer.succeed(Registry, registry),
 			Layer.succeed(PithosClient, makePithosClientLive(config.pithosDbPath)),
 			Layer.succeed(Spawner, makeSpawnerLive(config)),
-			Layer.succeed(HookExecutor, LiveHookExecutor),
 		);
 
 		switch (input.command) {
@@ -146,7 +141,11 @@ const runCommand = (runtime: RuntimeInput, input: CommandInput) =>
 							`Data dir: ${config.dataDir}`,
 							`User config dir: ${config.userDataDir}`,
 							"",
-							"Next: run `pdx open` to release Pandora.",
+							"Next: configure your agents, then run `pdx open` to release Pandora.",
+							"",
+							`  cd ${config.userDataDir}`,
+							`  claude \"help me set up agents.toml\"`,
+							'  # or: pi "help me set up agents.toml"',
 						].join("\n") + "\n",
 					),
 				);
@@ -225,14 +224,6 @@ const runCommand = (runtime: RuntimeInput, input: CommandInput) =>
 					Effect.provide(provided),
 				);
 				yield* Effect.sync(() => process.stdout.write(json(confirmation)));
-				return;
-			}
-			case "hook.stop": {
-				yield* hookStopPdx(config).pipe(Effect.provide(provided));
-				return;
-			}
-			case "hook.restart": {
-				yield* hookRestartPdx(config).pipe(Effect.provide(provided));
 				return;
 			}
 			case "daemon.run": {

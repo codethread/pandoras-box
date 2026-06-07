@@ -171,6 +171,49 @@ model = "openai-codex/gpt-5.4"
 system_prompt_mode = "append"
 ```
 
+### Custom skills
+
+Custom skills are scoped per Agent by adding that Agent's skill location to its Harness argv. Put the argv entry only under the Agent that should see those skills; this gives, for example, Greed-only design/review skills without contaminating Pandora, War, Toil, or Envy.
+
+For Pi, point `--skill` at a folder containing skill folders:
+
+```toml
+[agents.greed.harness]
+kind = "pi"
+model = "openai-codex/gpt-5.5"
+system_prompt_mode = "replace"
+argv.add = ["--skill", "$PDX_USER_DATA_DIR/greed-skills"]
+```
+
+For Claude, expose the same kind of skills through a plugin dir and enable the `Skill` tool:
+
+```toml
+[agents.pandora.harness]
+kind = "claude"
+model = "sonnet"
+system_prompt_mode = "replace"
+tools.add = ["Skill"]
+argv.add = ["--plugin-dir", "$PDX_USER_DATA_DIR/claude-pandora"]
+```
+
+Example layout:
+
+```text
+<user-data-dir>/
+  greed-skills/                  # Pi: --skill "$PDX_USER_DATA_DIR/greed-skills"
+    design/
+      SKILL.md                   # skill file on design
+      reference.md               # optional details on design
+    review/
+      SKILL.md
+  claude-pandora/                # Claude: --plugin-dir "$PDX_USER_DATA_DIR/claude-pandora"
+    skills/
+      sitrep/
+        SKILL.md
+      pandora-smoke/
+        SKILL.md
+```
+
 ### All-Claude example
 
 This mirrors a real config shape with Claude skills exposed to Pandora through a plugin directory under `<user-data-dir>`.
@@ -209,7 +252,7 @@ system_prompt_mode = "append"
 argv.add = ["--effort", "high", "--name", "Envy"]
 ```
 
-Useful Pandora Claude skills are ordinary Claude plugin skills. For example, `$PDX_USER_DATA_DIR/claude-pandora/skills/sitrep/SKILL.md` can contain a short “Sitrep” instruction, while `pandora-smoke` can encode your local smoke-test runbook and `tidyup` can encode your end-of-day cleanup routine.
+For the custom skills example above, `$PDX_USER_DATA_DIR/claude-pandora/skills/sitrep/SKILL.md` can contain a short “Sitrep” instruction, while `pandora-smoke` can encode your local smoke-test runbook and `tidyup` can encode your end-of-day cleanup routine.
 
 ### Mixed/path-targeted example
 
@@ -266,27 +309,19 @@ Use `argv.replace` when a narrower rule must discard earlier Harness-specific fl
 
 Other `$VARS` fail render; no shell eval, globbing, or quote parsing.
 
-## Hooks
+## External intake socket
 
-Input hooks let an external watcher feed signals to Envy. Configure them in `<user-data-dir>/agents.toml`:
+External watchers feed signals to Envy by writing events to the daemon-owned intake socket. There is no `agents.toml` producer configuration and pdx does not supervise your watcher process.
 
-```toml
-[hooks.input]
-command = ["/path/to/watcher", "--flag"]
+While `pdx open` is running, the socket is available at:
+
+```text
+<data-dir>/intake.sock
 ```
 
-`command` is an argv array. It is not run through a shell, so include the executable and each argument as separate strings. To disable a configured hook:
+With the default data dir, that is `~/.pdx/intake.sock`. `pdx daemon status` also reports the resolved `intake_socket` path.
 
-```toml
-[hooks.input]
-enabled = false
-```
-
-Do not set `enabled = false` together with `command`.
-
-The input hook runs as a long-lived producer after Pandora is live. pdx closes hook stdin, reads hook stdout as newline-delimited JSON, and writes hook stderr to `<data-dir>/runs/hook.stderr.log`.
-
-Each stdout line must be one JSON object:
+Write one JSON object to the socket connection:
 
 ```json
 { "title": "New bug report", "body": "Full signal text for Envy to classify." }
@@ -297,9 +332,15 @@ Required fields:
 - `title` — non-empty string used as the intake Task title
 - `body` — non-empty string used as the intake Task body
 
-For each valid line, pdx creates a global `intake` Task. Envy claims that Task and classifies the signal. Put workflow-specific classification rules in Envy policy packs.
+For each valid event, pdx creates a global `intake` Task. Envy claims that Task and classifies the signal. Put workflow-specific classification rules in Envy policy packs.
 
-Invalid JSON or invalid fields are logged and skipped; the hook keeps running. If the hook exits, pdx restarts it with backoff. Repeated crashes create an `input_hook_stuck` Repair Alert for Pandora and stop restarts. After fixing the hook script, use `pdx hook restart` to resume supervision without a full pdx restart, or `pdx hook stop` to disable it. A full `pdx close && pdx open` also clears the crash-loop state.
+Example producer:
+
+```sh
+printf '%s\n' '{"title":"New bug report","body":"Full signal text for Envy to classify."}' | nc -U ~/.pdx/intake.sock
+```
+
+Because the producer is outside pdx, run it however you prefer: launchd, systemd, cron, a repo script, a GitHub/email watcher, or a one-off shell command. Malformed JSON, missing fields, or enqueue failures return an error response on the socket and do not create a Task.
 
 ## Validation
 

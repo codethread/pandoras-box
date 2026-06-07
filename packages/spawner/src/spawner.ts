@@ -10,9 +10,7 @@ import { Either, ParseResult, Schema } from "effect";
 import { SpawnerError } from "./errors.js";
 import {
 	loadResolvedAgentConfig,
-	loadResolvedHooks,
 	resolveTemplateAsset,
-	type HooksConfig,
 	type ResolvedAgentManifest,
 	type ResolvedTemplateAsset,
 } from "./manifest.js";
@@ -156,11 +154,6 @@ const validateSessionId = (sessionId: string): void => {
 	}
 };
 
-export type { HooksConfig } from "./manifest.js";
-
-export const loadHooks = (services: RenderServices = LiveSpawnerServices): HooksConfig =>
-	loadResolvedHooks(services);
-
 const claimForAgent = (
 	agent: SpawnableAgentKind,
 	selectedCapability: Capability | undefined,
@@ -299,12 +292,6 @@ const PDX_COMMAND_ANNOTATIONS: Readonly<Record<string, readonly string[]>> = {
 	"pdx task show": [
 		"Navigation only: jumps to the interactive holder run for a task when one exists.",
 	],
-	"pdx hook stop": [
-		"Stops the running input hook process without restarting it. No-op if no hook is configured.",
-	],
-	"pdx hook restart": [
-		"Stops and re-forks the input hook supervisor. Use after fixing a hook script or clearing an input_hook_stuck alert.",
-	],
 };
 
 const PITHOS_TOP_LEVEL_PATHS: Record<SpawnableAgentKind, readonly string[]> = {
@@ -321,8 +308,6 @@ const PANDORA_PDX_COMMAND_PATHS = [
 	"pdx run transcript",
 	"pdx run show",
 	"pdx task show",
-	"pdx hook stop",
-	"pdx hook restart",
 ] as const;
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
@@ -974,8 +959,18 @@ const textFromPiUserContent = (content: unknown, path: string, line: number): st
 		.join("\n");
 };
 
-const textFromPiAssistantContent = (content: unknown, path: string, line: number): string => {
-	const blocks = contentArray(content, path, line, "message.content");
+const piAssistantErrorText = (message: JsonRecord, path: string, line: number): string => {
+	const errorMessage = message.errorMessage;
+	if (typeof errorMessage !== "string") return "";
+	const trimmed = errorMessage.trim();
+	if (trimmed.length === 0) {
+		throw harnessError(path, line, "message.errorMessage must be non-empty when present");
+	}
+	return `ERROR: ${trimmed}`;
+};
+
+const textFromPiAssistantContent = (message: JsonRecord, path: string, line: number): string => {
+	const blocks = contentArray(message.content, path, line, "message.content");
 	const text = blocks
 		.flatMap((item) => {
 			if (item.type === "text") {
@@ -989,7 +984,11 @@ const textFromPiAssistantContent = (content: unknown, path: string, line: number
 		.map((part) => part.trim())
 		.filter((part) => part.length > 0)
 		.join("\n");
-	if (text.length > 0) return text;
+	const errorText = piAssistantErrorText(message, path, line);
+	if (text.length > 0) {
+		return errorText.length > 0 ? `${text}\n${errorText}` : text;
+	}
+	if (errorText.length > 0) return errorText;
 	const tools = blocks
 		.filter((item) => item.type === "toolCall")
 		.map((item) => requiredString(item.name, path, line, "message.content[].name"));
@@ -1029,7 +1028,7 @@ const parsePiTranscript = (path: string, raw: string): readonly TranscriptMessag
 			const text =
 				role === "user"
 					? textFromPiUserContent(message.content, path, line)
-					: textFromPiAssistantContent(message.content, path, line);
+					: textFromPiAssistantContent(message, path, line);
 			if (text.length === 0) return [];
 			return [{ ts: fmtTs(entry.timestamp, path, line), role: role.toUpperCase(), text }];
 		}

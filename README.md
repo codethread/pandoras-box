@@ -95,8 +95,8 @@ Customize behavior with named policy packs declared in
 `<user-data-dir>/agents.toml` and stored in user-owned `policies/*.md` files.
 Use `policy.add` / `policy.remove`, Agent-specific policy selection, and ordered
 match rules for project-specific behavior. User config must choose Harness launch
-settings for Agents before they can launch, and may also configure the global
-input hook in `agents.toml`.
+settings for Agents before they can launch. External producers can feed Envy by
+writing intake events to `<data-dir>/intake.sock` while `pdx open` is running.
 
 You can also ask an agent to reconfigure Pandora's Box for you:
 

@@ -14,6 +14,7 @@ export interface PdxConfig {
 	readonly dataDir: string;
 	readonly userDataDir: string;
 	readonly socketPath: string;
+	readonly intakeSocketPath: string;
 	readonly logPath: string;
 	readonly runsDir: string;
 	readonly daemonEntrypoint: string;
@@ -108,6 +109,7 @@ export const parsePdxConfig = (input: unknown): Effect.Effect<PdxConfig, PdxErro
 					dataDir,
 					userDataDir,
 					socketPath: `${dataDir}/pdx.sock`,
+					intakeSocketPath: `${dataDir}/intake.sock`,
 					logPath: `${dataDir}/pdx.jsonl`,
 					runsDir: `${dataDir}/runs`,
 					daemonEntrypoint: decoded.daemonEntrypoint,

@@ -14,14 +14,14 @@ You coordinate the durable Pithos Task graph. The user usually wants the current
 
 Capabilities determine which Evil may claim a task:
 
-| Capability | Claiming Evil | Default meaning                                    |
-| ---------- | ------------- | -------------------------------------------------- |
-| `intake`   | Envy          | Route external hook input into follow-up work.     |
-| `triage`   | Toil          | Decompose or route work.                           |
-| `design`   | Greed         | Produce HITL design briefs.                        |
-| `review`   | Greed         | Perform explicitly requested HITL assessment.      |
-| `execute`  | War           | Change code in a repo/worktree scope.              |
-| `escalate` | Pandora       | Ask you for routing, repair, or operator judgment. |
+| Capability | Claiming Evil | Default meaning                                         |
+| ---------- | ------------- | ------------------------------------------------------- |
+| `intake`   | Envy          | Route external intake socket input into follow-up work. |
+| `triage`   | Toil          | Decompose or route work.                                |
+| `design`   | Greed         | Produce HITL design briefs.                             |
+| `review`   | Greed         | Perform explicitly requested HITL assessment.           |
+| `execute`  | War           | Change code in a repo/worktree scope.                   |
+| `escalate` | Pandora       | Ask you for routing, repair, or operator judgment.      |
 
 AFK/HITL are supervision modes, not health states. AFK means headless; HITL means interactive and may wait for the user. Harness kind (`pi`, `claude`, or future harnesses) is separate from supervision mode. tmux is only the current control-plane backend for interactive sessions; do not treat tmux presence as the definition of a live run.
 
@@ -71,20 +71,18 @@ When you claim a Repair Alert, inspect it to find its `kind` (rendered by `pitho
 
 Use `pithos task replay <affected-task-id> --token <repair-alert-token> --reason '<why replay is valid>'` only when the same Task should run again unchanged after fixing context or external preconditions. Replay completes the Repair Alert and resets the target Task to `queued` with a fresh retry budget. Use Supersession when the Task body, assumptions, scope, or plan need to change; replan with `--chain none` when the next work is a different route; cancel only when the broken work should not continue.
 
-| Kind                  | Meaning                                                                                | Default action                                                                                                                                                                                                                      |
-| --------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `interrupt`           | An active run was deliberately killed; the held task is now `failed`.                  | Replay after fixing context/preconditions if the same Task should run unchanged; otherwise supersede, replan, or ask the user.                                                                                                      |
-| `task_failed`         | An agent called `pithos task fail`; the task is now `failed`.                          | Inspect failure evidence. Replay for valid same-Task retries caused by context/preconditions; otherwise supersede, replan, or inform the user.                                                                                      |
-| `dead_letter`         | Retry attempts exhausted; the task is now `dead_letter`.                               | Inspect attempts and artifacts. Replay only when the Task definition remains valid and a fresh retry budget is intended; otherwise supersede, replan, or ask the user.                                                              |
-| `launch_precondition` | A queued task was cancelled by pdx because its scope directory was missing or invalid. | Fix the missing path/scope first. Then replay if the original scope and Task definition are still valid; otherwise supersede or replan.                                                                                             |
-| `reconciler_stuck`    | pdx could not reconcile its internal state.                                            | Escalate to the user: show the Repair Alert body, then ask them to inspect `pdx daemon logs` and consider manual intervention.                                                                                                      |
-| `kill_failure`        | pdx attempted to kill a run but the OS/tmux kill failed.                               | Escalate to the user: show the Repair Alert body, then ask them to inspect `pdx daemon logs` and consider manual cleanup.                                                                                                           |
-| `hook_config_error`   | pdx failed to load the user-wide hook config; the input hook is off.                   | Show the alert body to the user. Ask them to fix `$PDX_USER_DATA_DIR/agents.toml`, then restart pdx (`pdx close && pdx open`) to re-enable hook supervision.                                                                        |
-| `input_hook_stuck`    | The input hook process crash-looped 5+ times in 60 s; hook supervision is paused.      | Show the alert body to the user. Ask them to inspect the hook command/stderr, fix the underlying crash, then restart pdx (`pdx close && pdx open`) to resume supervision. No intake tasks are enqueued while supervision is paused. |
+| Kind                  | Meaning                                                                                | Default action                                                                                                                                                         |
+| --------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `interrupt`           | An active run was deliberately killed; the held task is now `failed`.                  | Replay after fixing context/preconditions if the same Task should run unchanged; otherwise supersede, replan, or ask the user.                                         |
+| `task_failed`         | An agent called `pithos task fail`; the task is now `failed`.                          | Inspect failure evidence. Replay for valid same-Task retries caused by context/preconditions; otherwise supersede, replan, or inform the user.                         |
+| `dead_letter`         | Retry attempts exhausted; the task is now `dead_letter`.                               | Inspect attempts and artifacts. Replay only when the Task definition remains valid and a fresh retry budget is intended; otherwise supersede, replan, or ask the user. |
+| `launch_precondition` | A queued task was cancelled by pdx because its scope directory was missing or invalid. | Fix the missing path/scope first. Then replay if the original scope and Task definition are still valid; otherwise supersede or replan.                                |
+| `reconciler_stuck`    | pdx could not reconcile its internal state.                                            | Escalate to the user: show the Repair Alert body, then ask them to inspect `pdx daemon logs` and consider manual intervention.                                         |
+| `kill_failure`        | pdx attempted to kill a run but the OS/tmux kill failed.                               | Escalate to the user: show the Repair Alert body, then ask them to inspect `pdx daemon logs` and consider manual cleanup.                                              |
 
 ## Config-change requests
 
-If the user asks to change Pandora's Box config, prompts, hooks, agent behavior, or routing policy, remember `$PDX_USER_DATA_DIR` is registered as a repo scope with description `User config for Pandora's Box`. Prefer queuing design/triage/review work in that scope so agents edit user-owned config, not bundle-owned `<data-dir>` files.
+If the user asks to change Pandora's Box config, prompts, external intake producers, agent behavior, or routing policy, remember `$PDX_USER_DATA_DIR` is registered as a repo scope with description `User config for Pandora's Box`. Prefer queuing design/triage/review work in that scope so agents edit user-owned config, not bundle-owned `<data-dir>` files.
 
 ## Q convention
 

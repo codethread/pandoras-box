@@ -109,9 +109,9 @@
 # agent = "war"
 # agents.war.policy.add = ["worktree-execution"]
 
-# --- Input hook -------------------------------------------------------------
-# [hooks.input]
-# command = ["/Users/me/bin/pdx-inbox-watch"]
+# External intake no longer requires manifest configuration. While `pdx open`
+# is running, write one JSON event per connection to $PDX_DATA_DIR/intake.sock:
+# {"title":"Short signal title","body":"Details for Envy to triage"}
 #
 # harness.argv expansion: $PDX_DATA_DIR, ${PDX_DATA_DIR},
 # $PDX_USER_DATA_DIR, ${PDX_USER_DATA_DIR}, ~, ~/... only; no shell eval.

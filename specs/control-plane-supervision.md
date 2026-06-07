@@ -104,7 +104,6 @@ Each tick settles lifecycle before spawning:
 8. send a content-free Nudge when claimable Escalation work appears
 9. validate launch cwd for one selected claimable non-Pandora Task
 10. spawn at most one Agent through Spawner, in built-in order with Envy before Toil/Greed/War; claimable `design` and `review` work both launch Greed with the selected claim Capability passed to Spawner for deterministic claim-command rendering
-11. supervise the configured input hook, if any
 
 Registry entries in `launching`, `live`, and `terminating` states count against caps. The MVP cap is one live entry per `(Agent kind, Scope)` plus the global AFK cap.
 
@@ -128,8 +127,6 @@ Implemented kinds include:
 - `launch_precondition` — queued work could not launch because its repo/worktree cwd was missing or invalid
 - `reconciler_stuck` — repeated reconcile failures need Pandora/operator attention
 - `kill_failure` — pdx could not kill a live resource after repeated attempts
-- `input_hook_stuck` — the configured input hook crash-looped
-- `hook_config_error` — input hook configuration/rendering failed
 
 Escalation routing uses typed Task edges:
 
@@ -202,22 +199,13 @@ Spawner owns:
 
 Spawner does not own Pithos graph policy, live Registry state, Kill, Cleanup, Interrupt, Cancel, or Nudge policy.
 
-## 9. Input Hook
+## 9. External Intake Socket
 
-Bundled defaults and `$PDX_USER_DATA_DIR/agents.toml` may configure `hooks.input.command`; rules, scope directories, and project-local `.pdx` manifests do not configure hooks. pdx runs that command as a producer process after Pandora is live. The hook writes newline-delimited JSON on stdout; each valid line with non-empty `title` and `body` creates a global `intake` Task for Envy. Invalid lines are logged and skipped.
+When the daemon is running, pdx listens on `<data-dir>/intake.sock` for external intake events. Each connection accepts one JSON object with non-empty `title` and `body`, then creates one global `intake` Task for Envy. Invalid JSON, invalid fields, or enqueue failures return an error response to the socket client and do not create a Task.
 
-pdx supervises the hook independently:
+The intake socket is always daemon-owned while `pdx open` is running. It is not configured through `agents.toml`, rules, scope directories, or project-local `.pdx` manifests. External watcher lifecycles belong to the user; pdx does not spawn, restart, or kill producer processes.
 
-- stdin is closed
-- stderr goes to `<data-dir>/runs/hook.stderr.log`
-- each raw stdout line is appended to `<data-dir>/runs/hook.stdout.log` before being parsed
-- stdout is bounded and parsed as NDJSON
-- exits restart with exponential backoff capped at 30 seconds
-- backoff resets after stable uptime
-- repeated crashes create an `input_hook_stuck` Repair Alert and stop restarting until pdx is restarted
-- `pdx close` sends SIGTERM; if the hook does not exit it escalates to SIGKILL and polls briefly before treating the process as stuck
-
-When a hook command is configured, pdx creates a `pdx--hooks` tmux session that tails `hook.stderr.log` and `hook.stdout.log` in real time. The session persists across hook restarts and is killed when the daemon closes. The operator can navigate to it like any other pdx tmux session.
+`pdx daemon status` reports the resolved `intake_socket` path. `pdx close` closes and unlinks the intake socket.
 
 ## 10. Operator and Pandora Interfaces
 
@@ -227,7 +215,6 @@ The public `pdx` surface is the operator/Pandora control surface:
 - `pdx daemon status`, `pdx daemon logs`
 - `pdx run kill`, `pdx run transcript`, `pdx run show`
 - `pdx task kill`, `pdx task show`
-- `pdx hook stop`, `pdx hook restart`
 
 All commands resolve data dir as `--data-dir`, then `PDX_DATA_DIR`, then `$HOME/.pdx`.
 
@@ -235,7 +222,7 @@ All commands resolve data dir as `--data-dir`, then `PDX_DATA_DIR`, then `$HOME/
 
 ## 11. Code Locations and Tests
 
-- `packages/pdx/src/controller.ts` — lifecycle, reconcile, Kill, launch-precondition handling, input hook supervision
+- `packages/pdx/src/controller.ts` — lifecycle, reconcile, Kill, launch-precondition handling, intake socket startup
 - `packages/pdx/src/live.ts` — live service bindings, Pithos/Spawner integration, template materialization
 - `packages/pdx/src/main.ts` — public CLI and IPC dispatch
 - `packages/pdx/src/services.ts` — injected services and Registry interface

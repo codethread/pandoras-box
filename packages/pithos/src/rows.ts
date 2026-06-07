@@ -68,8 +68,6 @@ export const REPAIR_ALERT_KINDS = [
 	"launch_precondition",
 	"reconciler_stuck",
 	"kill_failure",
-	"input_hook_stuck",
-	"hook_config_error",
 ] as const;
 
 export const RepairAlertKindSchema = Schema.Literal(...REPAIR_ALERT_KINDS);

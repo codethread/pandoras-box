@@ -29,7 +29,7 @@ Spawner owns:
 - expected Harness session log paths
 - AFK mode process launch mechanics
 - HITL mode tmux launch mechanics
-- Claude/Pi transcript parsing for `pdx run transcript`; malformed or message-less logs fail loudly instead of rendering empty output, and Pi timeline tool-call entries render as in-flight tool summaries
+- Claude/Pi transcript parsing for `pdx run transcript`; malformed or message-less logs fail loudly instead of rendering empty output, Pi timeline tool-call entries render as in-flight tool summaries, and Pi harness `errorMessage` stops render as explicit error lines
 
 Spawner does not own:
 
@@ -77,8 +77,7 @@ Exported from `@pdx/spawner`:
 - `renderAgent(input)` — pure render/validation. No launch.
 - `launchRenderedAgent(rendered)` — launch an already-rendered plan.
 - `launchAgent(input)` — convenience render-then-launch wrapper. `pdx` should prefer the two-step flow.
-- `renderSessionTranscript(input)` — parse a stored Claude/Pi Harness session log, including Pi timeline tool-call previews when present.
-- `loadHooks()` — read optional pdx hook config from bundled defaults plus `$PDX_USER_DATA_DIR/agents.toml`; policy match rules do not configure hooks.
+- `renderSessionTranscript(input)` — parse a stored Claude/Pi Harness session log, including Pi timeline tool-call previews when present and Pi harness `errorMessage` stops as explicit transcript lines.
 - `LiveSpawnerServices` — live filesystem/process/env implementation.
 - `makeFakeSpawnerServices(input)` — deterministic service implementation for tests.
 - `bundledTemplatesDir` — repo-root bundled default template directory used when `PDX_DATA_DIR` is unset and by `pdx` when seeding a fresh data dir.
@@ -97,7 +96,6 @@ Use those docs for:
 - policy declarations and `policy.add` / `policy.remove` selection
 - Agent-specific policy selection and ordered match rules
 - Harness settings, rule-targeted Harness overrides, and supported argv path expansion
-- input hook configuration
 - preview provenance fields for matched rules, selected policy ids, policy files, Harness config, and rendered prompt
 
 ## Harness notes

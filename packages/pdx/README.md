@@ -19,7 +19,6 @@ pdx --help
 pdx daemon --help
 pdx run --help
 pdx task --help
-pdx hook --help
 pdx --help-json
 ```
 
@@ -34,10 +33,9 @@ pdx --help-json
 - HITL mode Agent runs for Greed design and requested review work
 - tmux as the current Control-plane backend
 - a local pdx daemon tmux session and Unix socket
+- a daemon-owned intake Unix socket for external `intake` task events
 - the in-memory Registry of supervised Agent runs
 - Supervisor log JSONL and AFK pid/stdout/stderr files under the pdx data dir
-- an optional input hook process that produces global intake tasks from NDJSON stdout
-- a `pdx--hooks` tmux session that tails hook stdout/stderr for live debugging
 
 ## What pdx is not
 
@@ -119,10 +117,9 @@ Owns pdx behavior:
 
 - `initPdx` creates the data dir, initializes Pithos, creates `runs`, materializes bundle-owned config, preserves `<user-data-dir>/AGENTS.md`, and re-seeds `<user-data-dir>/PANDORA.md` without touching tmux or Harness CLIs.
 - `openPdx` supports normal reuse, `--clean` runtime-state reset, and `--nuke` pdx-owned state reset with user-config preservation before starting the pdx daemon tmux session and waiting for IPC readiness.
-- `runDaemon` settles startup orphans, upserts the `pdx` system Run, starts the reconcile loop, forks the input hook supervisor when `hooks.input` is configured in bundled defaults or `<user-data-dir>/agents.toml`, creates the `pdx--hooks` tail session, and serves IPC.
+- `runDaemon` settles startup orphans, upserts the `pdx` system Run, starts the reconcile loop, opens the daemon IPC socket and the external intake socket, and serves IPC.
 - `reconcileTick` performs Cleanup/settlement first, runs event-pruning maintenance on daemon startup and then hourly, maintains Pandora, sends Nudges for new Escalation tasks, validates launch preconditions, and spawns at most one ready non-Pandora Agent run per tick.
-- `runInputHookSupervisor` manages the hook child process: reads NDJSON stdout to enqueue intake tasks, appends raw stdout lines to `hook.stdout.log` and stderr to `hook.stderr.log`, restarts on exit with exponential backoff, and creates an `input_hook_stuck` Repair Alert when the crash limit is reached.
-- `hookStopPdx` and `hookRestartPdx` proxy `pdx hook stop` and `pdx hook restart` over IPC; the daemon interrupts the supervisor fiber, terminates the hook child, and optionally re-forks the supervisor.
+- The intake socket accepts one JSON `{ title, body }` event per connection at `<data-dir>/intake.sock` and enqueues one global `intake` Task per valid event.
 - When a ready repo/worktree task's cwd is missing before run creation, pdx uses Pithos' atomic launch-precondition transition to cancel the still-queued task, create a global Repair Alert (kind=`launch_precondition`) with a `repair` edge for Pandora, and avoid creating a Run. If the cwd disappears after run creation but before launch succeeds, pdx first calls Pithos' launch-abort transition so the no-claim Run becomes `cancelled` with reason `launch_precondition_failed`, then applies the same atomic task transition.
 - `handleKillRequest` performs Interrupt in Pithos before killing the live resource and enqueues a Repair Alert (kind=`interrupt`) when a Held task was interrupted.
 - `statusPdx`, `logsShowPdx`, `runTranscriptPdx`, `runShowPdx`, and `taskShowPdx` implement operator/Pandora inspection helpers. Transcript is the cross-harness inspection surface; show commands are interactive-session navigation and report AFK runs as intentionally headless.
@@ -163,6 +160,7 @@ For a data dir `<data-dir>` (`~/.pdx` by default):
 ```text
 <data-dir>/pithos.sqlite          # Pithos DB used by pdx's PithosClient
 <data-dir>/pdx.sock               # daemon IPC socket
+<data-dir>/intake.sock            # external intake event socket while pdx is open
 <data-dir>/pdx.jsonl              # Supervisor log JSONL
 <data-dir>/agents.toml            # bundle-owned seeded Spawner manifest (read-only)
 <data-dir>/templates/*.md         # bundle-owned seeded prompt templates (read-only)
@@ -170,8 +168,6 @@ For a data dir `<data-dir>` (`~/.pdx` by default):
 <data-dir>/runs/<run>.pid         # AFK mode pidfiles
 <data-dir>/runs/<run>.stdout.log
 <data-dir>/runs/<run>.stderr.log
-<data-dir>/runs/hook.stderr.log   # input hook stderr (when hooks.input is configured)
-<data-dir>/runs/hook.stdout.log   # input hook raw stdout before NDJSON parsing
 <data-dir>/AGENTS.md              # bundle-owned runtime note for global-agent cwd
 <user-data-dir>/AGENTS.md         # direct-agent pointer scaffolded once
 <user-data-dir>/CLAUDE.md         # Claude direct-agent pointer scaffolded once

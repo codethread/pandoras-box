@@ -13,6 +13,7 @@ import {
 	type RepairAlertKind,
 	type RunRow,
 	type ScopeRow,
+	type TaskRow,
 } from "./rows.js";
 import { makeClaimLoopOps } from "./engine/claim-loop.js";
 import { withCollisionGuard, withDb } from "./engine/db-helpers.js";
@@ -312,6 +313,53 @@ const terminalTaskStatuses = ["done", "failed", "dead_letter", "cancelled"] as c
 const runTerminalStatusForTask = (taskStatus: string): "ended" | "failed" =>
 	taskStatus === "done" ? "ended" : "failed";
 
+const nonEmptyRunCwd = (run: RunRow): string =>
+	run.cwd ?? fail("INTERNAL_ERROR", `run ${run.id} is missing cwd`);
+
+const renderDeadLetterSessionEvidence = (sessionEvidence: string | undefined): string => {
+	const text =
+		sessionEvidence?.trimEnd() ??
+		"Session evidence unavailable: pdx did not capture transcript context before cleanup.";
+	return ["```text", text, "```"].join("\n");
+};
+
+const deadLetterRepairAlertBody = (input: {
+	readonly task: TaskRow;
+	readonly run: RunRow;
+	readonly reason: string;
+	readonly sessionEvidence: string | undefined;
+}): string =>
+	[
+		`Task ${input.task.id} exhausted its ${input.task.max_attempts} attempts and entered dead_letter state.`,
+		"",
+		"## Task",
+		`- Task: ${input.task.id}`,
+		`- Scope: ${input.task.scope_id}`,
+		`- Capability: ${input.task.capability}`,
+		`- Attempts exhausted: ${input.task.max_attempts}`,
+		`- Reason: ${input.reason}`,
+		"",
+		"## Run context",
+		`- Run: ${input.run.id}`,
+		`- Agent: ${input.run.agent_kind}`,
+		`- Mode: ${input.run.mode}`,
+		`- Scope: ${input.run.scope_id}`,
+		`- Cwd: ${nonEmptyRunCwd(input.run)}`,
+		`- Harness: ${input.run.harness_kind}`,
+		`- Harness session: ${input.run.session_id}`,
+		`- Session log: ${input.run.session_log_path}`,
+		"",
+		"## Session evidence",
+		renderDeadLetterSessionEvidence(input.sessionEvidence),
+		"",
+		"## Inspect",
+		`- Durable run: \`pithos run inspect ${input.run.id}\``,
+		`- Harness transcript: \`pdx run transcript ${input.run.id}\``,
+		"- Supervisor logs: `pdx daemon logs --since 1h`",
+		"",
+		"Investigate the task history and decide whether to replay it with a fresh retry budget after fixing context/preconditions, supersede it if the work definition changed, replan, or accept the failure.",
+	].join("\n");
+
 const assertBlockingAcyclic = (db: Db): void => {
 	const outgoing = new Map<string, string[]>();
 	for (const edge of taskEdges(db).filter((row) => row.kind === "after" || row.kind === "gate")) {
@@ -606,7 +654,7 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 				run: run === undefined ? null : toRunOutput(decodeRow(RunRowSchema, run, "active run")),
 			};
 		}),
-	runCleanup: ({ runId, reason }) =>
+	runCleanup: ({ runId, reason, sessionEvidence }) =>
 		withDb(ctx, (db) => {
 			const nonEmptyReason = requireNonEmpty(reason, "--reason");
 			const finalRun: RunRow = db.transaction((): RunRow => {
@@ -708,7 +756,12 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 						kind: "dead_letter",
 						affectedTaskId: task.id,
 						escalationTitle: `Investigate dead-lettered task ${task.id}`,
-						escalationBody: `Task ${task.id} exhausted its ${task.max_attempts} attempts and entered dead_letter state (scope: ${task.scope_id}, capability: ${task.capability}).\n\nReason: ${nonEmptyReason}\n\nInvestigate the task history and decide whether to replay it with a fresh retry budget after fixing context/preconditions, supersede it if the work definition changed, replan, or accept the failure.`,
+						escalationBody: deadLetterRepairAlertBody({
+							task,
+							run,
+							reason: nonEmptyReason,
+							sessionEvidence,
+						}),
 					});
 				}
 				return runById(db, run.id);

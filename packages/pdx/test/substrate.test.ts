@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { Effect, Fiber, Ref, TestClock, TestContext } from "effect";
+import { Effect, Ref } from "effect";
 import { parsePdxConfig } from "../src/config.js";
 import { PdxError } from "../src/errors.js";
 import { parseIpcRequest } from "../src/ipc.js";
@@ -15,7 +15,6 @@ import { makeSupervisorLog } from "../src/log.js";
 import {
 	Clock,
 	FileSystem,
-	HookExecutor,
 	Ids,
 	LifecycleReporter,
 	makeRegistry,
@@ -26,7 +25,6 @@ import {
 	SupervisorLog,
 	Tmux,
 	type FileSystemService,
-	type HookExecutorService,
 	type LaunchAgentInput,
 	type LaunchAgentResult,
 	type PithosClientService,
@@ -34,17 +32,11 @@ import {
 	type SpawnerService,
 } from "../src/services.js";
 import { formatLifecycleEvent } from "../src/lifecycle.js";
-import {
-	FileSystemLive,
-	LiveHookExecutor,
-	makePithosClientLive,
-	makeSpawnerLive,
-} from "../src/live.js";
+import { FileSystemLive, makePithosClientLive, makeSpawnerLive } from "../src/live.js";
 import { makeTmux } from "../src/tmux.js";
 import { makeEngine, type Services as PithosServices } from "@pdx/pithos";
 import {
 	DAEMON_TARGET,
-	HOOKS_TARGET,
 	PANDORA_TARGET,
 	logsShowPdx,
 	initPdx,
@@ -55,13 +47,10 @@ import {
 	loggedReconcileTick,
 	reconcileTick,
 	runDaemon,
-	runInputHookSupervisor,
 	runShowPdx,
 	statusPdx,
 	taskShowPdx,
-	terminateHookChild,
 } from "../src/controller.js";
-import { type PdxConfig } from "../src/config.js";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
@@ -356,7 +345,6 @@ const makeSpawner = (input: {
 			),
 		renderSessionTranscript:
 			input.renderSessionTranscript ?? (() => Effect.succeed("test transcript\n")),
-		loadHooks: () => Effect.succeed({}),
 	});
 
 const upsertPandora = (registry: RegistryService) =>
@@ -467,8 +455,6 @@ describe("pdx substrate", () => {
 				"pdx run transcript",
 				"pdx run show",
 				"pdx task show",
-				"pdx hook stop",
-				"pdx hook restart",
 			]),
 		);
 	});
@@ -495,7 +481,11 @@ describe("pdx substrate", () => {
 				`Data dir: ${dataDir}`,
 				`User config dir: ${userDataDir}`,
 				"",
-				"Next: run `pdx open` to release Pandora.",
+				"Next: configure your agents, then run `pdx open` to release Pandora.",
+				"",
+				`  cd ${userDataDir}`,
+				`  claude "help me set up agents.toml"`,
+				`  # or: pi "help me set up agents.toml"`,
 			].join("\n") + "\n",
 		);
 		expect(existsSync(join(dataDir, "pithos.sqlite"))).toBe(true);
@@ -515,7 +505,7 @@ describe("pdx substrate", () => {
 		expect(userManifest).toContain('[policy]\n# add = ["git-flow"]');
 		expect(userManifest).toContain("[[rules]]");
 		expect(userManifest).toContain("[agents.greed.harness]");
-		expect(userManifest).toContain("[hooks.input]");
+		expect(userManifest).not.toContain("[hooks.input]");
 		const userReference = await readFile(join(userDataDir, "PANDORA.md"), "utf8");
 		expect(userReference).toContain("Pandora's Box config reference");
 		expect(userReference).toContain("--scope-kind repo");
@@ -546,6 +536,7 @@ describe("pdx substrate", () => {
 		expect(config).toMatchObject({
 			dataDir: "/tmp/pdx-home",
 			socketPath: "/tmp/pdx-home/pdx.sock",
+			intakeSocketPath: "/tmp/pdx-home/intake.sock",
 			logPath: "/tmp/pdx-home/pdx.jsonl",
 			runsDir: "/tmp/pdx-home/runs",
 		});
@@ -791,7 +782,6 @@ describe("pdx substrate", () => {
 			renderAgent: () => Effect.die("unexpected render"),
 			launchRenderedAgent: () => Effect.die("unexpected launch"),
 			renderSessionTranscript: () => Effect.die("unexpected transcript"),
-			loadHooks: () => Effect.succeed({}),
 		});
 		await run(
 			initPdx(config, { clean: false, nuke: false }).pipe(
@@ -827,7 +817,6 @@ describe("pdx substrate", () => {
 			renderAgent: () => Effect.die("unexpected render"),
 			launchRenderedAgent: () => Effect.die("unexpected launch"),
 			renderSessionTranscript: () => Effect.die("unexpected transcript"),
-			loadHooks: () => Effect.succeed({}),
 		});
 		await run(
 			initPdx(config, { clean: true, nuke: false }).pipe(
@@ -841,6 +830,7 @@ describe("pdx substrate", () => {
 			`remove:${config.runsDir}`,
 			`remove:${config.logPath}`,
 			`remove:${config.socketPath}`,
+			`remove:${config.intakeSocketPath}`,
 			"mkdir:/tmp/pdx-clean",
 			"init",
 			"mkdir:/tmp/pdx-clean/runs",
@@ -868,7 +858,6 @@ describe("pdx substrate", () => {
 			renderAgent: () => Effect.die("unexpected render"),
 			launchRenderedAgent: () => Effect.die("unexpected launch"),
 			renderSessionTranscript: () => Effect.die("unexpected transcript"),
-			loadHooks: () => Effect.succeed({}),
 		});
 		await run(
 			initPdx(config, { clean: false, nuke: true }).pipe(
@@ -1035,15 +1024,6 @@ describe("pdx substrate", () => {
 		});
 	});
 
-	it("parses hook.stop and hook.restart IPC requests", async () => {
-		await expect(run(parseIpcRequest(JSON.stringify({ kind: "hook.stop" })))).resolves.toEqual({
-			kind: "hook.stop",
-		});
-		await expect(run(parseIpcRequest(JSON.stringify({ kind: "hook.restart" })))).resolves.toEqual({
-			kind: "hook.restart",
-		});
-	});
-
 	it("open rejects when daemon tmux session already exists", async () => {
 		const tmux = Tmux.of({
 			hasSession: () => Effect.succeed(true),
@@ -1146,7 +1126,11 @@ describe("pdx substrate", () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
 		const parsed = await parseConfig(dataDir);
 		const socketDir = await mkdtemp(join(tmpdir(), "pdx-nuke-socket-"));
-		const config = { ...parsed, socketPath: join(socketDir, "pdx.sock") };
+		const config = {
+			...parsed,
+			socketPath: join(socketDir, "pdx.sock"),
+			intakeSocketPath: join(socketDir, "intake.sock"),
+		};
 		const removes: string[] = [];
 		const tmux = Tmux.of({
 			hasSession: () => Effect.succeed(false),
@@ -1194,7 +1178,11 @@ describe("pdx substrate", () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
 		const parsed = await parseConfig(dataDir);
 		const socketDir = await mkdtemp(join(tmpdir(), "pdx-clean-socket-"));
-		const config = { ...parsed, socketPath: join(socketDir, "pdx.sock") };
+		const config = {
+			...parsed,
+			socketPath: join(socketDir, "pdx.sock"),
+			intakeSocketPath: join(socketDir, "intake.sock"),
+		};
 		const removes: string[] = [];
 		const tmux = Tmux.of({
 			hasSession: () => Effect.succeed(false),
@@ -1239,6 +1227,7 @@ describe("pdx substrate", () => {
 			config.runsDir,
 			config.logPath,
 			config.socketPath,
+			config.intakeSocketPath,
 		]);
 	});
 
@@ -1642,311 +1631,6 @@ describe("pdx substrate", () => {
 		expect(existsSync(config.socketPath)).toBe(false);
 	});
 
-	it("daemon creates hook_config_error repair alert when loadHooks fails", async () => {
-		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
-		const repairAlerts: Parameters<PithosClientService["createRepairAlert"]>[0][] = [];
-		const logRecords: { readonly level: string; readonly msg: string }[] = [];
-		const pithos = makePithos([], [], {
-			createRepairAlert: (input) =>
-				Effect.sync(() => {
-					repairAlerts.push(input);
-				}),
-		});
-		const log = SupervisorLog.of({
-			write: (record) =>
-				Effect.sync(() => {
-					logRecords.push(record);
-					return { ts: "now", ...record };
-				}),
-		});
-		const spawner = Spawner.of({
-			materializeTemplates: () => Effect.void,
-			renderAgent: (launch) =>
-				Effect.succeed({
-					...launch,
-					logicalName: PANDORA_TARGET,
-					harness: {
-						kind: "pi" as const,
-						argv: ["pi", launch.runId],
-						env: { PITHOS_RUN_ID: launch.runId },
-					},
-					sessionLogPath: `/tmp/${launch.runId}.jsonl`,
-					prompt: "test prompt",
-				}),
-			launchRenderedAgent: (rendered) =>
-				Effect.succeed({
-					...rendered,
-					logicalName: PANDORA_TARGET,
-					harnessKind: rendered.harness.kind,
-					hitl: { tmuxTarget: PANDORA_TARGET, panePid: 1 },
-				}),
-			renderSessionTranscript: () => Effect.succeed("test transcript\n"),
-			loadHooks: () =>
-				Effect.fail(new PdxError({ code: "CONFIG_ERROR", message: "malformed hooks.json" })),
-		});
-		const config = await parseConfig(dataDir);
-		const handle = await run(
-			runDaemon(config, 4, 5).pipe(
-				Effect.provideService(FileSystem, noopFs),
-				Effect.provideService(Clock, testClock),
-				Effect.provideService(PithosClient, pithos),
-				Effect.provideService(SupervisorLog, log),
-				Effect.provideService(LifecycleReporter, testLifecycle),
-				Effect.provideService(Registry, await run(makeRegistry)),
-				Effect.provideService(
-					Ids,
-					Ids.of({ nextRunId: Effect.succeed("run_pandora"), nextSessionId: Effect.succeed("s") }),
-				),
-				Effect.provideService(Spawner, spawner),
-				Effect.provideService(Tmux, alwaysLiveTmux),
-				Effect.provideService(Process, alwaysLiveProcess),
-			),
-		);
-		await run(handle.close);
-		expect(repairAlerts).toHaveLength(1);
-		expect(repairAlerts[0]).toMatchObject({ kind: "hook_config_error", runId: PDX_SYSTEM_RUN_ID });
-		expect(repairAlerts[0]?.escalationTitle).toContain("Input hook disabled");
-		expect(repairAlerts[0]?.escalationBody).toContain("malformed hooks.json");
-		expect(repairAlerts[0]?.escalationBody).toContain("$PDX_USER_DATA_DIR/agents.toml");
-		expect(repairAlerts[0]?.escalationBody).not.toContain("scopes/global");
-		expect(logRecords).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					level: "error",
-					msg: "failed to load hooks config, input hook disabled",
-				}),
-			]),
-		);
-	});
-
-	it("creates pdx--hooks tmux session when hook command is configured and kills it on stop", async () => {
-		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
-		const config = await parseConfig(dataDir);
-		const newSessions: { target: string; command: readonly string[] }[] = [];
-		const killedSessions: string[] = [];
-		const tmux = Tmux.of({
-			hasSession: (target) => Effect.succeed(!killedSessions.includes(target)),
-			lsSessions: () => Effect.succeed([]),
-			newSession: (input) => Effect.sync(() => newSessions.push(input)),
-			killSession: (target) => Effect.sync(() => killedSessions.push(target)),
-			switchClient: () => Effect.void,
-			attachSession: () => Effect.void,
-			sendLiteralLine: () => Effect.void,
-			pasteBuffer: () => Effect.void,
-			presence: () => Effect.succeed({ attached: 0, lastActivityUnix: null as number | null }),
-		});
-		let hookAlive = true;
-		const hookExec = HookExecutor.of({
-			spawn: () => Effect.succeed({ pid: 999, waitForLine: Effect.never }),
-			kill: () =>
-				Effect.sync(() => {
-					hookAlive = false;
-				}),
-			isAlive: () => Effect.succeed(hookAlive),
-		});
-		const spawner = Spawner.of({
-			materializeTemplates: () => Effect.void,
-			renderAgent: (launch) =>
-				Effect.succeed({
-					...launch,
-					logicalName: PANDORA_TARGET,
-					harness: { kind: "pi" as const, argv: ["pi", launch.runId], env: {} },
-					sessionLogPath: `/tmp/${launch.runId}.jsonl`,
-					prompt: "test prompt",
-				}),
-			launchRenderedAgent: (rendered) =>
-				Effect.succeed({
-					...rendered,
-					logicalName: PANDORA_TARGET,
-					harnessKind: rendered.harness.kind,
-					hitl: { tmuxTarget: PANDORA_TARGET, panePid: 1 },
-				}),
-			renderSessionTranscript: () => Effect.succeed(""),
-			loadHooks: () => Effect.succeed({ input: { command: ["fake-hook"] } }),
-		});
-		const handle = await run(
-			runDaemon(config, 4, 5).pipe(
-				Effect.provideService(FileSystem, noopFs),
-				Effect.provideService(Clock, testClock),
-				Effect.provideService(PithosClient, makePithos([])),
-				Effect.provideService(SupervisorLog, testLog),
-				Effect.provideService(LifecycleReporter, testLifecycle),
-				Effect.provideService(Registry, await run(makeRegistry)),
-				Effect.provideService(
-					Ids,
-					Ids.of({ nextRunId: Effect.succeed("run_pandora"), nextSessionId: Effect.succeed("s") }),
-				),
-				Effect.provideService(Spawner, spawner),
-				Effect.provideService(Tmux, tmux),
-				Effect.provideService(Process, alwaysLiveProcess),
-				Effect.provideService(HookExecutor, hookExec),
-			),
-		);
-		const hooksSession = newSessions.find((s) => s.target === HOOKS_TARGET);
-		expect(hooksSession).toBeDefined();
-		expect(hooksSession?.command[0]).toBe("tail");
-		expect(hooksSession?.command.some((arg) => arg.endsWith("hook.stderr.log"))).toBe(true);
-		expect(hooksSession?.command.some((arg) => arg.endsWith("hook.stdout.log"))).toBe(true);
-		const response = await run(requestIpc(config.socketPath, { kind: "stop" }));
-		await run(handle.shutdown);
-		await run(handle.close);
-		expect(response).toMatchObject({ ok: true });
-		expect(killedSessions).toContain(HOOKS_TARGET);
-	});
-
-	it("hook.stop and hook.restart IPC return error when no hook is configured", async () => {
-		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
-		const config = await parseConfig(dataDir);
-		const handle = await run(
-			runDaemon(config, 4, 5).pipe(
-				Effect.provideService(FileSystem, noopFs),
-				Effect.provideService(Clock, testClock),
-				Effect.provideService(PithosClient, makePithos([])),
-				Effect.provideService(SupervisorLog, testLog),
-				Effect.provideService(LifecycleReporter, testLifecycle),
-				Effect.provideService(Registry, await run(makeRegistry)),
-				Effect.provideService(
-					Ids,
-					Ids.of({ nextRunId: Effect.succeed("run_pandora"), nextSessionId: Effect.succeed("s") }),
-				),
-				Effect.provideService(
-					Spawner,
-					makeSpawner({
-						launchAgent: (input) =>
-							Effect.succeed({
-								...input,
-								logicalName: PANDORA_TARGET,
-								hitl: { tmuxTarget: PANDORA_TARGET, panePid: 1 },
-							}),
-					}),
-				),
-				Effect.provideService(Tmux, alwaysLiveTmux),
-				Effect.provideService(Process, alwaysLiveProcess),
-			),
-		);
-		const stopResponse = await run(requestIpc(config.socketPath, { kind: "hook.stop" }));
-		const restartResponse = await run(requestIpc(config.socketPath, { kind: "hook.restart" }));
-		await run(handle.close);
-		expect(stopResponse).toEqual({ ok: false, error: "no hook configured" });
-		expect(restartResponse).toEqual({ ok: false, error: "no hook configured" });
-	});
-
-	it("hook.stop IPC kills the hook child and returns ok when a hook is configured", async () => {
-		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
-		const config = await parseConfig(dataDir);
-		let hookAlive = true;
-		const hookExec = HookExecutor.of({
-			spawn: () => Effect.succeed({ pid: 888, waitForLine: Effect.never }),
-			kill: () =>
-				Effect.sync(() => {
-					hookAlive = false;
-				}),
-			isAlive: () => Effect.succeed(hookAlive),
-		});
-		const spawner = Spawner.of({
-			materializeTemplates: () => Effect.void,
-			renderAgent: (launch) =>
-				Effect.succeed({
-					...launch,
-					logicalName: PANDORA_TARGET,
-					harness: { kind: "pi" as const, argv: ["pi", launch.runId], env: {} },
-					sessionLogPath: `/tmp/${launch.runId}.jsonl`,
-					prompt: "test prompt",
-				}),
-			launchRenderedAgent: (rendered) =>
-				Effect.succeed({
-					...rendered,
-					logicalName: PANDORA_TARGET,
-					harnessKind: rendered.harness.kind,
-					hitl: { tmuxTarget: PANDORA_TARGET, panePid: 1 },
-				}),
-			renderSessionTranscript: () => Effect.succeed(""),
-			loadHooks: () => Effect.succeed({ input: { command: ["fake-hook"] } }),
-		});
-		const handle = await run(
-			runDaemon(config, 4, 5).pipe(
-				Effect.provideService(FileSystem, noopFs),
-				Effect.provideService(Clock, testClock),
-				Effect.provideService(PithosClient, makePithos([])),
-				Effect.provideService(SupervisorLog, testLog),
-				Effect.provideService(LifecycleReporter, testLifecycle),
-				Effect.provideService(Registry, await run(makeRegistry)),
-				Effect.provideService(
-					Ids,
-					Ids.of({ nextRunId: Effect.succeed("run_pandora"), nextSessionId: Effect.succeed("s") }),
-				),
-				Effect.provideService(Spawner, spawner),
-				Effect.provideService(Tmux, alwaysLiveTmux),
-				Effect.provideService(Process, alwaysLiveProcess),
-				Effect.provideService(HookExecutor, hookExec),
-			),
-		);
-		const stopResponse = await run(requestIpc(config.socketPath, { kind: "hook.stop" }));
-		await run(handle.close);
-		expect(stopResponse).toEqual({ ok: true, data: { hook_stopped: true } });
-		expect(hookAlive).toBe(false);
-	});
-
-	it("hook.restart IPC kills the current hook child and returns ok when a hook is configured", async () => {
-		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
-		const config = await parseConfig(dataDir);
-		const kills: number[] = [];
-		let hookAlive = true;
-		const hookExec = HookExecutor.of({
-			spawn: () => Effect.sync(() => ({ pid: 801, waitForLine: Effect.never })),
-			kill: (pid) =>
-				Effect.sync(() => {
-					kills.push(pid);
-					hookAlive = false;
-				}),
-			isAlive: () => Effect.succeed(hookAlive),
-		});
-		const spawner = Spawner.of({
-			materializeTemplates: () => Effect.void,
-			renderAgent: (launch) =>
-				Effect.succeed({
-					...launch,
-					logicalName: PANDORA_TARGET,
-					harness: { kind: "pi" as const, argv: ["pi", launch.runId], env: {} },
-					sessionLogPath: `/tmp/${launch.runId}.jsonl`,
-					prompt: "test prompt",
-				}),
-			launchRenderedAgent: (rendered) =>
-				Effect.succeed({
-					...rendered,
-					logicalName: PANDORA_TARGET,
-					harnessKind: rendered.harness.kind,
-					hitl: { tmuxTarget: PANDORA_TARGET, panePid: 1 },
-				}),
-			renderSessionTranscript: () => Effect.succeed(""),
-			loadHooks: () => Effect.succeed({ input: { command: ["fake-hook"] } }),
-		});
-		const handle = await run(
-			runDaemon(config, 4, 5).pipe(
-				Effect.provideService(FileSystem, noopFs),
-				Effect.provideService(Clock, testClock),
-				Effect.provideService(PithosClient, makePithos([])),
-				Effect.provideService(SupervisorLog, testLog),
-				Effect.provideService(LifecycleReporter, testLifecycle),
-				Effect.provideService(Registry, await run(makeRegistry)),
-				Effect.provideService(
-					Ids,
-					Ids.of({ nextRunId: Effect.succeed("run_pandora"), nextSessionId: Effect.succeed("s") }),
-				),
-				Effect.provideService(Spawner, spawner),
-				Effect.provideService(Tmux, alwaysLiveTmux),
-				Effect.provideService(Process, alwaysLiveProcess),
-				Effect.provideService(HookExecutor, hookExec),
-			),
-		);
-		const restartResponse = await run(requestIpc(config.socketPath, { kind: "hook.restart" }));
-		await run(handle.close);
-		expect(restartResponse).toEqual({ ok: true, data: { hook_restarted: true } });
-		// terminateHookChild sends SIGTERM (and SIGKILL if needed) — the old hook is killed
-		expect(kills.length).toBeGreaterThan(0);
-		expect(kills).toContain(801);
-	});
-
 	it("status returns required top-level keys when daemon is down", async () => {
 		const tmux = Tmux.of({
 			hasSession: () => Effect.succeed(false),
@@ -2287,6 +1971,149 @@ describe("pdx substrate", () => {
 		const entries = await run(registry.list);
 		expect(entries.map((entry) => entry.runId)).toEqual(["run_new"]);
 		expect(pithosCalls).toContain("runCleanup:run_old:natural_death");
+	});
+
+	it("passes transcript evidence into AFK natural-death cleanup", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-natural-death-afk-"));
+		const registry = await run(makeRegistry);
+		await run(upsertPandora(registry));
+		await run(
+			registry.upsert({
+				runId: "run_dead",
+				agent: "war",
+				scopeId: "scope_repo",
+				mode: "afk",
+				state: "live",
+				logicalName: "pdx--war",
+				pid: 456,
+			}),
+		);
+		const cleanupInputs: Array<{
+			readonly runId: string;
+			readonly reason: string;
+			readonly sessionEvidence?: string;
+		}> = [];
+		await run(
+			reconcileTick(await parseConfig(dataDir)).pipe(
+				Effect.provideService(Registry, registry),
+				Effect.provideService(
+					PithosClient,
+					makePithos([], [], {
+						runInspect: (input) =>
+							Effect.succeed(
+								runOutput({
+									id: input.runId,
+									agent: "war",
+									mode: "afk",
+									scope_id: "scope_repo",
+									harness_kind: "pi",
+									session_log_path: "/tmp/run_dead.jsonl",
+								}),
+							),
+						runCleanup: (input) => Effect.sync(() => cleanupInputs.push(input)),
+					}),
+				),
+				Effect.provideService(
+					Ids,
+					Ids.of({ nextRunId: Effect.succeed("r"), nextSessionId: Effect.succeed("s") }),
+				),
+				Effect.provideService(
+					Spawner,
+					makeSpawner({
+						launchAgent: () =>
+							Effect.fail(new PdxError({ code: "PROCESS_ERROR", message: "unexpected" })),
+						renderSessionTranscript: () =>
+							Effect.succeed(
+								"[2026-06-07 06:29:11] ASSISTANT: ERROR: OpenAI API error (503): upstream timeout\n",
+							),
+					}),
+				),
+				Effect.provideService(Tmux, alwaysLiveTmux),
+				Effect.provideService(
+					Process,
+					Process.of({ ...alwaysLiveProcess, isAlive: () => Effect.succeed(false) }),
+				),
+				Effect.provideService(SupervisorLog, testLog),
+				Effect.provideService(LifecycleReporter, testLifecycle),
+				Effect.provideService(FileSystem, noopFs),
+				Effect.provideService(Clock, testClock),
+			),
+		);
+		expect(cleanupInputs).toEqual([
+			expect.objectContaining({
+				runId: "run_dead",
+				reason: "natural_death",
+				sessionEvidence:
+					"[2026-06-07 06:29:11] ASSISTANT: ERROR: OpenAI API error (503): upstream timeout",
+			}),
+		]);
+	});
+
+	it("records transcript-render failures as explicit natural-death session evidence", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-natural-death-fallback-"));
+		const registry = await run(makeRegistry);
+		await run(upsertPandora(registry));
+		await run(
+			registry.upsert({
+				runId: "run_dead",
+				agent: "war",
+				scopeId: "scope_repo",
+				mode: "afk",
+				state: "live",
+				logicalName: "pdx--war",
+				pid: 456,
+			}),
+		);
+		const cleanupInputs: Array<{ readonly sessionEvidence?: string }> = [];
+		await run(
+			reconcileTick(await parseConfig(dataDir)).pipe(
+				Effect.provideService(Registry, registry),
+				Effect.provideService(
+					PithosClient,
+					makePithos([], [], {
+						runInspect: (input) =>
+							Effect.succeed(
+								runOutput({
+									id: input.runId,
+									agent: "war",
+									mode: "afk",
+									scope_id: "scope_repo",
+									harness_kind: "pi",
+									session_log_path: "/tmp/run_dead.jsonl",
+								}),
+							),
+						runCleanup: (input) => Effect.sync(() => cleanupInputs.push(input)),
+					}),
+				),
+				Effect.provideService(
+					Ids,
+					Ids.of({ nextRunId: Effect.succeed("r"), nextSessionId: Effect.succeed("s") }),
+				),
+				Effect.provideService(
+					Spawner,
+					makeSpawner({
+						launchAgent: () =>
+							Effect.fail(new PdxError({ code: "PROCESS_ERROR", message: "unexpected" })),
+						renderSessionTranscript: () =>
+							Effect.fail(new PdxError({ code: "HARNESS_ERROR", message: "missing transcript" })),
+					}),
+				),
+				Effect.provideService(Tmux, alwaysLiveTmux),
+				Effect.provideService(
+					Process,
+					Process.of({ ...alwaysLiveProcess, isAlive: () => Effect.succeed(false) }),
+				),
+				Effect.provideService(SupervisorLog, testLog),
+				Effect.provideService(LifecycleReporter, testLifecycle),
+				Effect.provideService(FileSystem, noopFs),
+				Effect.provideService(Clock, testClock),
+			),
+		);
+		expect(cleanupInputs).toEqual([
+			expect.objectContaining({
+				sessionEvidence: "Session evidence unavailable: missing transcript",
+			}),
+		]);
 	});
 
 	it("run show switches tmux client to the supervised run target and returns confirmation", async () => {
@@ -4735,422 +4562,5 @@ describe("pdx substrate", () => {
 			),
 		);
 		expect(entries).toHaveLength(1);
-	});
-});
-
-describe("runInputHookSupervisor", () => {
-	const hookTestConfig: PdxConfig = {
-		dataDir: "/tmp/pdx-hook-test",
-		userDataDir: "/tmp/pdx-hook-test/config",
-		socketPath: "/tmp/pdx-hook-test/pdx.sock",
-		logPath: "/tmp/pdx-hook-test/pdx.jsonl",
-		runsDir: "/tmp/pdx-hook-test/runs",
-		daemonEntrypoint: "/tmp/pdx",
-		pithosDbPath: "/tmp/pdx-hook-test/pithos.sqlite",
-	};
-
-	const makeQueueHookExecutor = (linesBySpawn: readonly (readonly (string | null)[])[]) => {
-		let spawnCount = 0;
-		const killedPids: number[] = [];
-
-		const executor: HookExecutorService = {
-			spawn: () =>
-				Effect.gen(function* () {
-					const spawnIndex = spawnCount++;
-					const linesToEmit = linesBySpawn[spawnIndex] ?? [null];
-					const indexRef = yield* Ref.make(0);
-					const pid = 10000 + spawnIndex;
-					return {
-						pid,
-						waitForLine: Ref.getAndUpdate(indexRef, (i) => i + 1).pipe(
-							Effect.map((i) => linesToEmit[i] ?? null),
-						),
-					};
-				}),
-			kill: (pid) =>
-				Effect.sync(() => {
-					killedPids.push(pid);
-				}),
-			isAlive: (pid) => Effect.succeed(!killedPids.includes(pid)),
-		};
-
-		return { executor, killedPids, getSpawnCount: () => spawnCount };
-	};
-
-	const withHookServices =
-		(hookExec: HookExecutorService, pithos: ReturnType<typeof makePithos>) =>
-		<A, E>(
-			effect: Effect.Effect<
-				A,
-				E,
-				HookExecutor | PithosClient | SupervisorLog | LifecycleReporter | Clock | FileSystem
-			>,
-		) =>
-			effect.pipe(
-				Effect.provideService(HookExecutor, hookExec),
-				Effect.provideService(PithosClient, pithos),
-				Effect.provideService(SupervisorLog, testLog),
-				Effect.provideService(LifecycleReporter, testLifecycle),
-				Effect.provideService(Clock, testClock),
-				Effect.provideService(FileSystem, noopFs),
-			);
-
-	it("enqueues valid intake lines", async () => {
-		const calls: string[] = [];
-		const { executor } = makeQueueHookExecutor([
-			[
-				'{"title":"t1","body":"b1"}',
-				'{"title":"t2","body":"b2"}',
-				'{"title":"t3","body":"b3"}',
-				null,
-			],
-		]);
-
-		const program = Effect.gen(function* () {
-			const fiber = yield* Effect.fork(runInputHookSupervisor(hookTestConfig, ["fake-hook"]));
-			// The readLoop runs synchronously (Effect.sync); one yield lets it complete and reach sleep
-			yield* Effect.yieldNow();
-			yield* Effect.yieldNow();
-			yield* Fiber.interrupt(fiber);
-		}).pipe(withHookServices(executor, makePithos(calls)));
-
-		await Effect.runPromise(program);
-
-		expect(calls.filter((c) => c.startsWith("taskEnqueue:intake:"))).toHaveLength(3);
-		expect(calls).toContain("taskEnqueue:intake:t1");
-		expect(calls).toContain("taskEnqueue:intake:t2");
-		expect(calls).toContain("taskEnqueue:intake:t3");
-	});
-
-	it("skips malformed lines without affecting valid ones", async () => {
-		const calls: string[] = [];
-		const { executor } = makeQueueHookExecutor([
-			['{"title":"ok1","body":"b1"}', "not-json", '{"title":"ok2","body":"b2"}', null],
-		]);
-
-		const program = Effect.gen(function* () {
-			const fiber = yield* Effect.fork(runInputHookSupervisor(hookTestConfig, ["fake-hook"]));
-			yield* Effect.yieldNow();
-			yield* Effect.yieldNow();
-			yield* Fiber.interrupt(fiber);
-		}).pipe(withHookServices(executor, makePithos(calls)));
-
-		await Effect.runPromise(program);
-
-		expect(calls.filter((c) => c.startsWith("taskEnqueue:intake:"))).toHaveLength(2);
-		expect(calls).toContain("taskEnqueue:intake:ok1");
-		expect(calls).toContain("taskEnqueue:intake:ok2");
-	});
-
-	it("creates input_hook_stuck repair alert after 5 rapid crashes", async () => {
-		const calls: string[] = [];
-		const { executor, getSpawnCount } = makeQueueHookExecutor(
-			Array.from({ length: 8 }, () => [null]),
-		);
-
-		const program = Effect.gen(function* () {
-			const fiber = yield* Effect.fork(runInputHookSupervisor(hookTestConfig, ["crash-hook"]));
-			// Advance through crash/backoff cycles: 1s + 2s + 4s + 8s + escalate
-			// Use generous adjustments with multiple yields for scheduler interleaving
-			for (let i = 0; i < 6; i++) {
-				yield* TestClock.adjust("30 seconds");
-				yield* Effect.yieldNow();
-				yield* Effect.yieldNow();
-				yield* Effect.yieldNow();
-			}
-			yield* Fiber.interrupt(fiber);
-		}).pipe(withHookServices(executor, makePithos(calls)), Effect.provide(TestContext.TestContext));
-
-		await Effect.runPromise(program);
-
-		const repairAlertCall = calls.find(
-			(c) => c.includes("createRepairAlert") && c.includes("input_hook_stuck"),
-		);
-		expect(repairAlertCall).toBeDefined();
-		expect(getSpawnCount()).toBe(5);
-	});
-
-	it("retries transient enqueue failure and still delivers the line", async () => {
-		let enqueueAttempts = 0;
-		const { executor } = makeQueueHookExecutor([['{"title":"retry-me","body":"b"}', null]]);
-		// Fail twice then succeed on the third attempt.
-		const pithos = makePithos([], [], {
-			taskEnqueue: () =>
-				Effect.gen(function* () {
-					enqueueAttempts++;
-					if (enqueueAttempts < 3) {
-						return yield* Effect.fail(
-							new PdxError({ code: "INTERNAL_ERROR", message: "transient db error" }),
-						);
-					}
-				}),
-		});
-
-		// Exponential retry uses Effect.sleep — advance TestClock to trigger each retry.
-		const program = Effect.gen(function* () {
-			const fiber = yield* Effect.fork(runInputHookSupervisor(hookTestConfig, ["fake-hook"]));
-			// Advance past the retry delays (500ms, then 1s).
-			for (let i = 0; i < 3; i++) {
-				yield* TestClock.adjust("5 seconds");
-				yield* Effect.yieldNow();
-				yield* Effect.yieldNow();
-				yield* Effect.yieldNow();
-			}
-			yield* Fiber.interrupt(fiber);
-		}).pipe(withHookServices(executor, pithos), Effect.provide(TestContext.TestContext));
-
-		await Effect.runPromise(program);
-
-		// Three attempts: two failures then one success on the third.
-		expect(enqueueAttempts).toBe(3);
-	});
-
-	it("does not permanently halt supervision when crash-loop alert creation fails", async () => {
-		const calls: string[] = [];
-		// Crash-loop executor: each spawn exits immediately.
-		const { executor, getSpawnCount } = makeQueueHookExecutor(
-			Array.from({ length: 20 }, () => [null]),
-		);
-		// createRepairAlert always fails — supervision must not escalate permanently.
-		const pithos = makePithos(calls, [], {
-			createRepairAlert: () =>
-				Effect.fail(new PdxError({ code: "INTERNAL_ERROR", message: "db down" })),
-		});
-
-		const program = Effect.gen(function* () {
-			const fiber = yield* Effect.fork(runInputHookSupervisor(hookTestConfig, ["crash-hook"]));
-			// Advance past crash/backoff cycles and the 30s alert-failure sleep.
-			// Each round: crash × 5 (with exponential backoff) + 30s alert-failure sleep.
-			for (let i = 0; i < 15; i++) {
-				yield* TestClock.adjust("30 seconds");
-				yield* Effect.yieldNow();
-				yield* Effect.yieldNow();
-				yield* Effect.yieldNow();
-			}
-			yield* Fiber.interrupt(fiber);
-		}).pipe(withHookServices(executor, pithos), Effect.provide(TestContext.TestContext));
-
-		await Effect.runPromise(program);
-
-		// Supervision must have continued past the crash limit (spawned more than 5 times).
-		expect(getSpawnCount()).toBeGreaterThan(5);
-	});
-
-	it("appends each stdout line to hook.stdout.log", async () => {
-		const appendedPaths: string[] = [];
-		const appendedContents: string[] = [];
-		const trackingFs = FileSystem.of({
-			...noopFs,
-			appendFile: (path, content) =>
-				Effect.sync(() => {
-					appendedPaths.push(path);
-					appendedContents.push(content);
-				}),
-		});
-		const calls: string[] = [];
-		const { executor } = makeQueueHookExecutor([
-			['{"title":"t1","body":"b1"}', "not-json-line", '{"title":"t2","body":"b2"}', null],
-		]);
-
-		const program = Effect.gen(function* () {
-			const fiber = yield* Effect.fork(runInputHookSupervisor(hookTestConfig, ["fake-hook"]));
-			yield* Effect.yieldNow();
-			yield* Effect.yieldNow();
-			yield* Fiber.interrupt(fiber);
-		}).pipe(
-			Effect.provideService(HookExecutor, executor),
-			Effect.provideService(PithosClient, makePithos(calls)),
-			Effect.provideService(SupervisorLog, testLog),
-			Effect.provideService(LifecycleReporter, testLifecycle),
-			Effect.provideService(Clock, testClock),
-			Effect.provideService(FileSystem, trackingFs),
-		);
-
-		await Effect.runPromise(program);
-
-		const stdoutLogPath = `${hookTestConfig.runsDir}/hook.stdout.log`;
-		const stdoutWrites = appendedPaths
-			.map((path, i) => ({ path, content: appendedContents[i]! }))
-			.filter(({ path }) => path === stdoutLogPath);
-		expect(stdoutWrites.map(({ content }) => content)).toEqual([
-			'{"title":"t1","body":"b1"}\n',
-			"not-json-line\n",
-			'{"title":"t2","body":"b2"}\n',
-		]);
-	});
-});
-
-describe("terminateHookChild", () => {
-	const makeControlledExec = (input: {
-		readonly dieAfterKillCount: number;
-		readonly transientAlivePollsAfterKill?: number;
-	}): { exec: HookExecutorService; kills: { pid: number; signal: string }[] } => {
-		const kills: { pid: number; signal: string }[] = [];
-		let isAliveCallsAfterFinalKill = 0;
-		const exec: HookExecutorService = {
-			spawn: () => Effect.die("unexpected"),
-			kill: (pid, signal) =>
-				Effect.sync(() => {
-					kills.push({ pid, signal });
-				}),
-			isAlive: () =>
-				Effect.sync(() => {
-					if (kills.length < input.dieAfterKillCount) return true;
-					isAliveCallsAfterFinalKill++;
-					return isAliveCallsAfterFinalKill <= (input.transientAlivePollsAfterKill ?? 0);
-				}),
-		};
-		return { exec, kills };
-	};
-
-	it("returns immediately when hook is already dead", async () => {
-		const { exec, kills } = makeControlledExec({ dieAfterKillCount: 0 });
-		await run(terminateHookChild(exec, 12345));
-		expect(kills).toHaveLength(0);
-	});
-
-	it("sends SIGTERM and returns when hook dies before SIGKILL", async () => {
-		const { exec, kills } = makeControlledExec({ dieAfterKillCount: 1 });
-		await run(terminateHookChild(exec, 12345));
-		expect(kills).toEqual([{ pid: 12345, signal: "SIGTERM" }]);
-	});
-
-	it("retries after SIGKILL and succeeds when hook exits within the retry window", async () => {
-		// Simulates hook that survives SIGTERM, then appears transiently alive on the
-		// first post-SIGKILL poll but is gone by the second — the race that caused IPC_ERROR.
-		const { exec, kills } = makeControlledExec({
-			dieAfterKillCount: 2,
-			transientAlivePollsAfterKill: 1,
-		});
-
-		const program = Effect.gen(function* () {
-			const fiber = yield* Effect.fork(terminateHookChild(exec, 12345));
-			yield* Effect.yieldNow();
-			yield* Effect.yieldNow();
-			yield* TestClock.adjust("600 millis");
-			yield* Effect.yieldNow();
-			yield* Effect.yieldNow();
-			yield* Effect.yieldNow();
-			return yield* Fiber.join(fiber);
-		}).pipe(Effect.provide(TestContext.TestContext));
-
-		await Effect.runPromise(program);
-		expect(kills).toEqual([
-			{ pid: 12345, signal: "SIGTERM" },
-			{ pid: 12345, signal: "SIGKILL" },
-		]);
-	});
-
-	it("fails loudly when hook remains alive after all post-SIGKILL retries", async () => {
-		const exec: HookExecutorService = {
-			spawn: () => Effect.die("unexpected"),
-			kill: () => Effect.void,
-			isAlive: () => Effect.succeed(true),
-		};
-
-		const program = Effect.gen(function* () {
-			const fiber = yield* Effect.fork(terminateHookChild(exec, 99999));
-			yield* Effect.yieldNow();
-			yield* Effect.yieldNow();
-			yield* TestClock.adjust("1000 millis");
-			yield* Effect.yieldNow();
-			yield* Effect.yieldNow();
-			yield* Effect.yieldNow();
-			return yield* Fiber.join(fiber);
-		}).pipe(Effect.provide(TestContext.TestContext));
-
-		await expect(Effect.runPromise(program)).rejects.toThrow("still alive after SIGKILL");
-	});
-});
-
-describe("LiveHookExecutor", () => {
-	it("delivers burst output one line at a time in order", async () => {
-		const tmpDir = await mkdtemp(join(tmpdir(), "pdx-hook-live-"));
-		const scriptPath = join(tmpDir, "burst.sh");
-		await writeFile(scriptPath, "#!/bin/sh\necho line1\necho line2\necho line3\n");
-		await chmod(scriptPath, 0o755);
-		const stderrPath = join(tmpDir, "stderr.log");
-
-		await Effect.runPromise(
-			Effect.gen(function* () {
-				const handle = yield* LiveHookExecutor.spawn([scriptPath], stderrPath);
-				expect(yield* handle.waitForLine).toBe("line1");
-				expect(yield* handle.waitForLine).toBe("line2");
-				expect(yield* handle.waitForLine).toBe("line3");
-				expect(yield* handle.waitForLine).toBeNull();
-			}),
-		);
-	});
-
-	it("returns null on first call when the hook emits nothing", async () => {
-		const tmpDir = await mkdtemp(join(tmpdir(), "pdx-hook-live-"));
-		const scriptPath = join(tmpDir, "empty.sh");
-		await writeFile(scriptPath, "#!/bin/sh\n");
-		await chmod(scriptPath, 0o755);
-		const stderrPath = join(tmpDir, "stderr.log");
-
-		await Effect.runPromise(
-			Effect.gen(function* () {
-				const handle = yield* LiveHookExecutor.spawn([scriptPath], stderrPath);
-				expect(yield* handle.waitForLine).toBeNull();
-			}),
-		);
-	});
-
-	it("delivers a trailing partial line that has no newline at EOF", async () => {
-		const tmpDir = await mkdtemp(join(tmpdir(), "pdx-hook-live-"));
-		const scriptPath = join(tmpDir, "notail.sh");
-		await writeFile(scriptPath, "#!/bin/sh\nprintf 'no-newline'");
-		await chmod(scriptPath, 0o755);
-		const stderrPath = join(tmpDir, "stderr.log");
-
-		await Effect.runPromise(
-			Effect.gen(function* () {
-				const handle = yield* LiveHookExecutor.spawn([scriptPath], stderrPath);
-				expect(yield* handle.waitForLine).toBe("no-newline");
-				expect(yield* handle.waitForLine).toBeNull();
-			}),
-		);
-	});
-
-	it("fails with HOOK_OUTPUT_OVERFLOW when hook writes more than 1 MB without a newline", async () => {
-		const tmpDir = await mkdtemp(join(tmpdir(), "pdx-hook-live-"));
-		const scriptPath = join(tmpDir, "overflow.sh");
-		// Write 1 MB + 1 byte without any newline to exceed the hard cap.
-		await writeFile(
-			scriptPath,
-			"#!/bin/sh\nnode -e \"process.stdout.write(Buffer.alloc(1024 * 1024 + 1, 'x'))\"",
-		);
-		await chmod(scriptPath, 0o755);
-		const stderrPath = join(tmpDir, "stderr.log");
-
-		const err = await Effect.runPromise(
-			Effect.flip(
-				Effect.gen(function* () {
-					const handle = yield* LiveHookExecutor.spawn([scriptPath], stderrPath);
-					yield* handle.waitForLine;
-				}),
-			),
-		);
-		expect(err.code).toBe("HOOK_OUTPUT_OVERFLOW");
-	});
-
-	it("continues delivering normal lines before the cap is reached", async () => {
-		const tmpDir = await mkdtemp(join(tmpdir(), "pdx-hook-live-"));
-		const scriptPath = join(tmpDir, "undercap.sh");
-		// Each line is well under the 1 MB cap; 3 complete lines should arrive cleanly.
-		await writeFile(scriptPath, "#!/bin/sh\necho alpha\necho beta\necho gamma\n");
-		await chmod(scriptPath, 0o755);
-		const stderrPath = join(tmpDir, "stderr.log");
-
-		await Effect.runPromise(
-			Effect.gen(function* () {
-				const handle = yield* LiveHookExecutor.spawn([scriptPath], stderrPath);
-				expect(yield* handle.waitForLine).toBe("alpha");
-				expect(yield* handle.waitForLine).toBe("beta");
-				expect(yield* handle.waitForLine).toBe("gamma");
-				expect(yield* handle.waitForLine).toBeNull();
-			}),
-		);
 	});
 });

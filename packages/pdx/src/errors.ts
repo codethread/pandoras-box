@@ -9,7 +9,6 @@ export type PdxErrorCode =
 	| "LAUNCH_ERROR"
 	| "PANDORA_STARTUP_FAILED"
 	| "FS_ERROR"
-	| "HOOK_OUTPUT_OVERFLOW"
 	| "USER_ERROR"
 	| "NOT_FOUND"
 	| "STALE_TOKEN"

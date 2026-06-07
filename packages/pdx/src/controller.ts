@@ -2,22 +2,20 @@ import { Deferred, Effect, Fiber, Ref, Schedule, Either } from "effect";
 import { resolve } from "node:path";
 import { PDX_SYSTEM_RUN_ID, type Capability } from "@pdx/pithos";
 import { requestIpc, listenIpc } from "./ipc-socket.js";
+import { listenIntakeSocket } from "./intake-socket.js";
 import type { IpcResponse } from "./ipc.js";
 import { PdxError } from "./errors.js";
 import type { PdxConfig } from "./config.js";
 import {
 	Clock,
 	FileSystem,
-	HookExecutor,
 	Ids,
-	LifecycleReporter,
 	PithosClient,
 	Process,
 	Registry,
 	Spawner,
 	SupervisorLog,
 	Tmux,
-	type HookExecutorService,
 	type NudgeReason,
 	type ProcessService,
 	type RegistryEntry,
@@ -27,12 +25,12 @@ import { reportLifecycle } from "./lifecycle.js";
 
 export const DAEMON_TARGET = "pdx--daemon";
 export const PANDORA_TARGET = "pdx--pandora";
-export const HOOKS_TARGET = "pdx--hooks";
 export { PDX_SYSTEM_RUN_ID };
 const NO_CLAIM_TIMEOUT_MILLIS = 30_000;
 const MAX_CONSECUTIVE_RECONCILE_FAILURES = 3;
 const MAX_KILL_ATTEMPTS_BEFORE_ESCALATION = 3;
 const EVENT_PRUNE_INTERVAL_MILLIS = 60 * 60 * 1000;
+const NATURAL_DEATH_TRANSCRIPT_LIMIT = 8;
 
 const pidfilePath = (config: PdxConfig, runId: string): string => `${config.runsDir}/${runId}.pid`;
 const afkStdoutPath = (config: PdxConfig, runId: string): string =>
@@ -45,15 +43,26 @@ const writeAfkPidfile = (config: PdxConfig, runId: string, pid: number) =>
 		Effect.flatMap((fs) => fs.writeFileAtomic(pidfilePath(config, runId), `${pid}\n`)),
 	);
 
-const cleanupRun = (runId: string, reason: string) =>
-	PithosClient.pipe(Effect.flatMap((pithos) => pithos.runCleanup({ runId, reason })));
+const cleanupRun = (runId: string, reason: string, sessionEvidence?: string) =>
+	PithosClient.pipe(
+		Effect.flatMap((pithos) =>
+			pithos.runCleanup(
+				sessionEvidence === undefined ? { runId, reason } : { runId, reason, sessionEvidence },
+			),
+		),
+	);
 
 const cwdExists = (cwd: string) => FileSystem.pipe(Effect.flatMap((fs) => fs.existsDirectory(cwd)));
 
-const cleanupAfkRun = (config: PdxConfig, runId: string, reason: string) =>
+const cleanupAfkRun = (
+	config: PdxConfig,
+	runId: string,
+	reason: string,
+	sessionEvidence?: string,
+) =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem;
-		yield* cleanupRun(runId, reason);
+		yield* cleanupRun(runId, reason, sessionEvidence);
 		yield* fs.removeFile(pidfilePath(config, runId));
 	});
 
@@ -169,6 +178,7 @@ export const initPdx = (
 			yield* fs.removeFile(config.runsDir);
 			yield* fs.removeFile(config.logPath);
 			yield* fs.removeFile(config.socketPath);
+			yield* fs.removeFile(config.intakeSocketPath);
 		}
 		yield* fs.mkdir(config.dataDir);
 		yield* pithos.init();
@@ -515,6 +525,26 @@ export const runTranscriptPdx = (input: {
 			sessionLogPath: run.session_log_path,
 			limit: input.limit,
 		});
+	});
+
+const naturalDeathSessionEvidence = (runId: string) =>
+	Effect.gen(function* () {
+		const pithos = yield* PithosClient;
+		const spawner = yield* Spawner;
+		const run = yield* pithos.runInspect({ runId });
+		if (run.harness_kind === "system") return undefined;
+		return yield* spawner
+			.renderSessionTranscript({
+				harnessKind: run.harness_kind,
+				sessionLogPath: run.session_log_path,
+				limit: NATURAL_DEATH_TRANSCRIPT_LIMIT,
+			})
+			.pipe(
+				Effect.map((text) => text.trimEnd()),
+				Effect.catchAll((error) =>
+					Effect.succeed(`Session evidence unavailable: ${error.message}`),
+				),
+			);
 	});
 
 const confirmTmuxGone = (tmux: TmuxService, target: string) =>
@@ -1181,268 +1211,6 @@ const spawnReadyAgent = (config: PdxConfig, maxAfk: number) =>
 		}
 	});
 
-const HOOK_CRASH_WINDOW_MILLIS = 60_000;
-const HOOK_CRASH_LIMIT = 5;
-const HOOK_UPTIME_RESET_MILLIS = 60_000;
-const HOOK_BACKOFF_CAP_SECONDS = 30;
-
-const hookStderrPath = (config: PdxConfig): string => `${config.runsDir}/hook.stderr.log`;
-const hookStdoutPath = (config: PdxConfig): string => `${config.runsDir}/hook.stdout.log`;
-
-const nowMillis = Clock.pipe(
-	Effect.flatMap((clock) => clock.nowIso),
-	Effect.flatMap((nowIso) => {
-		const millis = Date.parse(nowIso);
-		return Number.isNaN(millis)
-			? Effect.fail(
-					new PdxError({
-						code: "PROCESS_ERROR",
-						message: `clock provided invalid now iso: ${nowIso}`,
-					}),
-				)
-			: Effect.succeed(millis);
-	}),
-);
-
-const parseIntakeLine = (raw: string): { title: string; body: string } | null => {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		return null;
-	}
-	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-	const rec = parsed as Record<string, unknown>;
-	if (typeof rec.title !== "string" || rec.title.length === 0) return null;
-	if (typeof rec.body !== "string" || rec.body.length === 0) return null;
-	return { title: rec.title, body: rec.body };
-};
-
-const hookCrashLoopBody = (argv: readonly string[], recentExitCount: number): string =>
-	[
-		`The input hook exited ${recentExitCount} times within ${HOOK_CRASH_WINDOW_MILLIS / 1000}s. pdx has stopped restarting it.`,
-		"",
-		`Command: ${JSON.stringify(argv)}`,
-		"",
-		"Suggested next steps: fix the hook script, then restart pdx (pdx close && pdx open) to resume hook supervision.",
-	].join("\n");
-
-const killHookIfPresent = (
-	hookExec: HookExecutorService,
-	pid: number,
-	signal: "SIGTERM" | "SIGKILL",
-) =>
-	hookExec
-		.kill(pid, signal)
-		.pipe(
-			Effect.catchAll((error) => (isMissingProcessError(error) ? Effect.void : Effect.fail(error))),
-		);
-
-// Post-SIGKILL poll: the kernel may not have reaped the process yet when we
-// check immediately. A bounded retry avoids a spurious close failure caused by
-// a zombie that exits within a few milliseconds.
-const HOOK_KILL_POLL_MAX = 10;
-const HOOK_KILL_POLL_MILLIS = 50;
-
-export const terminateHookChild = (hookExec: HookExecutorService, pid: number) =>
-	Effect.gen(function* () {
-		if (!(yield* hookExec.isAlive(pid))) return;
-		yield* killHookIfPresent(hookExec, pid, "SIGTERM");
-		if (!(yield* hookExec.isAlive(pid))) return;
-		yield* killHookIfPresent(hookExec, pid, "SIGKILL");
-		for (let attempt = 0; attempt < HOOK_KILL_POLL_MAX; attempt++) {
-			yield* Effect.sleep(`${HOOK_KILL_POLL_MILLIS} millis`);
-			if (!(yield* hookExec.isAlive(pid))) return;
-		}
-		yield* Effect.fail(
-			new PdxError({
-				code: "PROCESS_ERROR",
-				message: `hook process ${pid} still alive after SIGKILL`,
-			}),
-		);
-	});
-
-export const runInputHookSupervisor = (
-	config: PdxConfig,
-	argv: readonly string[],
-	currentPidRef?: Ref.Ref<number | null>,
-) =>
-	Effect.gen(function* () {
-		const hookExec = yield* HookExecutor;
-		const pithos = yield* PithosClient;
-		const log = yield* SupervisorLog;
-		const fs = yield* FileSystem;
-
-		const recentExitTimesRef = yield* Ref.make<readonly number[]>([]);
-		const escalatedRef = yield* Ref.make(false);
-		const consecutiveCrashesRef = yield* Ref.make(0);
-		const hookPidRef = currentPidRef ?? (yield* Ref.make<number | null>(null));
-
-		while (true) {
-			const escalated = yield* Ref.get(escalatedRef);
-			if (escalated) {
-				yield* Effect.sleep("30 seconds");
-				continue;
-			}
-
-			const spawnedAt = yield* nowMillis;
-
-			// Attempt spawn; on failure log and fall through to crash tracking.
-			const spawnAttempt = yield* hookExec.spawn(argv, hookStderrPath(config)).pipe(
-				Effect.map((handle) => ({ ok: true as const, handle })),
-				Effect.catchAll((error) =>
-					log
-						.write({
-							level: "error",
-							span: "pdx.hook",
-							msg: "hook spawn failed",
-							data: { error: error.message },
-						})
-						.pipe(Effect.map(() => ({ ok: false as const }))),
-				),
-			);
-
-			if (spawnAttempt.ok) {
-				const handle = spawnAttempt.handle;
-				yield* Ref.set(hookPidRef, handle.pid);
-				yield* log.write({
-					level: "info",
-					span: "pdx.hook",
-					msg: "hook spawned",
-					data: { pid: handle.pid },
-				});
-				yield* reportLifecycle({ kind: "hook_spawned", pid: handle.pid });
-
-				const readLoop = Effect.gen(function* () {
-					while (true) {
-						const line = yield* handle.waitForLine;
-						if (line === null) return;
-						yield* fs
-							.appendFile(hookStdoutPath(config), `${line}\n`)
-							.pipe(Effect.catchAll(() => Effect.void));
-						const item = parseIntakeLine(line);
-						if (item === null) {
-							yield* log.write({
-								level: "warn",
-								span: "pdx.hook",
-								msg: "hook line invalid, skipping",
-								data: { line: line.slice(0, 200) },
-							});
-							continue;
-						}
-						yield* pithos
-							.taskEnqueue({
-								scope: "global",
-								capability: "intake",
-								title: item.title,
-								body: item.body,
-								runId: PDX_SYSTEM_RUN_ID,
-							})
-							.pipe(
-								Effect.tapError((error) =>
-									log.write({
-										level: "error",
-										span: "pdx.hook",
-										msg: "hook enqueue failed, retrying",
-										data: { error: error.message },
-									}),
-								),
-								Effect.retry(
-									Schedule.union(Schedule.exponential("500 millis"), Schedule.spaced("30 seconds")),
-								),
-							);
-					}
-				});
-
-				const clearHookPidAfterTerminate = terminateHookChild(hookExec, handle.pid).pipe(
-					Effect.zipRight(Ref.set(hookPidRef, null)),
-				);
-				yield* readLoop.pipe(
-					Effect.ensuring(clearHookPidAfterTerminate.pipe(Effect.catchAll(() => Effect.void))),
-					// Absorb read errors (e.g. HOOK_OUTPUT_OVERFLOW) so the outer crash-
-					// tracking loop can log, back off, and restart the hook normally.
-					Effect.catchTag("PdxError", (error) =>
-						log.write({
-							level: "error",
-							span: "pdx.hook",
-							msg: "hook read failed",
-							data: { code: error.code, error: error.message },
-						}),
-					),
-				);
-				if ((yield* Ref.get(hookPidRef)) !== null) {
-					yield* clearHookPidAfterTerminate.pipe(
-						Effect.tapError((error) =>
-							log.write({
-								level: "error",
-								span: "pdx.hook",
-								msg: "hook termination failed",
-								data: { pid: handle.pid, error: error.message },
-							}),
-						),
-					);
-				}
-
-				yield* reportLifecycle({ kind: "hook_removed", pid: handle.pid, reason: "crash" });
-			}
-
-			// child exited (or spawn failed) — track crash
-			const now = yield* nowMillis;
-			const uptimeMs = now - spawnedAt;
-			yield* log.write({
-				level: "warn",
-				span: "pdx.hook",
-				msg: "hook exited",
-				data: { uptime_ms: uptimeMs },
-			});
-
-			if (uptimeMs >= HOOK_UPTIME_RESET_MILLIS) {
-				yield* Ref.set(recentExitTimesRef, [now]);
-				yield* Ref.set(consecutiveCrashesRef, 1);
-			} else {
-				const cutoff = now - HOOK_CRASH_WINDOW_MILLIS;
-				yield* Ref.update(recentExitTimesRef, (times) => [...times.filter((t) => t > cutoff), now]);
-				yield* Ref.update(consecutiveCrashesRef, (n) => n + 1);
-			}
-
-			const recentExits = yield* Ref.get(recentExitTimesRef);
-			if (recentExits.length >= HOOK_CRASH_LIMIT) {
-				const alertResult = yield* pithos
-					.createRepairAlert({
-						runId: PDX_SYSTEM_RUN_ID,
-						kind: "input_hook_stuck",
-						escalationTitle: "Input hook crash-looping — supervision stopped",
-						escalationBody: hookCrashLoopBody(argv, recentExits.length),
-					})
-					.pipe(Effect.either);
-				if (Either.isRight(alertResult)) {
-					yield* Ref.set(escalatedRef, true);
-				} else {
-					yield* log.write({
-						level: "error",
-						span: "pdx.hook",
-						msg: "failed to create input_hook_stuck repair alert",
-						data: { error: alertResult.left.message },
-					});
-					// Sleep before retrying to avoid tight-looping when the alert store is unreachable.
-					yield* Effect.sleep("30 seconds");
-				}
-				continue;
-			}
-
-			// exponential backoff before restart
-			const crashes = yield* Ref.get(consecutiveCrashesRef);
-			const backoffSeconds = Math.min(Math.pow(2, crashes - 1), HOOK_BACKOFF_CAP_SECONDS);
-			yield* log.write({
-				level: "info",
-				span: "pdx.hook",
-				msg: "hook restarting after backoff",
-				data: { backoff_seconds: backoffSeconds, crash_count: crashes },
-			});
-			yield* Effect.sleep(`${backoffSeconds} seconds`);
-		}
-	});
-
 export const reconcileTick = (config: PdxConfig, maxAfk = 4) =>
 	Effect.gen(function* () {
 		const registry = yield* Registry;
@@ -1509,15 +1277,16 @@ export const reconcileTick = (config: PdxConfig, maxAfk = 4) =>
 					}
 				}
 			} else if (!alive) {
+				const sessionEvidence = yield* naturalDeathSessionEvidence(entry.runId);
 				let stdout: string | null = null;
 				let stderr: string | null = null;
 				if (entry.mode === "afk") {
 					const fs = yield* FileSystem;
 					stdout = yield* fs.readFile(afkStdoutPath(config, entry.runId));
 					stderr = yield* fs.readFile(afkStderrPath(config, entry.runId));
-					yield* cleanupAfkRun(config, entry.runId, "natural_death");
+					yield* cleanupAfkRun(config, entry.runId, "natural_death", sessionEvidence);
 				} else {
-					yield* cleanupRun(entry.runId, "natural_death");
+					yield* cleanupRun(entry.runId, "natural_death", sessionEvidence);
 				}
 				yield* registry.remove(entry.runId);
 				yield* log.write({
@@ -1661,31 +1430,6 @@ export const reconcileTick = (config: PdxConfig, maxAfk = 4) =>
 		}
 		yield* sendEscalateNudgeIfNeeded();
 		yield* spawnReadyAgent(config, maxAfk);
-	});
-
-export const hookStopPdx = (config: PdxConfig) =>
-	Effect.gen(function* () {
-		const response = yield* requestIpc(config.socketPath, { kind: "hook.stop" });
-		if (!response.ok) {
-			yield* Effect.fail(
-				new PdxError({ code: "IPC_ERROR", message: response.error ?? "daemon hook stop failed" }),
-			);
-		}
-		return response.data;
-	});
-
-export const hookRestartPdx = (config: PdxConfig) =>
-	Effect.gen(function* () {
-		const response = yield* requestIpc(config.socketPath, { kind: "hook.restart" });
-		if (!response.ok) {
-			yield* Effect.fail(
-				new PdxError({
-					code: "IPC_ERROR",
-					message: response.error ?? "daemon hook restart failed",
-				}),
-			);
-		}
-		return response.data;
 	});
 
 const killFailureEscalationTitle = (runId: string): string => `Investigate stuck kill: ${runId}`;
@@ -1884,10 +1628,7 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 	Effect.gen(function* () {
 		const fs = yield* FileSystem;
 		const pithos = yield* PithosClient;
-		const spawner = yield* Spawner;
 		const log = yield* SupervisorLog;
-		const clock = yield* Clock;
-		const lifecycleReporter = yield* LifecycleReporter;
 		yield* fs.mkdir(config.runsDir);
 		yield* log.write({ level: "info", span: "pdx.daemon", msg: "daemon starting" });
 		yield* settleHitlOrphans();
@@ -1906,9 +1647,6 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 		const registry = yield* Registry;
 		const tmux = yield* Tmux;
 		const processService = yield* Process;
-		const hookPidRef = yield* Ref.make<number | null>(null);
-		const hookFiberRef = yield* Ref.make<Fiber.RuntimeFiber<void, PdxError> | null>(null);
-		let hookExecService: HookExecutorService | null = null;
 		const consecutiveReconcileFailures = yield* Ref.make(0);
 		yield* loggedReconcileTick(config, maxAfk, consecutiveReconcileFailures);
 		const loop = yield* loggedReconcileTick(config, maxAfk, consecutiveReconcileFailures).pipe(
@@ -1916,74 +1654,27 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 			Effect.fork,
 		);
 
-		// Fork hook supervisor if hooks.input is configured
-		const hooks = yield* spawner.loadHooks().pipe(
-			Effect.catchAll((error) =>
-				Effect.gen(function* () {
-					yield* log.write({
-						level: "error",
-						span: "pdx.daemon",
-						msg: "failed to load hooks config, input hook disabled",
-						data: { error: error.message },
-					});
-					yield* pithos.createRepairAlert({
-						runId: PDX_SYSTEM_RUN_ID,
-						kind: "hook_config_error",
-						escalationTitle: "Input hook disabled: hook config failed to load",
-						escalationBody: `pdx failed to load the input hook configuration. The input hook is disabled for this daemon session.\n\nError: ${error.message}\n\nSuggested next steps: fix $PDX_USER_DATA_DIR/agents.toml, then restart pdx (pdx close && pdx open) to resume hook supervision.`,
-					});
-					return { input: undefined } as const;
-				}),
+		const intakeHandle = yield* listenIntakeSocket(config.intakeSocketPath, pithos);
+		const intakeClosedRef = yield* Ref.make(false);
+		const closeIntake = Ref.get(intakeClosedRef).pipe(
+			Effect.flatMap((closed) =>
+				closed
+					? Effect.void
+					: intakeHandle.close.pipe(Effect.zipRight(Ref.set(intakeClosedRef, true))),
 			),
 		);
-		const hookCommand = hooks.input?.command;
-		if (hookCommand !== undefined) {
-			const hookExec = yield* HookExecutor;
-			hookExecService = hookExec;
-			const fiber = yield* runInputHookSupervisor(config, hookCommand, hookPidRef).pipe(
-				Effect.provideService(HookExecutor, hookExec),
-				Effect.fork,
-			);
-			yield* Ref.set(hookFiberRef, fiber);
-			yield* tmux
-				.newSession({
-					target: HOOKS_TARGET,
-					cwd: config.runsDir,
-					command: ["tail", "-n", "50", "-F", hookStderrPath(config), hookStdoutPath(config)],
-				})
-				.pipe(
-					Effect.catchAll((error) =>
-						log.write({
-							level: "warn",
-							span: "pdx.hook",
-							msg: "failed to create pdx--hooks tmux session",
-							data: { error: error.message },
-						}),
-					),
-				);
-		}
+		yield* log.write({
+			level: "info",
+			span: "pdx.intake",
+			msg: "intake socket ready",
+			data: { socket_path: config.intakeSocketPath },
+		});
 
 		const shutdown = yield* Deferred.make<void, never>();
 		const stop = Effect.gen(function* () {
 			yield* log.write({ level: "info", span: "pdx.daemon", msg: "daemon stopping" });
 			yield* Fiber.interrupt(loop);
-			const hookFiber = yield* Ref.get(hookFiberRef);
-			if (hookFiber !== null) {
-				yield* Fiber.interrupt(hookFiber);
-			}
-			const hookPid = yield* Ref.get(hookPidRef);
-			if (hookPid !== null && hookExecService !== null) {
-				yield* terminateHookChild(hookExecService, hookPid).pipe(
-					Effect.zipRight(Ref.set(hookPidRef, null)),
-				);
-			}
-			yield* tmux
-				.killSession(HOOKS_TARGET)
-				.pipe(
-					Effect.catchAll((error) =>
-						isMissingTmuxSessionError(error) ? Effect.void : Effect.fail(error),
-					),
-				);
+			yield* closeIntake;
 			for (const entry of yield* registry.list) {
 				if (entry.tmuxTarget !== undefined) {
 					yield* tmux
@@ -2015,7 +1706,12 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 						(entries) =>
 							({
 								ok: true,
-								data: { daemon: "running", max_afk: maxAfk, registry_entries: entries },
+								data: {
+									daemon: "running",
+									max_afk: maxAfk,
+									registry_entries: entries,
+									intake_socket: config.intakeSocketPath,
+								},
 							}) as const,
 					),
 				);
@@ -2031,57 +1727,11 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 					Effect.provideService(Process, processService),
 				);
 			}
-			if (request.kind === "hook.stop") {
-				if (hookCommand === undefined || hookExecService === null) {
-					return Effect.succeed({ ok: false, error: "no hook configured" });
-				}
-				const hookExec = hookExecService;
-				return Effect.gen(function* () {
-					const currentFiber = yield* Ref.get(hookFiberRef);
-					if (currentFiber !== null) {
-						yield* Fiber.interruptFork(currentFiber);
-						yield* Ref.set(hookFiberRef, null);
-					}
-					const currentPid = yield* Ref.get(hookPidRef);
-					if (currentPid !== null) {
-						yield* terminateHookChild(hookExec, currentPid);
-						yield* Ref.set(hookPidRef, null);
-					}
-					return { ok: true as const, data: { hook_stopped: true } };
-				});
-			}
-			if (request.kind === "hook.restart") {
-				if (hookCommand === undefined || hookExecService === null) {
-					return Effect.succeed({ ok: false, error: "no hook configured" });
-				}
-				const hookExec = hookExecService;
-				const cmd = hookCommand;
-				return Effect.gen(function* () {
-					const currentFiber = yield* Ref.get(hookFiberRef);
-					if (currentFiber !== null) {
-						yield* Fiber.interruptFork(currentFiber);
-						yield* Ref.set(hookFiberRef, null);
-					}
-					const currentPid = yield* Ref.get(hookPidRef);
-					if (currentPid !== null) {
-						yield* terminateHookChild(hookExec, currentPid);
-						yield* Ref.set(hookPidRef, null);
-					}
-					const fiber = yield* runInputHookSupervisor(config, cmd, hookPidRef).pipe(
-						Effect.provideService(HookExecutor, hookExec),
-						Effect.provideService(PithosClient, pithos),
-						Effect.provideService(SupervisorLog, log),
-						Effect.provideService(Clock, clock),
-						Effect.provideService(FileSystem, fs),
-						Effect.provideService(LifecycleReporter, lifecycleReporter),
-						Effect.fork,
-					);
-					yield* Ref.set(hookFiberRef, fiber);
-					return { ok: true as const, data: { hook_restarted: true } };
-				});
-			}
 			return stop;
-		});
+		}).pipe(Effect.tapError(() => closeIntake));
 		yield* log.write({ level: "info", span: "pdx.daemon", msg: "daemon ready" });
-		return { ...handle, shutdown: Deferred.await(shutdown) };
+		return {
+			close: closeIntake.pipe(Effect.zipRight(handle.close)),
+			shutdown: Deferred.await(shutdown),
+		};
 	});

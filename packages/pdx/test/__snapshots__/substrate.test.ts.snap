@@ -15,6 +15,5 @@ Commands:
   daemon    Daemon supervisor commands.
   run       Inspect or stop supervised agent runs owned by pdx.
   task      Operate on live supervision for Pithos tasks.
-  hook      Control the supervised input hook process.
 "
 `;

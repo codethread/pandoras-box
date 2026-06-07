@@ -287,8 +287,12 @@ const ensureRunsHasClaimedTaskColumn = (db: Db): void => {
 	}
 };
 
+const RETIRED_REPAIR_ALERT_KINDS = ["input_hook_stuck", "hook_config_error"] as const;
+
 // SQLite CHECK constraints cannot be altered in place; rebuild the table when
-// existing DB DDL is missing any current Repair Alert kind.
+// existing DB DDL is missing any current Repair Alert kind or still permits a
+// retired kind. Retired rows are removed from repair_alerts; their escalation
+// tasks remain as ordinary historical escalation tasks without a repair kind.
 const ensureRepairAlertsKindConstraint = (db: Db): void => {
 	const rows = db
 		.prepare(sql`SELECT sql FROM sqlite_master WHERE type='table' AND name='repair_alerts'`)
@@ -296,13 +300,16 @@ const ensureRepairAlertsKindConstraint = (db: Db): void => {
 	if (rows.length === 0) return;
 	const tableSql = rows[0]?.sql ?? "";
 	const hasAllKinds = REPAIR_ALERT_KINDS.every((kind) => tableSql.includes(`'${kind}'`));
-	if (hasAllKinds) return;
+	const hasRetiredKinds = RETIRED_REPAIR_ALERT_KINDS.some((kind) => tableSql.includes(`'${kind}'`));
+	if (hasAllKinds && !hasRetiredKinds) return;
 
 	db.pragma("foreign_keys = OFF");
 	try {
 		db.transaction(() => {
 			db.prepare(repairAlertsTableSql("repair_alerts_new")).run();
-			db.prepare(sql`INSERT INTO repair_alerts_new SELECT * FROM repair_alerts`).run();
+			db.prepare(
+				sql`INSERT INTO repair_alerts_new SELECT * FROM repair_alerts WHERE kind IN (${REPAIR_ALERT_KINDS.map(() => "?").join(", ")})`,
+			).run(...REPAIR_ALERT_KINDS);
 			db.prepare(sql`DROP TABLE repair_alerts`).run();
 			db.prepare(sql`ALTER TABLE repair_alerts_new RENAME TO repair_alerts`).run();
 		})();

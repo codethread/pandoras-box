@@ -7,7 +7,6 @@ import { SpawnerError } from "./errors.js";
 import { LiveSpawnerServices } from "./services.js";
 import {
 	launchRenderedAgent,
-	loadHooks,
 	renderAgent,
 	renderSessionTranscript,
 	type RenderedAgent,
@@ -295,31 +294,6 @@ const pdxHelpTree = {
 					path: "pdx task show",
 					usage: "pdx task show [--data-dir text] <task-id>",
 					description: "Jump to the live tmux session holding a task, if any.",
-					subcommands: [],
-				},
-			],
-		},
-		{
-			tool: "pdx",
-			name: "hook",
-			path: "pdx hook",
-			usage: "pdx hook",
-			description: "Control the supervised input hook process.",
-			subcommands: [
-				{
-					tool: "pdx",
-					name: "stop",
-					path: "pdx hook stop",
-					usage: "pdx hook stop [--data-dir text]",
-					description: "Stop the supervised input hook process.",
-					subcommands: [],
-				},
-				{
-					tool: "pdx",
-					name: "restart",
-					path: "pdx hook restart",
-					usage: "pdx hook restart [--data-dir text]",
-					description: "Restart the supervised input hook process.",
 					subcommands: [],
 				},
 			],
@@ -1206,6 +1180,11 @@ remove = ["global-flow"]
 		],
 		["invalid id", '[policies.Bad]\nfiles = ["p.md"]', /invalid policy id 'Bad'/],
 		["replace", '[policy]\nreplace = ["git-flow"]', /policy\.replace is not supported/],
+		[
+			"removed hooks config",
+			'[hooks.input]\ncommand = ["/tmp/hook"]',
+			/unknown top-level field 'hooks'/,
+		],
 		["unknown rule predicate", '[[rules]]\nbranch = "main"', /unknown predicate or field 'branch'/],
 		[
 			"invalid rule glob",
@@ -1546,10 +1525,6 @@ remove = ["global-flow"]
 		expect(rendered.prompt).toContain("#### `pdx run show`");
 		expect(rendered.prompt).toContain("AFK runs are headless");
 		expect(rendered.prompt).toContain("#### `pdx task show`");
-		expect(rendered.prompt).toContain("#### `pdx hook stop`");
-		expect(rendered.prompt).toContain("Stops the running input hook process");
-		expect(rendered.prompt).toContain("#### `pdx hook restart`");
-		expect(rendered.prompt).toContain("Stops and re-forks the input hook supervisor");
 
 		expect(rendered.prompt).not.toContain("### Pithos help JSON");
 		expect(rendered.prompt).not.toContain("### pdx inspection help JSON");
@@ -2194,459 +2169,6 @@ system_prompt_mode = "append"
 			),
 		).toThrow("invalid manifest");
 	});
-
-	it("loadHooks reads bundled and user manifests only", () => {
-		const dataDir = "/tmp/pdx-hooks-overlay";
-		const userDir = `${dataDir}/config`;
-		const hooks = loadHooks({
-			readText: (path: string) => {
-				if (path === `${dataDir}/agents.toml`)
-					return agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" });
-				if (path === `${userDir}/agents.toml`) return '[hooks.input]\ncommand = ["/tmp/hook"]\n';
-				if (path === `${userDir}/scopes/global/agents.toml`)
-					return '[hooks.input]\nenabled = true\ncommand = ["/tmp/hook", "--flag"]\n';
-				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-					code: "ENOENT",
-				});
-			},
-			realPath: (path: string) => path,
-			env: (key: string) => {
-				if (key === "PDX_DATA_DIR") return dataDir;
-				if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-				return undefined;
-			},
-			execFile: noopExec,
-		});
-		expect(hooks.input?.command).toEqual(["/tmp/hook"]);
-	});
-
-	it("loadHooks preserves user enabled=false over a bundled hook command", () => {
-		const dataDir = "/tmp/pdx-hooks-disable";
-		const userDir = `${dataDir}/config`;
-		const hooks = loadHooks({
-			readText: (path: string) => {
-				if (path === `${dataDir}/agents.toml`)
-					return `${agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" })}\n[hooks.input]\ncommand = ["/tmp/bundled-hook"]\n`;
-				if (path === `${userDir}/agents.toml`) return "[hooks.input]\nenabled = false\n";
-				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-					code: "ENOENT",
-				});
-			},
-			realPath: (path: string) => path,
-			env: (key: string) => {
-				if (key === "PDX_DATA_DIR") return dataDir;
-				if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-				return undefined;
-			},
-			execFile: noopExec,
-		});
-		expect(hooks.input).toEqual({ enabled: false });
-	});
-
-	it("loadHooks ignores old scope and project hook manifests", () => {
-		const dataDir = "/tmp/pdx-hooks-invalid-overlay";
-		const userDir = `${dataDir}/config`;
-		const repoDir = "/tmp/pdx-hooks-repo";
-		const hooks = loadHooks({
-			readText: (path: string) => {
-				if (path === `${dataDir}/agents.toml`)
-					return agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" });
-				if (path === `${userDir}/scopes/global/agents.toml`)
-					return '[hooks.input]\ncommand = ["/tmp/global-hook"]\n';
-				if (path === `${userDir}/scopes/repo/agents.toml`)
-					return '[hooks.input]\ncommand = ["/tmp/repo-hook"]\n';
-				if (path === `${repoDir}/.pdx/agents.toml`)
-					return '[hooks.input]\ncommand = ["/tmp/project-hook"]\n';
-				if (path === `${repoDir}/.pdx/scopes/repo/agents.toml`)
-					return '[hooks.input]\ncommand = ["/tmp/project-scope-hook"]\n';
-				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-					code: "ENOENT",
-				});
-			},
-			realPath: (path: string) => path,
-			env: (key: string) => {
-				if (key === "PDX_DATA_DIR") return dataDir;
-				if (key === "PDX_USER_DATA_DIR") return userDir;
-				if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-				return undefined;
-			},
-			execFile: noopExec,
-		});
-		expect(hooks.input).toBeUndefined();
-	});
-
-	it("loadHooks rejects hooks declared inside rules", () => {
-		const dataDir = "/tmp/pdx-hooks-rule";
-		const userDir = `${dataDir}/config`;
-		expect(() =>
-			loadHooks({
-				readText: (path: string) => {
-					if (path === `${dataDir}/agents.toml`)
-						return agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" });
-					if (path === `${userDir}/agents.toml`)
-						return '[[rules]]\npath = "/tmp/project"\n[rules.hooks.input]\ncommand = ["/tmp/hook"]\n';
-					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-						code: "ENOENT",
-					});
-				},
-				realPath: (path: string) => path,
-				env: (key: string) => {
-					if (key === "PDX_DATA_DIR") return dataDir;
-					if (key === "PDX_USER_DATA_DIR") return userDir;
-					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-					return undefined;
-				},
-				execFile: noopExec,
-			}),
-		).toThrow("rules[0] contains unknown predicate or field 'hooks'");
-	});
-
-	it("user scope templates do not override bundled templates", () => {
-		const dataDir = "/tmp/pdx-layer-test";
-		const userDir = `${dataDir}/config`;
-		const rendered = renderAgent(
-			{ ...base, agent: "war", mode: "afk" },
-			{
-				readText: (path: string) => {
-					if (path === `${dataDir}/agents.toml`)
-						return agentsFile({
-							agent: "war",
-							mode: "afk",
-							harnessKind: "pi",
-							includes: ["_common.md"],
-						});
-					if (path === `${userDir}/scopes/repo/templates/_common.md`) return "USER_SCOPE_COMMON";
-					if (path === `${dataDir}/templates/_common.md`) return "BUNDLE_COMMON";
-					if (path === `${dataDir}/templates/war.md`)
-						return "{{_common.md}} {{claim_command}}\n{{command_cards}}";
-					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-						code: "ENOENT",
-					});
-				},
-				realPath: (path: string) => path,
-				env: (key: string) => {
-					if (key === "PDX_DATA_DIR") return dataDir;
-					if (key === "PDX_USER_DATA_DIR") return userDir;
-					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-					return undefined;
-				},
-				execFile: (file: string, args: readonly string[]) =>
-					file.split("/").at(-1) === "pithos" && args[0] === "--help-json"
-						? { status: 0, stdout: pithosHelpJson, stderr: "" }
-						: { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` },
-			},
-		);
-		expect(rendered.prompt).toContain("BUNDLE_COMMON");
-		expect(rendered.prompt).not.toContain("USER_SCOPE_COMMON");
-	});
-
-	it("user template replacement is rejected", () => {
-		const dataDir = "/tmp/pdx-template-default";
-		const userDir = `${dataDir}/config`;
-		expect(() =>
-			renderAgent(
-				{ ...base, agent: "war", mode: "afk" },
-				{
-					readText: (path: string) => {
-						if (path === `${dataDir}/agents.toml`)
-							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
-						if (path === `${userDir}/agents.toml`) return '[agents.war]\ntemplate = "war.md"\n';
-						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-							code: "ENOENT",
-						});
-					},
-					realPath: (path: string) => path,
-					env: (key: string) => {
-						if (key === "PDX_DATA_DIR") return dataDir;
-						if (key === "PDX_USER_DATA_DIR") return userDir;
-						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-						return undefined;
-					},
-					execFile: noopExec,
-				},
-			),
-		).toThrow("user manifest may not configure");
-	});
-
-	it("appends render after template body joined by separator in declared order", () => {
-		const dataDir = "/tmp/pdx-appends-test";
-		const rendered = renderAgent(
-			{ ...base, agent: "war", mode: "afk" },
-			{
-				readText: (path: string) => {
-					if (path === `${dataDir}/agents.toml`)
-						return agentsFile({
-							agent: "war",
-							mode: "afk",
-							harnessKind: "pi",
-							includes: [],
-							appends: ["extra-a.md", "extra-b.md"],
-							template: "war.md",
-						});
-					if (path === `${dataDir}/templates/war.md`)
-						return "TEMPLATE_BODY {{claim_command}}\n{{command_cards}}";
-					if (path === `${dataDir}/templates/extra-a.md`) return "APPEND_A";
-					if (path === `${dataDir}/templates/extra-b.md`) return "APPEND_B";
-					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-						code: "ENOENT",
-					});
-				},
-				realPath: (path: string) => path,
-				env: (key: string) => {
-					if (key === "PDX_DATA_DIR") return dataDir;
-					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-					return undefined;
-				},
-				execFile: (file: string, args: readonly string[]) =>
-					file.split("/").at(-1) === "pithos" && args[0] === "--help-json"
-						? { status: 0, stdout: pithosHelpJson, stderr: "" }
-						: { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` },
-			},
-		);
-		expect(rendered.prompt).toContain("TEMPLATE_BODY");
-		expect(rendered.prompt).toContain("APPEND_A");
-		expect(rendered.prompt).toContain("APPEND_B");
-		expect(rendered.prompt.indexOf("APPEND_A")).toBeLessThan(rendered.prompt.indexOf("APPEND_B"));
-	});
-
-	it("remove of an absent unique-list value fails loudly", () => {
-		const dataDir = "/tmp/pdx-list-remove-error";
-		const userDir = `${dataDir}/config`;
-		expect(() =>
-			renderAgent(
-				{ ...base, agent: "war", mode: "afk" },
-				{
-					readText: (path: string) => {
-						if (path === `${dataDir}/agents.toml`)
-							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
-						if (path === `${userDir}/agents.toml`)
-							return '[agents.war.includes]\nremove = ["missing.md"]\n';
-						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-							code: "ENOENT",
-						});
-					},
-					realPath: (path: string) => path,
-					env: (key: string) => {
-						if (key === "PDX_DATA_DIR") return dataDir;
-						if (key === "PDX_USER_DATA_DIR") return userDir;
-						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-						return undefined;
-					},
-					execFile: noopExec,
-				},
-			),
-		).toThrow("user manifest may not configure");
-	});
-
-	it("prompt without appends has no separator", () => {
-		const rendered = renderAgent(
-			{ ...base, agent: "war", mode: "afk" },
-			fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
-		);
-		expect(rendered.prompt).not.toContain("\n\n---\n\n");
-	});
-
-	it("records preview provenance for repo layered template resolution", () => {
-		const dataDir = "/tmp/pdx-provenance-repo";
-		const userDir = `${dataDir}/config`;
-		const repoDir = "/tmp/repos/demo";
-		const rendered = renderAgent(
-			{ ...base, agent: "war", mode: "afk", scopeId: `repo:${repoDir}`, cwd: repoDir },
-			{
-				readText: (path: string) => {
-					if (path === `${dataDir}/agents.toml`) {
-						return agentsFile({
-							agent: "war",
-							mode: "afk",
-							harnessKind: "pi",
-							includes: ["_common.md"],
-						});
-					}
-					if (path === `${userDir}/scopes/repo/agents.toml`)
-						return '[agents.war]\ntemplate = "war.md"\n';
-					if (path === `${repoDir}/.pdx/scopes/repo/templates/_common.md`)
-						return "PROJECT_SCOPE_COMMON";
-					if (path === `${repoDir}/.pdx/scopes/repo/templates/war.md`)
-						return "PROJECT_SCOPE_TEMPLATE {{_common.md}} {{claim_command}}\n{{command_cards}}";
-					if (path === `${dataDir}/templates/_common.md`) return "BUNDLED_COMMON";
-					if (path === `${dataDir}/templates/war.md`)
-						return "BUNDLED_TEMPLATE {{_common.md}} {{claim_command}}\n{{command_cards}}";
-					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-						code: "ENOENT",
-					});
-				},
-				realPath: (path: string) => path,
-				env: (key: string) => {
-					if (key === "PDX_DATA_DIR") return dataDir;
-					if (key === "PDX_USER_DATA_DIR") return userDir;
-					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-					return undefined;
-				},
-				execFile: (file: string, args: readonly string[]) =>
-					file.split("/").at(-1) === "pithos" && args[0] === "--help-json"
-						? { status: 0, stdout: pithosHelpJson, stderr: "" }
-						: { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` },
-			},
-		);
-		expect(rendered.prompt).toContain("BUNDLED_TEMPLATE BUNDLED_COMMON");
-		expect(rendered.prompt).not.toContain("PROJECT_SCOPE_TEMPLATE");
-		const provenance = rendered.provenance;
-		expect(provenance).toBeDefined();
-		expect(provenance!.layers.map((layer) => layer.kind)).toEqual(["bundled", "user"]);
-		expect(provenance!.template.resolved.path).toBe(`${dataDir}/templates/war.md`);
-		expect(provenance!.template.resolved.source).toMatchObject({
-			type: "layer",
-			kind: "bundled",
-			scopeKind: "global",
-			rootDir: dataDir,
-		});
-		expect(provenance!.includes).toEqual([
-			{
-				reference: "_common.md",
-				path: `${dataDir}/templates/_common.md`,
-				source: {
-					type: "layer",
-					kind: "bundled",
-					scopeKind: "global",
-					rootDir: dataDir,
-				},
-			},
-		]);
-	});
-
-	it("does not require parentRepoPath for worktree render config resolution", () => {
-		expect(() =>
-			renderAgent(
-				{ ...base, agent: "war", mode: "afk", scopeId: "worktree:/tmp/wt", cwd: "/tmp/wt" },
-				fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
-			),
-		).not.toThrow();
-	});
-
-	it("ignores project-local .pdx/scopes/global manifests for repo renders", () => {
-		const repoDir = "/tmp/repos/demo";
-		expect(() =>
-			renderAgent(
-				{ ...base, agent: "war", mode: "afk", scopeId: `repo:${repoDir}`, cwd: repoDir },
-				fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
-			),
-		).not.toThrow();
-	});
-
-	it("ignores project-local .pdx/scopes/global manifests for worktree renders", () => {
-		const worktreeDir = "/tmp/wt/demo";
-		const parentRepoDir = "/tmp/repos/demo";
-		expect(() =>
-			renderAgent(
-				{
-					...base,
-					agent: "war",
-					mode: "afk",
-					scopeId: `worktree:${worktreeDir}`,
-					cwd: worktreeDir,
-					parentRepoPath: parentRepoDir,
-				},
-				fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
-			),
-		).not.toThrow();
-	});
-
-	it("uses parent repo config for worktree previews and reports absolute-template provenance", () => {
-		const dataDir = "/tmp/pdx-provenance-worktree";
-		const userDir = `${dataDir}/config`;
-		const worktreeDir = "/tmp/wt/demo";
-		const parentRepoDir = "/tmp/repos/demo";
-		const absoluteTemplate = "/tmp/custom/war.md";
-		const rendered = renderAgent(
-			{
-				...base,
-				agent: "war",
-				mode: "afk",
-				scopeId: `worktree:${worktreeDir}`,
-				cwd: worktreeDir,
-				parentRepoPath: parentRepoDir,
-			},
-			{
-				readText: (path: string) => {
-					if (path === `${dataDir}/agents.toml`)
-						return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
-					if (path === `${userDir}/scopes/worktree/templates/_common.md`) return "WORKTREE_COMMON";
-					if (path === `${parentRepoDir}/.pdx/scopes/worktree/agents.toml`) {
-						return `[agents.war]\ntemplate = ${quoteTomlString(absoluteTemplate)}\n`;
-					}
-					if (path === absoluteTemplate)
-						return "ABSOLUTE_TEMPLATE {{_common.md}} {{claim_command}}\n{{command_cards}}";
-					if (path === `${dataDir}/templates/_common.md`) return "BUNDLED_COMMON";
-					if (path === `${dataDir}/templates/war.md`)
-						return "BUNDLED_TEMPLATE {{_common.md}} {{claim_command}}\n{{command_cards}}";
-					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-						code: "ENOENT",
-					});
-				},
-				realPath: (path: string) => path,
-				env: (key: string) => {
-					if (key === "PDX_DATA_DIR") return dataDir;
-					if (key === "PDX_USER_DATA_DIR") return userDir;
-					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
-					return undefined;
-				},
-				execFile: (file: string, args: readonly string[]) =>
-					file.split("/").at(-1) === "pithos" && args[0] === "--help-json"
-						? { status: 0, stdout: pithosHelpJson, stderr: "" }
-						: { status: 1, stdout: "", stderr: `unexpected execFile call: ${file}` },
-			},
-		);
-		expect(rendered.prompt).toContain("BUNDLED_TEMPLATE BUNDLED_COMMON");
-		expect(rendered.prompt).not.toContain("ABSOLUTE_TEMPLATE");
-		expect(rendered.prompt).not.toContain("WORKTREE_COMMON");
-		const provenance = rendered.provenance;
-		expect(provenance).toBeDefined();
-		expect(provenance!.layers.map((layer) => layer.kind)).toEqual(["bundled", "user"]);
-		expect(provenance!.template).toMatchObject({
-			reference: "war.md",
-			resolved: {
-				path: `${dataDir}/templates/war.md`,
-				source: { type: "layer", kind: "bundled", scopeKind: "global", rootDir: dataDir },
-			},
-		});
-		expect(provenance!.includes[0]).toMatchObject({
-			path: `${dataDir}/templates/_common.md`,
-			source: { type: "layer", kind: "bundled", scopeKind: "global" },
-		});
-	});
-
-	it("fails loudly when a resolved template asset is missing from every layer", () => {
-		expect(() =>
-			renderAgent(
-				{ ...base, agent: "war", mode: "afk" },
-				{
-					readText: (path: string) => {
-						if (path === "/tmp/pdx-missing-template/agents.toml") {
-							return agentsFile({
-								agent: "war",
-								mode: "afk",
-								harnessKind: "pi",
-								includes: ["missing.md"],
-							});
-						}
-						if (path === "/tmp/pdx-missing-template/templates/war.md")
-							return "{{missing.md}} {{claim_command}}\n{{command_cards}}";
-						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-							code: "ENOENT",
-						});
-					},
-					realPath: (path: string) => path,
-					env: (key: string) =>
-						key === "PDX_DATA_DIR"
-							? "/tmp/pdx-missing-template"
-							: key === "PITHOS_DB"
-								? "/tmp/pdx-missing-template/pithos.sqlite"
-								: undefined,
-					execFile: noopExec,
-				},
-			),
-		).toThrow("/tmp/pdx-missing-template/templates/missing.md");
-	});
 });
 
 describe("launchRenderedAgent", () => {
@@ -2970,6 +2492,31 @@ describe("renderSessionTranscript", () => {
 			},
 		);
 		expect(output).toContain("[2026-05-10 12:00:00] ASSISTANT: [tools: bash]");
+	});
+
+	it("renders Pi assistant errorMessage when the harness stops with an error", () => {
+		const output = renderSessionTranscript(
+			{ harnessKind: "pi", sessionLogPath: "session.jsonl" },
+			{
+				readText: () =>
+					`${JSON.stringify({
+						type: "message",
+						timestamp: "2026-05-10T12:00:00Z",
+						message: {
+							role: "assistant",
+							content: [],
+							stopReason: "error",
+							errorMessage: "OpenAI API error (503): upstream timeout",
+						},
+					})}\n`,
+				realPath: (path: string) => path,
+				env: () => undefined,
+				execFile: noopExec,
+			},
+		);
+		expect(output).toContain(
+			"[2026-05-10 12:00:00] ASSISTANT: ERROR: OpenAI API error (503): upstream timeout",
+		);
 	});
 
 	it("renders Pi timeline tool-call previews for in-flight tools", () => {

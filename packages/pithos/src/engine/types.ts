@@ -57,7 +57,11 @@ export interface Engine {
 		readonly ok: true;
 		readonly run: RunOutput | null;
 	};
-	readonly runCleanup: (input: { readonly runId: string; readonly reason: string }) => {
+	readonly runCleanup: (input: {
+		readonly runId: string;
+		readonly reason: string;
+		readonly sessionEvidence?: string;
+	}) => {
 		readonly ok: true;
 		readonly run: RunOutput;
 	};

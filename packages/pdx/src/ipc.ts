@@ -5,8 +5,6 @@ export const IpcRequestSchema = Schema.Union(
 	Schema.Struct({ kind: Schema.Literal("ping") }),
 	Schema.Struct({ kind: Schema.Literal("status") }),
 	Schema.Struct({ kind: Schema.Literal("stop") }),
-	Schema.Struct({ kind: Schema.Literal("hook.stop") }),
-	Schema.Struct({ kind: Schema.Literal("hook.restart") }),
 	Schema.Struct({
 		kind: Schema.Literal("kill"),
 		run: Schema.optional(Schema.String),

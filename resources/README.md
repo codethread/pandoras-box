@@ -36,8 +36,8 @@ The durable system contract lives in specs, especially
 user-facing machine-local configuration guide is
 [`resources/user-data-dir/PANDORA.md`](./user-data-dir/PANDORA.md).
 
-Do not duplicate the policy registry, hook, prompt-composition, or lifecycle
-contract here; update the spec and `PANDORA.md` instead.
+Do not duplicate the policy registry, external intake, prompt-composition, or
+lifecycle contract here; update the spec and `PANDORA.md` instead.
 
 ## Lifecycle flags
 

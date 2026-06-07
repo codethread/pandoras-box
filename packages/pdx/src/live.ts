@@ -15,7 +15,6 @@ import {
 } from "node:fs/promises";
 import { execFile, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { StringDecoder } from "node:string_decoder";
 import { join } from "node:path";
 import {
 	bundledAgentsPath,
@@ -23,7 +22,6 @@ import {
 	bundledTemplatesDir,
 	bundledUserDataDirResourcesDir,
 	launchRenderedAgent,
-	loadHooks,
 	LiveSpawnerServices as liveSpawnerServices,
 	renderAgent,
 	renderSessionTranscript,
@@ -35,12 +33,10 @@ import { PdxError } from "./errors.js";
 import {
 	FileSystem,
 	Clock,
-	HookExecutor,
 	Ids,
 	PithosClient,
 	Process,
 	Spawner,
-	type HookChildHandle,
 	type PithosClientService,
 	type ProcessResult,
 } from "./services.js";
@@ -482,166 +478,5 @@ export const makeSpawnerLive = (config: {
 							),
 				catch: (error) => spawnerError("spawner transcript", error),
 			}),
-		loadHooks: () =>
-			Effect.try({
-				try: () => loadHooks(renderServices),
-				catch: (error) => spawnerError("spawner load hooks", error),
-			}),
 	});
 };
-
-// Hard cap on buffered hook stdout bytes before a newline arrives.
-const HOOK_STDOUT_MAX_BYTES = 1 * 1024 * 1024;
-
-export const LiveHookExecutor = HookExecutor.of({
-	spawn: (argv, stderrPath) =>
-		Effect.async<HookChildHandle, PdxError>((resume) => {
-			const [file, ...args] = argv;
-			if (file === undefined) {
-				resume(
-					Effect.fail(new PdxError({ code: "VALIDATION_ERROR", message: "hook command is empty" })),
-				);
-				return;
-			}
-			open(stderrPath, "a").then(
-				(stderrFd) => {
-					const child = spawn(file, args, {
-						stdio: ["ignore", "pipe", stderrFd.fd],
-						detached: false,
-					});
-					if (child.pid === undefined || child.stdout === null) {
-						void stderrFd.close().catch(() => undefined);
-						child.kill("SIGTERM");
-						resume(
-							Effect.fail(
-								new PdxError({
-									code: "PROCESS_ERROR",
-									message: "hook spawn failed: no pid or stdout",
-								}),
-							),
-						);
-						return;
-					}
-					const stdout = child.stdout;
-					stdout.pause();
-
-					// StringDecoder handles multibyte characters split across chunks.
-					const decoder = new StringDecoder("utf8");
-					let pending = "";
-					const lineQueue: (string | null)[] = [];
-					const waiters: ((r: Effect.Effect<string | null, PdxError>) => void)[] = [];
-					let closed = false;
-					let overflowError: PdxError | null = null;
-
-					const deliver = (line: string | null): void => {
-						if (waiters.length > 0) {
-							waiters.shift()!(Effect.succeed(line));
-						} else {
-							lineQueue.push(line);
-						}
-					};
-
-					const drainPendingLines = (): void => {
-						let nl = pending.indexOf("\n");
-						while (nl !== -1) {
-							deliver(pending.slice(0, nl).replace(/\r$/, ""));
-							pending = pending.slice(nl + 1);
-							nl = pending.indexOf("\n");
-						}
-					};
-
-					const onStreamDone = (): void => {
-						if (closed) return;
-						closed = true;
-						pending += decoder.end();
-						drainPendingLines();
-						if (pending.length > 0) {
-							deliver(pending.replace(/\r$/, ""));
-							pending = "";
-						}
-						while (waiters.length > 0) waiters.shift()!(Effect.succeed(null));
-						void stderrFd.close().catch(() => undefined);
-					};
-
-					stdout.on("data", (chunk: Buffer) => {
-						stdout.pause();
-						pending += decoder.write(chunk);
-						if (Buffer.byteLength(pending, "utf8") > HOOK_STDOUT_MAX_BYTES) {
-							child.kill("SIGTERM");
-							closed = true;
-							const err = new PdxError({
-								code: "HOOK_OUTPUT_OVERFLOW",
-								message: `hook stdout exceeded ${HOOK_STDOUT_MAX_BYTES} bytes without a newline`,
-							});
-							overflowError = err;
-							pending = "";
-							while (waiters.length > 0) waiters.shift()!(Effect.fail(err));
-							void stderrFd.close().catch(() => undefined);
-							return;
-						}
-						drainPendingLines();
-						if (lineQueue.length === 0) {
-							stdout.resume();
-						}
-					});
-
-					// end fires when all data is consumed; close fires on destroy/kill
-					stdout.on("end", onStreamDone);
-					stdout.on("close", onStreamDone);
-
-					const waitForLine: Effect.Effect<string | null, PdxError> = Effect.async((resume2) => {
-						if (overflowError !== null) {
-							resume2(Effect.fail(overflowError));
-							return;
-						}
-						if (lineQueue.length > 0) {
-							resume2(Effect.succeed(lineQueue.shift()!));
-							if (lineQueue.length === 0 && !closed) stdout.resume();
-							return;
-						}
-						if (closed) {
-							resume2(Effect.succeed(null));
-							return;
-						}
-						waiters.push((r) => resume2(r));
-						stdout.resume();
-					});
-					resume(Effect.succeed({ pid: child.pid, waitForLine }));
-				},
-				(err) => {
-					resume(
-						Effect.fail(
-							new PdxError({
-								code: "FS_ERROR",
-								message: `hook stderr open failed: ${String(err)}`,
-							}),
-						),
-					);
-				},
-			);
-		}),
-	kill: (pid, signal) =>
-		Effect.try({
-			try: () => void process.kill(pid, signal),
-			catch: (error) =>
-				new PdxError({
-					code: "PROCESS_ERROR",
-					message: `hook kill ${pid} ${signal} failed: ${String(error)}`,
-				}),
-		}),
-	isAlive: (pid) =>
-		Effect.gen(function* () {
-			try {
-				process.kill(pid, 0);
-				return true;
-			} catch (error) {
-				if (isNodeErrorCode(error, "ESRCH")) return false;
-				return yield* Effect.fail(
-					new PdxError({
-						code: "PROCESS_ERROR",
-						message: `hook probe ${pid} failed: ${String(error)}`,
-					}),
-				);
-			}
-		}),
-});

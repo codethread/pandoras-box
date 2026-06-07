@@ -308,7 +308,7 @@ describe("task lifecycle", () => {
 		engine.enqueue({
 			scope: "global",
 			capability: "intake",
-			title: "signal from hook",
+			title: "external signal",
 			body: "mr ready for review",
 			bodyFile: undefined,
 			runId: "run_pdx_system",
@@ -359,59 +359,25 @@ describe("task lifecycle", () => {
 		).toThrow(PithosError);
 	});
 
-	it("repair_alerts accepts input-hook alert kinds and migration is idempotent", () => {
+	it("repair_alerts accepts current alert kinds and migration is idempotent", () => {
 		const { dbPath, engine } = setup();
-		// Seed a pdx system run so createRepairAlert can reference it
 		const alertTask = engine.enqueue({
 			scope: "global",
 			capability: "escalate",
-			title: "hook stuck",
-			body: "hook has crashed 5 times",
+			title: "kill failure",
+			body: "resource could not be killed",
 			bodyFile: undefined,
 			runId: "run_pdx_system",
 			after: [],
 			chain: "none",
 		}).task.id;
-		// Insert new input-hook alert kinds — should not throw
 		const db = new Database(dbPath);
 		expect(() =>
 			db
 				.prepare("INSERT INTO repair_alerts (task_id, kind) VALUES (?, ?)")
-				.run(alertTask, "input_hook_stuck"),
-		).not.toThrow();
-		const hookConfigTask = engine.enqueue({
-			scope: "global",
-			capability: "escalate",
-			title: "hook config error",
-			body: "hook config failed to load",
-			bodyFile: undefined,
-			runId: "run_pdx_system",
-			after: [],
-			chain: "none",
-		}).task.id;
-		expect(() =>
-			db
-				.prepare("INSERT INTO repair_alerts (task_id, kind) VALUES (?, ?)")
-				.run(hookConfigTask, "hook_config_error"),
-		).not.toThrow();
-		// Existing kinds still accepted
-		const existingTask = engine.enqueue({
-			scope: "global",
-			capability: "escalate",
-			title: "interrupt alert",
-			body: "run was interrupted",
-			bodyFile: undefined,
-			runId: "run_pdx_system",
-			after: [],
-			chain: "none",
-		}).task.id;
-		expect(() =>
-			db
-				.prepare("INSERT INTO repair_alerts (task_id, kind) VALUES (?, ?)")
-				.run(existingTask, "interrupt"),
+				.run(alertTask, "kill_failure"),
 		).not.toThrow();
 		db.close();
-		// Running migrate again on the same DB is idempotent
 		engine.init({ fresh: false });
 	});
 
@@ -461,6 +427,16 @@ CREATE TABLE runs (
 			after: [],
 			chain: "none",
 		}).task.id;
+		const retiredAlertTask = engine.enqueue({
+			scope: "global",
+			capability: "escalate",
+			title: "retired producer alert",
+			body: "retired alert kind",
+			bodyFile: undefined,
+			runId: "run_pdx_system",
+			after: [],
+			chain: "none",
+		}).task.id;
 
 		const db = new Database(dbPath);
 		db.pragma("foreign_keys = OFF");
@@ -474,7 +450,9 @@ CREATE TABLE repair_alerts (
 		'dead_letter',
 		'launch_precondition',
 		'reconciler_stuck',
-		'kill_failure'
+		'kill_failure',
+		'input_hook_stuck',
+		'hook_config_error'
 	)),
 	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -483,30 +461,29 @@ CREATE TABLE repair_alerts (
 			oldAlertTask,
 			"interrupt",
 		);
+		db.prepare("INSERT INTO repair_alerts (task_id, kind) VALUES (?, ?)").run(
+			retiredAlertTask,
+			"input_hook_stuck",
+		);
 		db.pragma("foreign_keys = ON");
 		db.close();
 
 		engine.init({ fresh: false });
-		const hookConfigTask = engine.enqueue({
-			scope: "global",
-			capability: "escalate",
-			title: "hook config error",
-			body: "hook config failed to load",
-			bodyFile: undefined,
-			runId: "run_pdx_system",
-			after: [],
-			chain: "none",
-		}).task.id;
-
 		const migrated = new Database(dbPath);
 		expect(
 			migrated.prepare("SELECT kind FROM repair_alerts WHERE task_id=?").pluck().get(oldAlertTask),
 		).toBe("interrupt");
+		expect(
+			migrated
+				.prepare("SELECT kind FROM repair_alerts WHERE task_id=?")
+				.pluck()
+				.get(retiredAlertTask),
+		).toBeUndefined();
 		expect(() =>
 			migrated
 				.prepare("INSERT INTO repair_alerts (task_id, kind) VALUES (?, ?)")
-				.run(hookConfigTask, "hook_config_error"),
-		).not.toThrow();
+				.run(retiredAlertTask, "hook_config_error"),
+		).toThrow();
 		migrated.close();
 	});
 
@@ -1762,6 +1739,45 @@ CREATE TABLE repair_alerts (
 		expect(
 			db.prepare("SELECT COUNT(*) FROM events WHERE type='task.dead_lettered'").pluck().get(),
 		).toBe(1);
+	});
+
+	it("includes run context and session evidence in dead-letter repair alerts", () => {
+		const { dbPath, engine, repo } = setup();
+		const task = engine.enqueue({
+			scope: repo,
+			capability: "execute",
+			title: "dead letter with evidence",
+			body: "body",
+			bodyFile: undefined,
+			runId: "run_toil",
+			after: [],
+			chain: "auto",
+		}).task.id;
+		engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+		const db = new Database(dbPath);
+		db.prepare("UPDATE tasks SET attempts=max_attempts WHERE id=?").run(task);
+		engine.runCleanup({
+			runId: "run_war",
+			reason: "process exited",
+			sessionEvidence:
+				"[2026-06-07 06:29:11] ASSISTANT: ERROR: OpenAI API error (503): upstream timeout",
+		});
+		const alertId = db
+			.prepare("SELECT task_id FROM repair_alerts WHERE kind='dead_letter'")
+			.pluck()
+			.get() as string;
+		const alertBody = db
+			.prepare("SELECT body FROM tasks WHERE id=?")
+			.pluck()
+			.get(alertId) as string;
+		expect(alertBody).toContain("## Run context");
+		expect(alertBody).toContain("- Run: run_war");
+		expect(alertBody).toContain("- Cwd: /tmp/pithos-repo");
+		expect(alertBody).toContain("- Harness session: s_war");
+		expect(alertBody).toContain("## Session evidence");
+		expect(alertBody).toContain("ASSISTANT: ERROR: OpenAI API error (503): upstream timeout");
+		expect(alertBody).toContain("`pdx run transcript run_war`");
+		db.close();
 	});
 
 	it("interrupts by run or held task and rejects missing task owners", () => {

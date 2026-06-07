@@ -35,9 +35,6 @@ const ArgvListOpsSchema = Schema.Struct({
 	replace: Schema.optional(NonEmptyStringArray),
 	add: Schema.optional(NonEmptyStringArray),
 });
-const ScalarBooleanSchema = Schema.Boolean;
-const HookCommandSchema = Schema.Array(Schema.NonEmptyString).pipe(Schema.minItems(1));
-
 const PartialHarnessSchema = Schema.Struct({
 	kind: Schema.optional(HarnessKindSchema),
 	model: Schema.optional(Schema.NonEmptyString),
@@ -52,15 +49,6 @@ const PartialAgentSchema = Schema.Struct({
 	appends: Schema.optional(ListOpsSchema),
 	policy: Schema.optional(PolicyListOpsSchema),
 	harness: Schema.optional(PartialHarnessSchema),
-});
-
-const PartialHooksSchema = Schema.Struct({
-	input: Schema.optional(
-		Schema.Struct({
-			enabled: Schema.optional(ScalarBooleanSchema),
-			command: Schema.optional(HookCommandSchema),
-		}),
-	),
 });
 
 const PartialAgentsTableSchema = Schema.Struct({
@@ -84,7 +72,6 @@ const PartialAgentsFileSchema = Schema.Struct({
 	policies: Schema.optional(Schema.Record({ key: Schema.String, value: PolicyDeclarationSchema })),
 	policy: Schema.optional(PolicyListOpsSchema),
 	agents: Schema.optional(PartialAgentsTableSchema),
-	hooks: Schema.optional(PartialHooksSchema),
 	rules: Schema.optional(Schema.Array(PolicyRuleSchema)),
 });
 
@@ -103,16 +90,6 @@ const ResolvedAgentSchema = Schema.Struct({
 	harness: ResolvedHarnessSchema,
 });
 
-const ResolvedHooksSchema = Schema.Struct({
-	input: Schema.optional(
-		Schema.Struct({
-			enabled: Schema.optional(Schema.Boolean),
-			command: Schema.optional(HookCommandSchema),
-		}),
-	),
-});
-
-export type HooksConfig = Schema.Schema.Type<typeof ResolvedHooksSchema>;
 export interface MatchedPolicyRuleProvenance {
 	readonly index: number;
 	readonly matchPath: string;
@@ -171,7 +148,6 @@ const POLICY_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 interface ResolvedConfig {
 	readonly layers: readonly ConfigLayer[];
 	readonly bundledLayer: ConfigLayer;
-	readonly hooks: HooksConfig;
 	readonly agents: Readonly<Record<SpawnableAgentKind, ResolvedAgentManifest>>;
 }
 
@@ -188,6 +164,18 @@ const decode = <A, I>(schema: Schema.Schema<A, I>, value: unknown, path: string)
 
 const isRecordValue = (value: unknown): value is Readonly<Record<string, unknown>> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
+
+const validateRawTopLevelKeys = (parsed: unknown, path: string): void => {
+	if (!isRecordValue(parsed)) return;
+	for (const key of Object.keys(parsed)) {
+		if (!allowedTopLevelKeys.has(key)) {
+			throw new SpawnerError({
+				code: "VALIDATION_ERROR",
+				message: `${path}: contains unknown top-level field '${key}'`,
+			});
+		}
+	}
+};
 
 const validateRawRuleKeys = (parsed: unknown, path: string): void => {
 	if (!isRecordValue(parsed)) return;
@@ -224,6 +212,7 @@ const parseTomlFile = (path: string, services: RenderServices): PartialAgentsFil
 			message: `${path}: invalid TOML\n${error instanceof Error ? error.message : String(error)}`,
 		});
 	}
+	validateRawTopLevelKeys(parsed, path);
 	validateRawRuleKeys(parsed, path);
 	return decode(PartialAgentsFileSchema, parsed, path);
 };
@@ -292,6 +281,7 @@ const validateListOps = (
 	}
 };
 
+const allowedTopLevelKeys = new Set(["policies", "policy", "agents", "rules"]);
 const allowedRuleKeys = new Set(["path", "path_glob", "scope_kind", "agent", "policy", "agents"]);
 const regexMeta = /[\\^$+?.()|{}]/g;
 
@@ -399,19 +389,6 @@ const ruleMatches = (
 	if (rule.agent !== undefined && rule.agent !== input.agent) return false;
 	return true;
 };
-
-const mergeHookInput = (
-	current: HooksConfig["input"],
-	input: NonNullable<NonNullable<PartialAgentsFile["hooks"]>["input"]>,
-): HooksConfig => ({
-	input:
-		input.enabled === false
-			? { enabled: false }
-			: {
-					enabled: input.enabled ?? current?.enabled,
-					command: input.command ?? current?.command,
-				},
-});
 
 const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void => {
 	for (const policyId of Object.keys(file.policies ?? {})) {
@@ -528,13 +505,6 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 				true,
 			);
 		}
-	}
-	const input = file.hooks?.input;
-	if (input?.enabled === false && input.command !== undefined) {
-		throw new SpawnerError({
-			code: "VALIDATION_ERROR",
-			message: `${layer.agentsPath}: hooks.input may not set enabled=false together with command`,
-		});
 	}
 	if (
 		layer.kind !== "bundled" &&
@@ -689,15 +659,6 @@ const layerOrderForRender = (
 		: [bundledLayer, resolveLayer(userDataDir, "global", "user", false)];
 };
 
-const hookLayers = (services: RenderServices): readonly ConfigLayer[] => {
-	const bundledLayer = bundledLayerFor(services);
-	const dataDir = services.env("PDX_DATA_DIR");
-	const userDataDir = resolveUserDataDir(dataDir, services.env("PDX_USER_DATA_DIR"));
-	return userDataDir === undefined
-		? [bundledLayer]
-		: [bundledLayer, resolveLayer(userDataDir, "global", "user", false)];
-};
-
 const readLayerFiles = (
 	layers: readonly ConfigLayer[],
 	services: RenderServices,
@@ -766,12 +727,6 @@ const buildResolvedConfig = (
 			};
 		}
 	>;
-	let hooks: HooksConfig = decode(
-		ResolvedHooksSchema,
-		bundledFile.hooks ?? {},
-		bundledLayer.agentsPath,
-	);
-
 	const policyDeclarations = new Map<string, readonly string[]>();
 	const matchedRules: MatchedPolicyRuleProvenance[] = [];
 	const ruleMatchPath = ruleMatchPathForInput(input, bundledLayer.agentsPath);
@@ -851,8 +806,6 @@ const buildResolvedConfig = (
 				});
 			}
 		}
-		const hookInput = file.hooks?.input;
-		if (hookInput !== undefined) hooks = mergeHookInput(hooks.input, hookInput);
 	}
 
 	const resolvedAgents = Object.fromEntries(
@@ -924,7 +877,7 @@ const buildResolvedConfig = (
 			];
 		}),
 	) as unknown as Readonly<Record<SpawnableAgentKind, ResolvedAgentManifest>>;
-	return { layers, bundledLayer, hooks, agents: resolvedAgents };
+	return { layers, bundledLayer, agents: resolvedAgents };
 };
 
 const resolveAbsoluteOrHomePath = (reference: string): string => {
@@ -955,25 +908,6 @@ export const loadResolvedAgentConfig = (
 	input: RenderAgentInput,
 	services: RenderServices,
 ): ResolvedConfig => buildResolvedConfig(layerOrderForRender(input, services), services, input);
-
-export const loadResolvedHooks = (services: RenderServices): HooksConfig => {
-	const layerFiles = readLayerFiles(hookLayers(services), services);
-	const bundledLayerEntry = layerFiles[0];
-	if (bundledLayerEntry === undefined) {
-		throw new SpawnerError({ code: "VALIDATION_ERROR", message: "missing bundled agents.toml" });
-	}
-	const [bundledLayer, bundledFile] = bundledLayerEntry;
-	let hooks: HooksConfig = decode(
-		ResolvedHooksSchema,
-		bundledFile.hooks ?? {},
-		bundledLayer.agentsPath,
-	);
-	for (const [, file] of layerFiles.slice(1)) {
-		const hookInput = file.hooks?.input;
-		if (hookInput !== undefined) hooks = mergeHookInput(hooks.input, hookInput);
-	}
-	return hooks;
-};
 
 export const resolveTemplateAsset = (
 	reference: string,

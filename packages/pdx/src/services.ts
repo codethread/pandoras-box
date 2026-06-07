@@ -1,6 +1,6 @@
 import { Context, Effect, SynchronizedRef } from "effect";
 import type { Capability, RepairAlertKind, RunOutput as PithosRunOutput } from "@pdx/pithos";
-import type { HooksConfig, RenderedAgent as SpawnerRenderedAgent } from "@pdx/spawner";
+import type { RenderedAgent as SpawnerRenderedAgent } from "@pdx/spawner";
 import type { PdxError } from "./errors.js";
 
 export interface ProcessResult {
@@ -112,6 +112,7 @@ export interface PithosClientService {
 	readonly runCleanup: (input: {
 		readonly runId: string;
 		readonly reason: string;
+		readonly sessionEvidence?: string;
 	}) => Effect.Effect<void, PdxError>;
 	readonly runInterrupt: (input: {
 		readonly runId?: string;
@@ -226,27 +227,8 @@ export interface SpawnerService {
 		readonly sessionLogPath: string;
 		readonly limit: number | undefined;
 	}) => Effect.Effect<string, PdxError>;
-	readonly loadHooks: () => Effect.Effect<HooksConfig, PdxError>;
 }
 export class Spawner extends Context.Tag("pdx/Spawner")<Spawner, SpawnerService>() {}
-
-export interface HookChildHandle {
-	readonly pid: number;
-	readonly waitForLine: Effect.Effect<string | null, PdxError>;
-}
-
-export interface HookExecutorService {
-	readonly spawn: (
-		argv: readonly string[],
-		stderrPath: string,
-	) => Effect.Effect<HookChildHandle, PdxError>;
-	readonly kill: (pid: number, signal: "SIGTERM" | "SIGKILL") => Effect.Effect<void, PdxError>;
-	readonly isAlive: (pid: number) => Effect.Effect<boolean, PdxError>;
-}
-export class HookExecutor extends Context.Tag("pdx/HookExecutor")<
-	HookExecutor,
-	HookExecutorService
->() {}
 
 export interface RegistryEntry {
 	readonly runId: string;
@@ -360,15 +342,6 @@ export type LifecycleEvent =
 			readonly message: string;
 			readonly attempt: number;
 			readonly maxAttempts: number;
-	  }
-	| {
-			readonly kind: "hook_spawned";
-			readonly pid: number;
-	  }
-	| {
-			readonly kind: "hook_removed";
-			readonly pid: number;
-			readonly reason: "shutdown" | "crash";
 	  };
 
 export interface LifecycleReporterService {

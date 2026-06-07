@@ -55,8 +55,6 @@ export type CommandInput =
 			readonly dataDir: string | undefined;
 			readonly taskId: string;
 	  }
-	| { readonly command: "hook.stop"; readonly dataDir: string | undefined }
-	| { readonly command: "hook.restart"; readonly dataDir: string | undefined }
 	| {
 			readonly command: "daemon.run";
 			readonly dataDir: string | undefined;
@@ -480,27 +478,10 @@ export const makePdxCommand = (execute: (input: CommandInput) => Effect.Effect<v
 		Command.withSubcommands([taskKill, taskShow]),
 	);
 
-	const hookStop = Command.make(
-		"stop",
-		{ dataDir: dataDirOption.pipe(Options.optional) },
-		({ dataDir }) => execute({ command: "hook.stop", dataDir: opt(dataDir) }),
-	).pipe(Command.withDescription("Stop the supervised input hook process."));
-
-	const hookRestart = Command.make(
-		"restart",
-		{ dataDir: dataDirOption.pipe(Options.optional) },
-		({ dataDir }) => execute({ command: "hook.restart", dataDir: opt(dataDir) }),
-	).pipe(Command.withDescription("Restart the supervised input hook process."));
-
-	const hook = Command.make("hook").pipe(
-		Command.withDescription("Control the supervised input hook process."),
-		Command.withSubcommands([hookStop, hookRestart]),
-	);
-
 	return Command.make("pdx").pipe(
 		Command.withDescription(
 			"Local supervisor for Pandora's Box agent runs, processes, tmux sessions, and Pandora.",
 		),
-		Command.withSubcommands([init, open, close, daemon, run, task, hook]),
+		Command.withSubcommands([init, open, close, daemon, run, task]),
 	);
 };

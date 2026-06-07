@@ -17,7 +17,7 @@ Agent policy configuration defines how Spawner combines Pandora's Box's bundled 
 - Support project-specific behavior from the user config through explicit path and glob match rules.
 - Require user config to choose Harness kind/model/prompt-mode for launched Agents so `pdx open` cannot silently pick a runtime.
 - Preserve simple Harness customization for model, runtime kind, tools, argv, and system prompt mode, including path-targeted overrides for the actual Harness kind.
-- Keep invalid config fail-loud: unknown keys, missing policy definitions, missing policy files, invalid list operations, bad match rules, unsupported argv expansion, and malformed hooks stop render/supervision with tagged errors.
+- Keep invalid config fail-loud: unknown keys, missing policy definitions, missing policy files, invalid list operations, bad match rules, and unsupported argv expansion with tagged errors.
 - Keep Pithos as the durable source of authorization truth for Agent kinds, Capabilities, claims, enqueues, scopes, and graph transitions.
 
 ### Non-Goals
@@ -55,9 +55,6 @@ Agent policy configuration defines how Spawner combines Pandora's Box's bundled 
 - **Decision:** Keep Harness configuration separate from prompt policy.
   - **Rationale:** Choosing Claude/Pi, model, tools, argv, and prompt mode is launch configuration, not workflow policy. These fields remain in `agents.toml` but do not affect the bundled prompt foundation.
 
-- **Decision:** Hooks remain global supervisor config.
-  - **Rationale:** Input hooks feed global intake Tasks and are supervised by pdx, not by a particular project Agent launch.
-
 ## 3. Directory Model
 
 ### Bundled runtime config
@@ -71,6 +68,7 @@ $PDX_DATA_DIR/
   AGENTS.md          # minimal runtime note
   pithos.sqlite
   pdx.sock
+  intake.sock       # present while pdx is open
   pdx.jsonl
   runs/
 ```
@@ -276,18 +274,9 @@ List fields use operation tables:
 
 Spawner applies only path-oriented expansion for `$PDX_DATA_DIR`, `${PDX_DATA_DIR}`, `$PDX_USER_DATA_DIR`, `${PDX_USER_DATA_DIR}`, `~`, and `~/...`; unsupported or unset `$VARS` fail render loudly. No shell evaluation, globbing, command substitution, or quote parsing is performed.
 
-### Hooks
+### External intake
 
-`hooks.input` is singleton supervisor configuration:
-
-```toml
-[hooks.input]
-command = ["/Users/me/bin/pdx-inbox-watch"]
-```
-
-`hooks.input.enabled` is an optional boolean. `hooks.input.command` is an optional non-empty argv array. If a final command exists and `enabled` is unset, the hook is enabled. If no command exists, the hook is disabled. A layer may not set `enabled = false` and `command = [...]` together.
-
-Rules do not configure hooks. Hooks are user-wide supervisor config.
+External intake is not configured in `agents.toml`. While `pdx open` is running, pdx owns `<data-dir>/intake.sock`; producers write newline-delimited JSON `{ title, body }` events to that socket. Each valid event creates a global `intake` Task for Envy. Producer process lifecycle belongs to the user rather than Spawner or pdx manifest configuration.
 
 ## 6. Prompt Composition
 
@@ -348,7 +337,7 @@ A direct config-editing Agent can run from `$PDX_USER_DATA_DIR`, read `PANDORA.m
 | `packages/pdx/src/controller.ts`       | Preserve user config during clean/nuke and pass launch context to Spawner.                            |
 | `resources/README.md`                  | Resource ownership map and pointers to this spec plus installed user reference docs.                  |
 | `resources/data-dir/`                  | Bundled canonical Agent prompt defaults, templates, and runtime `AGENTS.md` note.                     |
-| `resources/user-data-dir/PANDORA.md`   | User-facing policy registry, hook, preview, and lifecycle reference.                                  |
+| `resources/user-data-dir/PANDORA.md`   | User-facing policy registry, external intake, preview, and lifecycle reference.                       |
 | `resources/user-data-dir/`             | User config scaffold files and installed reference assets.                                            |
 
 ## 10. Testing
@@ -363,7 +352,7 @@ Automated tests cover:
 - Prompt composition order: bundled base before generated command cards before policy packs.
 - Missing user Harness configuration fails render/open loudly instead of selecting a bundled runtime.
 - No user file can shadow bundled `agents/*.md` or `common/*.md` prompts.
-- Hook configuration validation and supervisor behavior.
+- Removed hook configuration fails loudly as an unknown manifest field.
 - `pandora-spawn preview` provenance for matched rules and selected policies.
 
 Manual smoke validation uses isolated `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR` as described in `AGENTS.md`.
