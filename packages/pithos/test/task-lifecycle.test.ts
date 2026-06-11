@@ -215,6 +215,7 @@ describe("task lifecycle", () => {
 		const artifact = engine.artifactAdd({
 			taskId: enq.task.id,
 			runId: "run_war",
+			token: 1,
 			kind: "note",
 			title: "evidence",
 			body: "evidence body",
@@ -231,6 +232,118 @@ describe("task lifecycle", () => {
 			1,
 		);
 		db.close();
+	});
+
+	it("requires live held-task ownership and lower-snake-case kinds for artifact add", () => {
+		const { engine, repo } = setup();
+		const taskId = engine.enqueue({
+			scope: repo,
+			capability: "execute",
+			title: "artifact ownership",
+			body: "body",
+			bodyFile: undefined,
+			runId: "run_toil",
+			after: [],
+			chain: "none",
+		}).task.id;
+
+		expect(() =>
+			engine.artifactAdd({
+				taskId,
+				runId: "run_war",
+				token: 0,
+				kind: "valid_kind",
+				title: "evidence",
+				body: "",
+			}),
+		).toThrow("task status cannot receive artifacts: queued");
+
+		const claim = engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+		expect(() =>
+			engine.artifactAdd({
+				taskId,
+				runId: "run_war",
+				token: claim.task.token,
+				kind: "BadKind",
+				title: "evidence",
+				body: "",
+			}),
+		).toThrow("--kind must be lower snake case");
+		expect(() =>
+			engine.artifactAdd({
+				taskId,
+				runId: "run_greed",
+				token: claim.task.token,
+				kind: "valid_kind",
+				title: "evidence",
+				body: "",
+			}),
+		).toThrow("artifact add token is stale or task is not held by run");
+		expect(() =>
+			engine.artifactAdd({
+				taskId,
+				runId: "run_war",
+				token: claim.task.token + 1,
+				kind: "valid_kind",
+				title: "evidence",
+				body: "",
+			}),
+		).toThrow("artifact add token is stale or task is not held by run");
+
+		const artifact = engine.artifactAdd({
+			taskId,
+			runId: "run_war",
+			token: claim.task.token,
+			kind: "valid_kind",
+			title: "evidence",
+			body: "",
+		}).artifact;
+		expect(artifact).toMatchObject({
+			task_id: taskId,
+			run_id: "run_war",
+			kind: "valid_kind",
+			title: "evidence",
+			status: "active",
+		});
+		expect(Object.keys(artifact).sort()).toEqual([
+			"created_at",
+			"id",
+			"kind",
+			"run_id",
+			"status",
+			"task_id",
+			"title",
+		]);
+	});
+
+	it("rejects artifact add for terminal task statuses", () => {
+		for (const status of ["done", "failed", "cancelled", "dead_letter"] as const) {
+			const { dbPath, engine, repo } = setup();
+			const taskId = engine.enqueue({
+				scope: repo,
+				capability: "execute",
+				title: `artifact ${status}`,
+				body: "body",
+				bodyFile: undefined,
+				runId: "run_toil",
+				after: [],
+				chain: "none",
+			}).task.id;
+			const claim = engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+			const db = new Database(dbPath);
+			db.prepare("UPDATE tasks SET status=? WHERE id=?").run(status, taskId);
+			db.close();
+			expect(() =>
+				engine.artifactAdd({
+					taskId,
+					runId: "run_war",
+					token: claim.task.token,
+					kind: "valid_kind",
+					title: "evidence",
+					body: "",
+				}),
+			).toThrow(`task status cannot receive artifacts: ${status}`);
+		}
 	});
 
 	it("enforces authorization, scope capability rules, and one held task", () => {
@@ -460,6 +573,38 @@ CREATE TABLE runs (
 		expect(
 			migrated.prepare("SELECT has_claimed_task FROM runs WHERE id=?").pluck().get("run_legacy"),
 		).toBe(0);
+		migrated.close();
+	});
+
+	it("migrates older artifacts tables to enforce active/rejected status", () => {
+		const { dbPath, engine } = setup();
+		const db = new Database(dbPath);
+		db.pragma("foreign_keys = OFF");
+		db.exec(`
+DROP TABLE artifacts;
+CREATE TABLE artifacts (
+	id TEXT PRIMARY KEY,
+	task_id TEXT NOT NULL REFERENCES tasks(id),
+	run_id TEXT NOT NULL REFERENCES runs(id),
+	kind TEXT NOT NULL,
+	title TEXT NOT NULL,
+	body TEXT NOT NULL,
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`);
+		db.pragma("foreign_keys = ON");
+		db.close();
+
+		engine.init({ fresh: false });
+
+		const migrated = new Database(dbPath);
+		expect(() =>
+			migrated
+				.prepare(
+					"INSERT INTO artifacts(id, task_id, run_id, kind, title, body, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+				)
+				.run("artifact_bad", "task_missing", "run_toil", "note", "note", "body", "invalid"),
+		).toThrow();
 		migrated.close();
 	});
 
@@ -859,13 +1004,6 @@ CREATE TABLE repair_alerts (
 			after: [],
 			chain: "none",
 		}).task.id;
-		engine.artifactAdd({
-			taskId: artifactOnly,
-			runId: "run_toil",
-			kind: "note",
-			title: "auth token evidence",
-			body: "auth token appears only in the artifact",
-		});
 
 		const authGraph = engine.graphInspect({
 			taskId: undefined,
@@ -907,9 +1045,12 @@ CREATE TABLE repair_alerts (
 			after: [],
 			chain: "none",
 		}).task.id;
+		const claim = engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+		expect(claim.task.id).toBe(taskId);
 		const artifactId = engine.artifactAdd({
 			taskId,
-			runId: "run_toil",
+			runId: "run_war",
+			token: claim.task.token,
 			kind: "note",
 			title: "evidence",
 			body: "artifact body",
@@ -2176,6 +2317,7 @@ CREATE TABLE repair_alerts (
 			engine.artifactAdd({
 				taskId: target,
 				runId: "run_war",
+				token: 1,
 				kind: "note",
 				title: "history",
 				body: "preserve me",
@@ -2724,13 +2866,20 @@ CREATE TABLE repair_alerts (
 			scope: undefined,
 			capability: undefined,
 		}) as { task: { id: string } };
-		engine.artifactAdd({
-			taskId: replacement.task.id,
-			runId: "run_toil",
-			kind: "design-brief",
-			title: "approved brief",
-			body: "design brief body",
-		});
+		const artifactDb = new Database(dbPath);
+		artifactDb
+			.prepare(
+				"INSERT INTO artifacts(id, task_id, run_id, kind, title, body, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
+			)
+			.run(
+				"artifact_lineage_design_brief",
+				replacement.task.id,
+				"run_toil",
+				"design_brief",
+				"approved brief",
+				"design brief body",
+			);
+		artifactDb.close();
 		const execute = engine.enqueue({
 			scope: repo,
 			capability: "execute",
@@ -2820,7 +2969,7 @@ CREATE TABLE repair_alerts (
 			superseded_by: null,
 			artifacts: [
 				{
-					kind: "design-brief",
+					kind: "design_brief",
 					title: "approved brief",
 					body: "design brief body",
 				},

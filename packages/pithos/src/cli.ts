@@ -106,6 +106,7 @@ type CommandInput =
 			readonly command: "task.artifact.add";
 			readonly taskId: string;
 			readonly runId: string | undefined;
+			readonly token: number;
 			readonly kind: string;
 			readonly title: string;
 			readonly stdin: boolean;
@@ -922,9 +923,14 @@ export const makePithosCommand = (ctx: CliContext) => {
 	const artifactAdd = Command.make(
 		"add",
 		{
-			taskId: textArg("task-id", "Task receiving the artifact."),
+			taskId: textArg("task-id", "Held Task receiving the artifact."),
 			runId: runIdOption.pipe(Options.optional),
-			kind: textOption("kind", "kind", "Artifact kind."),
+			token: integerOption(
+				"token",
+				"token",
+				"Current fencing token proving ownership of the held Task.",
+			),
+			kind: textOption("kind", "kind", "Lower-snake-case artifact kind."),
 			title: textOption("title", "title", "Short artifact title shown with the Task."),
 			stdin: stdinFlag,
 		},
@@ -933,13 +939,14 @@ export const makePithosCommand = (ctx: CliContext) => {
 				command: "task.artifact.add",
 				taskId: o.taskId,
 				runId: opt(o.runId),
+				token: o.token,
 				kind: o.kind,
 				title: o.title,
 				stdin: o.stdin,
 			}),
 	).pipe(
 		Command.withDescription(
-			"Attach an artifact to a task; optional body is read from stdin when requested.",
+			"Attach an artifact to a held task using its current fencing token; optional body is read from stdin when requested.",
 		),
 	);
 	const taskArtifact = Command.make("artifact").pipe(

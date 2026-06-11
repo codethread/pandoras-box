@@ -202,6 +202,8 @@ const artifactAddArgs = (taskId = "task_missing", extra: readonly string[] = [])
 	"artifact",
 	"add",
 	taskId,
+	"--token",
+	"1",
 	"--kind",
 	"note",
 	"--title",
@@ -625,10 +627,6 @@ describe("pithos cli", () => {
 			dbPath,
 			{ _tag: "RedirectedText", text: "ancestor body" },
 		).then((result) => (JSON.parse(result.stdout[0] ?? "") as { task: { id: string } }).task.id);
-		await runCli(artifactAddArgs(ancestor, ["--stdin", "--run", "run_toil"]), dbPath, {
-			_tag: "RedirectedText",
-			text: "ancestor artifact",
-		});
 		const parent = await runCli(
 			[
 				"task",
@@ -650,10 +648,6 @@ describe("pithos cli", () => {
 			dbPath,
 			{ _tag: "RedirectedText", text: "parent body" },
 		).then((result) => (JSON.parse(result.stdout[0] ?? "") as { task: { id: string } }).task.id);
-		await runCli(artifactAddArgs(parent, ["--stdin", "--run", "run_toil"]), dbPath, {
-			_tag: "RedirectedText",
-			text: "parent artifact",
-		});
 		const current = await runCli(
 			[
 				"task",
@@ -675,10 +669,6 @@ describe("pithos cli", () => {
 			dbPath,
 			{ _tag: "RedirectedText", text: "current body" },
 		).then((result) => (JSON.parse(result.stdout[0] ?? "") as { task: { id: string } }).task.id);
-		await runCli(artifactAddArgs(current, ["--stdin", "--run", "run_toil"]), dbPath, {
-			_tag: "RedirectedText",
-			text: "current artifact",
-		});
 		await runCli(
 			[
 				"task",
@@ -716,14 +706,6 @@ describe("pithos cli", () => {
 
 			\`\`\`md
 			current body
-			\`\`\`
-
-			Artifacts:
-
-			Artifact artifact_cli_N [note] evidence:
-
-			\`\`\`md
-			current artifact
 			\`\`\`
 
 			Direct after dependencies:
@@ -792,10 +774,6 @@ describe("pithos cli", () => {
 			dbPath,
 			{ _tag: "RedirectedText", text: "design body" },
 		).then((result) => (JSON.parse(result.stdout[0] ?? "") as { task: { id: string } }).task.id);
-		await runCli(artifactAddArgs(design, ["--stdin", "--run", "run_toil"]), dbPath, {
-			_tag: "RedirectedText",
-			text: "## Design artifact\n\nUse Markdown defaults and --json for machines.",
-		});
 		const execute = await runCli(
 			[
 				"task",
@@ -817,10 +795,6 @@ describe("pithos cli", () => {
 			dbPath,
 			{ _tag: "RedirectedText", text: "execute body" },
 		).then((result) => (JSON.parse(result.stdout[0] ?? "") as { task: { id: string } }).task.id);
-		await runCli(artifactAddArgs(execute, ["--stdin", "--run", "run_toil"]), dbPath, {
-			_tag: "RedirectedText",
-			text: "execution evidence",
-		});
 		const followUp = await runCli(
 			[
 				"task",
@@ -1505,6 +1479,8 @@ describe("pithos cli", () => {
 		await upsertRun(dbPath, "run_toil");
 		const taskId = await enqueueGlobalTriage(dbPath, "run_toil", "artifact task", "task body");
 
+		const claim = await claimGlobal(dbPath, "run_toil", "triage");
+		expect(claim.task.id).toBe(taskId);
 		const result = await runCli(artifactAddArgs(taskId, ["--stdin", "--run", "run_toil"]), dbPath, {
 			_tag: "RedirectedText",
 			text: "artifact body\n",
@@ -1520,6 +1496,8 @@ describe("pithos cli", () => {
 		await upsertRun(dbPath, "run_toil");
 		const taskId = await enqueueGlobalTriage(dbPath, "run_toil", "artifact task", "task body");
 
+		const claim = await claimGlobal(dbPath, "run_toil", "triage");
+		expect(claim.task.id).toBe(taskId);
 		const result = await runCli(artifactAddArgs(taskId, ["--run", "run_toil"]), dbPath);
 		const artifactId = (JSON.parse(result.stdout[0] ?? "") as { artifact: { id: string } }).artifact
 			.id;
@@ -1577,6 +1555,8 @@ describe("pithos cli", () => {
 					"--title",
 					"evidence",
 					"--stdin",
+					"--token",
+					"1",
 					"--task",
 					"task_extra",
 				],
@@ -2013,6 +1993,12 @@ describe("pithos cli", () => {
 			...command.subcommands.flatMap(flatten),
 		];
 		const commands = flatten(help);
+		const artifactAdd = commands.find((command) => command.path === "pithos task artifact add");
+		expect(artifactAdd).toBeDefined();
+		expect(artifactAdd?.usage).toContain("--token");
+		expect(artifactAdd?.usage).toContain("--kind");
+		expect(artifactAdd?.usage).toContain("--title");
+		expect(artifactAdd?.description).toContain("held task");
 		expect(commands.filter((command) => command.path === "pithos task artifact add")).toHaveLength(
 			1,
 		);

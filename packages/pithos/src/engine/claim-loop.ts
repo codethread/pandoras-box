@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { sql, type Capability } from "../db.js";
 import type { Db } from "../db.js";
 import { fail } from "../errors.js";
-import type { RunRow } from "../rows.js";
+import { ActiveArtifactMetadataRowSchema, decodeRow, type RunRow } from "../rows.js";
 import { withCollisionGuard, withDb } from "./db-helpers.js";
 import { event } from "./event-log.js";
 import { createRepairAlertInTxn } from "./repair-alerts.js";
@@ -51,6 +51,20 @@ WHERE id = ?
   AND status = 'queued'
 RETURNING id, fencing_token, attempts, claim_sequence, capability
 `;
+
+const artifactKindPattern = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
+
+type ArtifactAddOutput = ReturnType<Engine["artifactAdd"]>["artifact"];
+
+const parseArtifactAddOutput = (value: unknown): ArtifactAddOutput =>
+	decodeRow(ActiveArtifactMetadataRowSchema, value, "artifact add output");
+
+const requireArtifactKind = (kind: string): string => {
+	if (!artifactKindPattern.test(kind)) {
+		fail("VALIDATION_ERROR", "--kind must be lower snake case");
+	}
+	return kind;
+};
 
 export const makeClaimLoopOps = (
 	ctx: EngineContext,
@@ -250,33 +264,63 @@ export const makeClaimLoopOps = (
 			})();
 			return { ok: true, task: { id: taskId, status: "failed" } };
 		}),
-	artifactAdd: ({ taskId, runId, kind, title, body }) =>
+	artifactAdd: ({ taskId, runId, token, kind, title, body }) =>
 		withDb(ctx, (db) => {
 			const actorRunId = deps.resolveRunId(ctx, runId);
-			const task = db.prepare(sql`SELECT 1 FROM tasks WHERE id=?`).get(taskId);
-			if (task === undefined) fail("NOT_FOUND", `task not found: ${taskId}`);
 			deps.liveRun(db, actorRunId);
+			const artifactKind = requireArtifactKind(deps.requireNonEmpty(kind, "--kind"));
+			const artifactTitle = deps.requireNonEmpty(title, "--title");
 			const artifactId = Effect.runSync(ctx.services.ids.make("artifact"));
-			withCollisionGuard(artifactId, () =>
-				db.transaction(() => {
-					db.prepare(
-						sql`INSERT INTO artifacts(id,task_id,run_id,kind,title,body) VALUES (?,?,?,?,?,?)`,
-					).run(
-						artifactId,
-						taskId,
-						actorRunId,
-						deps.requireNonEmpty(kind, "--kind"),
-						deps.requireNonEmpty(title, "--title"),
-						body,
-					);
+			const artifactResult = withCollisionGuard(artifactId, () =>
+				db.transaction((): ArtifactAddOutput => {
+					const inserted = db
+						.prepare(sql`
+							INSERT INTO artifacts(id,task_id,run_id,kind,title,body,status)
+							SELECT ?, t.id, ?, ?, ?, ?, 'active'
+							FROM tasks t
+							WHERE t.id = ?
+							  AND t.status IN ('claimed','running')
+							  AND t.fencing_token = ?
+							  AND EXISTS (
+								  SELECT 1
+								  FROM runs r
+								  WHERE r.id = ?
+								    AND r.status = 'live'
+								    AND r.task_id = t.id
+							  )
+							RETURNING id, task_id, run_id, kind, title, status, created_at
+						`)
+						.get(
+							artifactId,
+							actorRunId,
+							artifactKind,
+							artifactTitle,
+							body,
+							taskId,
+							token,
+							actorRunId,
+						) as ArtifactAddOutput | undefined;
+					if (inserted === undefined) {
+						const task = db.prepare(sql`SELECT status FROM tasks WHERE id=?`).get(taskId) as
+							| { readonly status: string }
+							| undefined;
+						const status: string = task?.status ?? fail("NOT_FOUND", `task not found: ${taskId}`);
+						if (!["claimed", "running"].includes(status)) {
+							fail("VALIDATION_ERROR", `task status cannot receive artifacts: ${status}`);
+						}
+						fail("STALE_TOKEN", "artifact add token is stale or task is not held by run");
+					}
 					event(ctx, db, "task.artifact_added", {
 						task_id: taskId,
 						actor_run_id: actorRunId,
-						payload: { artifact_id: artifactId, kind },
+						payload: { artifact_id: artifactId, kind: artifactKind },
 					});
+					return parseArtifactAddOutput(inserted);
 				})(),
 			);
-			return { ok: true, artifact: { id: artifactId } };
+			const artifact: ArtifactAddOutput =
+				artifactResult ?? fail("ID_COLLISION", `artifact id collision: ${artifactId}`);
+			return { ok: true, artifact };
 		}),
 	cancel: ({ taskId, runId, reason }) =>
 		withDb(ctx, (db) => {

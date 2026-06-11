@@ -46,6 +46,19 @@ ${repairAlertKindListSql}
 );
 `;
 
+const artifactsTableSql = (tableName: string): string => sql`
+CREATE TABLE ${tableName} (
+	id TEXT PRIMARY KEY,
+	task_id TEXT NOT NULL REFERENCES tasks(id),
+	run_id TEXT NOT NULL REFERENCES runs(id),
+	kind TEXT NOT NULL,
+	title TEXT NOT NULL,
+	body TEXT NOT NULL,
+	status TEXT NOT NULL CHECK (status IN ('active', 'rejected')) DEFAULT 'active',
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`;
+
 export const migrate = (db: Db): void => {
 	db.pragma("foreign_keys = ON");
 	db.exec(sql`
@@ -216,15 +229,7 @@ CREATE TABLE IF NOT EXISTS events (
 	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS artifacts (
-	id TEXT PRIMARY KEY,
-	task_id TEXT NOT NULL REFERENCES tasks(id),
-	run_id TEXT NOT NULL REFERENCES runs(id),
-	kind TEXT NOT NULL,
-	title TEXT NOT NULL,
-	body TEXT NOT NULL,
-	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+${artifactsTableSql("IF NOT EXISTS artifacts")}
 
 ${repairAlertsTableSql("IF NOT EXISTS repair_alerts")}
 
@@ -255,6 +260,7 @@ CREATE INDEX IF NOT EXISTS idx_events_type_created_at
 	ensureScopesDescriptionColumn(db);
 	ensureScopesParentRepoPathColumn(db);
 	ensureRunsHasClaimedTaskColumn(db);
+	ensureArtifactsStatusColumn(db);
 	ensureRepairAlertsKindConstraint(db);
 	seed(db);
 };
@@ -284,6 +290,46 @@ const ensureRunsHasClaimedTaskColumn = (db: Db): void => {
 	const columns = db.prepare(sql`PRAGMA table_info(runs)`).all() as { name: string }[];
 	if (!columns.some((column) => column.name === "has_claimed_task")) {
 		db.exec(sql`ALTER TABLE runs ADD COLUMN has_claimed_task INTEGER NOT NULL DEFAULT 0`);
+	}
+};
+
+const ensureArtifactsStatusColumn = (db: Db): void => {
+	const rows = db
+		.prepare(sql`SELECT sql FROM sqlite_master WHERE type='table' AND name='artifacts'`)
+		.all() as { sql: string }[];
+	if (rows.length === 0) return;
+	const tableSql = rows[0]?.sql ?? "";
+	const hasStatusColumn = db
+		.prepare(sql`PRAGMA table_info(artifacts)`)
+		.all()
+		.some((column) => (column as { name: string }).name === "status");
+	const hasStatusConstraint = tableSql.includes("status IN ('active', 'rejected')");
+	if (hasStatusColumn && hasStatusConstraint) return;
+
+	const copySql = hasStatusColumn
+		? sql`
+			INSERT INTO artifacts_new(id, task_id, run_id, kind, title, body, status, created_at)
+			SELECT id, task_id, run_id, kind, title, body,
+			       CASE status WHEN 'rejected' THEN 'rejected' ELSE 'active' END,
+			       created_at
+			FROM artifacts
+		`
+		: sql`
+			INSERT INTO artifacts_new(id, task_id, run_id, kind, title, body, status, created_at)
+			SELECT id, task_id, run_id, kind, title, body, 'active', created_at
+			FROM artifacts
+		`;
+
+	db.pragma("foreign_keys = OFF");
+	try {
+		db.transaction(() => {
+			db.prepare(artifactsTableSql("artifacts_new")).run();
+			db.prepare(copySql).run();
+			db.prepare(sql`DROP TABLE artifacts`).run();
+			db.prepare(sql`ALTER TABLE artifacts_new RENAME TO artifacts`).run();
+		})();
+	} finally {
+		db.pragma("foreign_keys = ON");
 	}
 };
 

@@ -141,10 +141,22 @@ export interface Engine {
 	readonly artifactAdd: (input: {
 		readonly taskId: string;
 		readonly runId: string | undefined;
+		readonly token: number;
 		readonly kind: string;
 		readonly title: string;
 		readonly body: string;
-	}) => { readonly ok: true; readonly artifact: { readonly id: string } };
+	}) => {
+		readonly ok: true;
+		readonly artifact: {
+			readonly id: string;
+			readonly task_id: string;
+			readonly run_id: string;
+			readonly kind: string;
+			readonly title: string;
+			readonly status: "active";
+			readonly created_at: string;
+		};
+	};
 	readonly taskInspect: (input: { readonly taskId: string }) => TaskInspectOutput;
 	readonly cancel: (input: {
 		readonly taskId: string;

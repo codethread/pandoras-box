@@ -290,7 +290,7 @@ export const taskDetail = (db: Db, taskId: string): TaskDetailOutput =>
 export const taskArtifacts = (db: Db, taskId: string): readonly ArtifactOutput[] =>
 	db
 		.prepare(
-			sql`SELECT id, kind, title, body, created_at FROM artifacts WHERE task_id=? ORDER BY created_at ASC, id ASC`,
+			sql`SELECT id, kind, title, body, created_at FROM artifacts WHERE task_id=? AND status='active' ORDER BY created_at ASC, id ASC`,
 		)
 		.all(taskId)
 		.map(parseArtifact);

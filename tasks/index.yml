@@ -12,7 +12,7 @@ tasks:
   - id: 3
     description: Harden artifact add ownership
     task_file: tasks/003-harden-artifact-add-ownership.md
-    status: pending
+    status: complete
     blocked_by: []
   - id: 4
     description: Add artifact rejection APIs

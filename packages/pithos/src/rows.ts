@@ -62,6 +62,16 @@ export const EventRowSchema = Schema.Struct({
 	created_at: NonEmptyString,
 });
 
+export const ActiveArtifactMetadataRowSchema = Schema.Struct({
+	id: NonEmptyString,
+	task_id: NonEmptyString,
+	run_id: NonEmptyString,
+	kind: NonEmptyString,
+	title: Schema.String,
+	status: Schema.Literal("active"),
+	created_at: NonEmptyString,
+});
+
 export const REPAIR_ALERT_KINDS = [
 	"interrupt",
 	"task_failed",
