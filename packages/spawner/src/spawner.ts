@@ -1,5 +1,10 @@
 import { homedir } from "node:os";
 import {
+	parseArtifactContractToml,
+	selectArtifactContractRules,
+	type ArtifactContract,
+} from "@pdx/pithos";
+import {
 	BUILTIN_AGENT_CLAIMS,
 	BUILTIN_AGENT_ENQUEUES,
 	BUILTIN_SPAWNABLE_AGENT_KINDS,
@@ -161,12 +166,7 @@ const claimForAgent = (
 		}
 		return claim;
 	}
-	if (selectedCapability === undefined) {
-		throw new SpawnerError({
-			code: "VALIDATION_ERROR",
-			message: `${agent}: selectedCapability is required for multi-claim render`,
-		});
-	}
+	if (selectedCapability === undefined) return `<${claims.join("|")}>`;
 	if (!(claims as readonly string[]).includes(selectedCapability)) {
 		throw new SpawnerError({
 			code: "VALIDATION_ERROR",
@@ -226,12 +226,20 @@ const PITHOS_COMMAND_ANNOTATIONS: Readonly<Record<string, readonly string[]>> = 
 		"Use the rendered claim command above instead of reconstructing it by hand.",
 	],
 	"pithos task inspect": [
-		"Readable Markdown is a single-task dossier: full body, attached artifact bodies, and direct local context only.",
+		"Default output shows compact active artifact refs only.",
+		"Use `--full` to render active artifact bodies inline in Markdown output.",
+		"Use `--json` only for exact fields, scripting, or lost-token recovery; `--full --json` is invalid.",
 		"Use `pithos graph inspect --task <id>` first when you need chain topology, previews, artifact refs, gates, supersessions, or other drill-down task ids.",
-		"Use `--json` only for exact fields, scripting, or lost-token recovery.",
 	],
 	"pithos task artifact add": [
+		"Artifact `kind` must be lower snake case.",
+		"Requires the current task fencing token and can only mutate the held Task.",
 		"Artifact bodies are optional; use `--stdin` with a quoted heredoc (`<<'EOF'`) only when the artifact needs a body.",
+	],
+	"pithos task artifact list": ["Shows active and rejected artifact metadata but not bodies."],
+	"pithos task artifact show": ["Exact-id body/detail command for active or rejected artifacts."],
+	"pithos task artifact reject": [
+		"Retires a mistaken active artifact from current task/graph views and required-artifact satisfaction; it does not delete history.",
 	],
 	"pithos task complete": [
 		"Default completion sends no stdin and records empty metadata.",
@@ -487,6 +495,67 @@ const renderCommandHelpMarkdown = (
 	].join("\n");
 };
 
+const isMissingFileError = (error: unknown): boolean =>
+	typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+
+const loadArtifactContractForRender = (
+	config: Pick<SpawnerConfig, "pdxUserDataDir">,
+	services: RenderServices,
+): ArtifactContract => {
+	if (config.pdxUserDataDir === undefined) return { artifacts: [] };
+	if (services.existsDirectory?.(config.pdxUserDataDir) === false) {
+		throw new SpawnerError({
+			code: "VALIDATION_ERROR",
+			message: `PDX_USER_DATA_DIR is not an inspectable directory: ${config.pdxUserDataDir}`,
+		});
+	}
+	const path = `${config.pdxUserDataDir.replace(/\/+$/, "")}/artifacts.toml`;
+	let text: string;
+	try {
+		text = services.readText(path);
+	} catch (error) {
+		if (isMissingFileError(error)) return { artifacts: [] };
+		const message = error instanceof Error ? error.message : String(error);
+		throw new SpawnerError({
+			code: "VALIDATION_ERROR",
+			message: `${path}: failed to read artifacts.toml: ${message}`,
+		});
+	}
+	try {
+		return parseArtifactContractToml(text);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new SpawnerError({ code: "VALIDATION_ERROR", message: `${path}: ${message}` });
+	}
+};
+
+const capabilitiesForArtifactContract = (
+	agent: SpawnableAgentKind,
+	selectedCapability: Capability | undefined,
+): readonly Capability[] =>
+	selectedCapability === undefined ? BUILTIN_AGENT_CLAIMS[agent] : [selectedCapability];
+
+const renderArtifactContractSection = (
+	input: Pick<RenderAgentInput, "agent" | "selectedCapability">,
+	config: SpawnerConfig,
+	services: RenderServices,
+): string => {
+	const contract = loadArtifactContractForRender(config, services);
+	const selected = selectArtifactContractRules(
+		contract,
+		capabilitiesForArtifactContract(input.agent, input.selectedCapability),
+	);
+	if (selected.artifacts.length === 0) return "";
+	return [
+		"## Generated Artifact Contract",
+		"Applicable artifact contracts follow as normalized JSON. `required: true` blocks task completion until an active artifact with that `kind` exists on the task. `title` and `body` are guidance only.",
+		"",
+		"```json",
+		JSON.stringify(selected),
+		"```",
+	].join("\n");
+};
+
 const renderCommandCards = (agent: SpawnableAgentKind, services: RenderServices): string => {
 	const rawPithosHelp = pithosHelpTree(services);
 	validateCommandAnnotations(rawPithosHelp, PITHOS_COMMAND_ANNOTATIONS);
@@ -706,7 +775,12 @@ export const renderAgent = (
 		includeAssets.map((includeAsset) => [includeAsset.reference, includeAsset.content]),
 	);
 	const claimCommand = `pithos task claim --run ${input.runId} --scope ${input.scopeId} --capability ${claim}`;
-	const commandCards = renderCommandCards(input.agent, services);
+	const commandCards = [
+		renderCommandCards(input.agent, services),
+		renderArtifactContractSection(input, config, services),
+	]
+		.filter((section) => section.length > 0)
+		.join("\n");
 	const templateAsset = resolveTemplateAsset(manifest.template, resolved, services);
 	const renderedTemplate = renderTemplate(templateAsset.content, {
 		...includes,

@@ -37,7 +37,7 @@ tasks:
   - id: 8
     description: Render artifact contracts in prompts
     task_file: tasks/008-render-artifact-contracts-in-prompts.md
-    status: pending
+    status: complete
     blocked_by: [1, 2, 7]
   - id: 9
     description: Merge artifact specs

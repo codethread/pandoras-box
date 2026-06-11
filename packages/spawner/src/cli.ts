@@ -66,14 +66,7 @@ const parsePreviewInput = (raw: PreviewInputRaw): Effect.Effect<PreviewInput, Sp
 					invalidPreview(`${input.agent} preview must not set --selected-capability`),
 				);
 			}
-			if (claims.length > 1) {
-				if (input.selectedCapability === undefined) {
-					return Effect.fail(
-						invalidPreview(
-							`${input.agent} preview requires --selected-capability ${claims.join("|")}`,
-						),
-					);
-				}
+			if (claims.length > 1 && input.selectedCapability !== undefined) {
 				if (!(claims as readonly string[]).includes(input.selectedCapability)) {
 					return Effect.fail(
 						invalidPreview(
@@ -132,7 +125,9 @@ export const makeSpawnerCommand = (
 				"Durable parent repo root for worktree scope previews.",
 			).pipe(Options.optional),
 			selectedCapability: Options.choice("selected-capability", BUILTIN_CAPABILITIES).pipe(
-				Options.withDescription("Capability to render for multi-claim agents."),
+				Options.withDescription(
+					"Current Capability for multi-claim agents; omit to render all claimable Capability guidance.",
+				),
 				Options.optional,
 			),
 		},

@@ -119,8 +119,34 @@ const pithosHelpTree = {
 							tool: "pithos",
 							name: "add",
 							path: "pithos task artifact add",
-							usage: "add [--run text] --kind text --title text [--stdin] <task-id>",
-							description: "Attach an artifact to a task; body is read from stdin when requested.",
+							usage:
+								"add [--run text] --token integer --kind text --title text [--stdin] <task-id>",
+							description:
+								"Attach an artifact to a held task; body is read from stdin when requested.",
+							subcommands: [],
+						},
+						{
+							tool: "pithos",
+							name: "list",
+							path: "pithos task artifact list",
+							usage: "list [--json] <task-id>",
+							description: "List active and rejected artifact metadata for a task.",
+							subcommands: [],
+						},
+						{
+							tool: "pithos",
+							name: "show",
+							path: "pithos task artifact show",
+							usage: "show [--json] <artifact-id>",
+							description: "Show an artifact by exact id, including its body.",
+							subcommands: [],
+						},
+						{
+							tool: "pithos",
+							name: "reject",
+							path: "pithos task artifact reject",
+							usage: "reject [--run text] --token integer --reason text <artifact-id>",
+							description: "Reject a mistaken active artifact without deleting history.",
 							subcommands: [],
 						},
 					],
@@ -768,16 +794,14 @@ describe("renderAgent", () => {
 		},
 	);
 
-	it("fails loudly when multi-claim Greed render omits selected capability", () => {
-		const input = { ...base, agent: "greed", mode: "hitl" } as unknown as Parameters<
-			typeof renderAgent
-		>[0];
-		expect(() =>
-			renderAgent(
-				input,
-				fakeRenderServices(agentsFile({ agent: "greed", mode: "hitl", harnessKind: "pi" })),
-			),
-		).toThrow(/selectedCapability is required/);
+	it("renders a multi-claim placeholder when current capability is unknown", () => {
+		const rendered = renderAgent(
+			{ ...base, agent: "greed", mode: "hitl" },
+			fakeRenderServices(agentsFile({ agent: "greed", mode: "hitl", harnessKind: "pi" })),
+		);
+		expect(rendered.prompt).toContain(
+			`pithos task claim --run ${base.runId} --scope ${base.scopeId} --capability <design|review>`,
+		);
 	});
 
 	it("fails loudly when Greed selected capability is unauthorized", () => {
@@ -1160,6 +1184,241 @@ remove = ["global-flow"]
 		);
 	});
 
+	it("renders selected-capability Artifact Contract guidance as minified normalized JSON", () => {
+		const dataDir = "/tmp/pdx-artifacts-selected-data";
+		const userDir = "/tmp/pdx-artifacts-selected-user";
+		const services = {
+			...fakeRenderServices(agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" })),
+			readText: (path: string) => {
+				if (path === `${dataDir}/agents.toml`)
+					return agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" });
+				if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+				if (path === `${dataDir}/templates/envy.md`) return "{{claim_command}}\n{{command_cards}}";
+				if (path === `${userDir}/artifacts.toml`)
+					return `
+[[artifacts]]
+capability = "clarify"
+kind = "open_questions"
+required = true
+title = "Open questions"
+body = "Ask or answer."
+
+[[artifacts]]
+capability = "intake"
+kind = "routing_note"
+title = "Routing note"
+body = "Explain routing."
+`;
+				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+					code: "ENOENT",
+				});
+			},
+			env: (key: string) => {
+				if (key === "PDX_DATA_DIR") return dataDir;
+				if (key === "PDX_USER_DATA_DIR") return userDir;
+				if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+				return undefined;
+			},
+		};
+
+		const rendered = renderAgent(
+			{ ...base, agent: "envy", mode: "afk", selectedCapability: "clarify" },
+			services,
+		);
+
+		expect(rendered.prompt).toContain("## Generated Artifact Contract");
+		expect(rendered.prompt).toContain(
+			'{"artifacts":[{"capability":"clarify","kind":"open_questions","required":true,"title":"Open questions","body":"Ask or answer."}]}',
+		);
+		expect(rendered.prompt).not.toContain("routing_note");
+	});
+
+	it("renders all claimable Artifact Contract guidance when no current capability is known", () => {
+		const dataDir = "/tmp/pdx-artifacts-all-data";
+		const userDir = "/tmp/pdx-artifacts-all-user";
+		const services = {
+			...fakeRenderServices(agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" })),
+			readText: (path: string) => {
+				if (path === `${dataDir}/agents.toml`)
+					return agentsFile({ agent: "envy", mode: "afk", harnessKind: "pi" });
+				if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+				if (path === `${dataDir}/templates/envy.md`) return "{{claim_command}}\n{{command_cards}}";
+				if (path === `${userDir}/artifacts.toml`)
+					return `
+[[artifacts]]
+capability = "clarify"
+kind = "open_questions"
+required = true
+title = "Open questions"
+body = "Ask or answer."
+
+[[artifacts]]
+capability = "intake"
+kind = "routing_note"
+title = "Routing note"
+body = "Explain routing."
+
+[[artifacts]]
+capability = "execute"
+kind = "patch_summary"
+title = "Patch summary"
+body = "Summarize changes."
+`;
+				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+					code: "ENOENT",
+				});
+			},
+			env: (key: string) => {
+				if (key === "PDX_DATA_DIR") return dataDir;
+				if (key === "PDX_USER_DATA_DIR") return userDir;
+				if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+				return undefined;
+			},
+		};
+
+		const rendered = renderAgent({ ...base, agent: "envy", mode: "afk" }, services);
+
+		expect(rendered.prompt).toContain(
+			'{"artifacts":[{"capability":"clarify","kind":"open_questions","required":true,"title":"Open questions","body":"Ask or answer."},{"capability":"intake","kind":"routing_note","required":false,"title":"Routing note","body":"Explain routing."}]}',
+		);
+		expect(rendered.prompt).not.toContain("patch_summary");
+	});
+
+	it("renders single-claim Artifact Contract guidance when no current capability is selected", () => {
+		const dataDir = "/tmp/pdx-artifacts-single-data";
+		const userDir = "/tmp/pdx-artifacts-single-user";
+		const services = {
+			...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+			existsDirectory: (path: string) => path === userDir,
+			readText: (path: string) => {
+				if (path === `${dataDir}/agents.toml`)
+					return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+				if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+				if (path === `${dataDir}/templates/war.md`) return "{{claim_command}}\n{{command_cards}}";
+				if (path === `${userDir}/artifacts.toml`)
+					return `
+[[artifacts]]
+capability = "execute"
+kind = "patch_summary"
+title = "Patch summary"
+body = "Summarize changes."
+
+[[artifacts]]
+capability = "clarify"
+kind = "open_questions"
+title = "Open questions"
+body = "Ask."
+`;
+				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+					code: "ENOENT",
+				});
+			},
+			env: (key: string) => {
+				if (key === "PDX_DATA_DIR") return dataDir;
+				if (key === "PDX_USER_DATA_DIR") return userDir;
+				if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+				return undefined;
+			},
+		};
+
+		const rendered = renderAgent({ ...base, agent: "war", mode: "afk" }, services);
+
+		expect(rendered.prompt).toContain(
+			'{"artifacts":[{"capability":"execute","kind":"patch_summary","required":false,"title":"Patch summary","body":"Summarize changes."}]}',
+		);
+		expect(rendered.prompt).not.toContain("open_questions");
+	});
+
+	it("fails loudly when configured user data dir is not inspectable", () => {
+		const dataDir = "/tmp/pdx-artifacts-missing-dir-data";
+		const userDir = "/tmp/pdx-artifacts-missing-dir-user";
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				{
+					...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+					existsDirectory: (path: string) => path !== userDir,
+					readText: (path: string) => {
+						if (path === `${dataDir}/agents.toml`)
+							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+						if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+						if (path === `${dataDir}/templates/war.md`)
+							return "{{claim_command}}\n{{command_cards}}";
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					env: (key: string) => {
+						if (key === "PDX_DATA_DIR") return dataDir;
+						if (key === "PDX_USER_DATA_DIR") return userDir;
+						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+						return undefined;
+					},
+				},
+			),
+		).toThrow(`PDX_USER_DATA_DIR is not an inspectable directory: ${userDir}`);
+	});
+
+	it("omits Artifact Contract guidance when no rules apply", () => {
+		const dataDir = "/tmp/pdx-artifacts-none-data";
+		const userDir = "/tmp/pdx-artifacts-none-user";
+		const services = {
+			...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+			readText: (path: string) => {
+				if (path === `${dataDir}/agents.toml`)
+					return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+				if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+				if (path === `${dataDir}/templates/war.md`) return "{{claim_command}}\n{{command_cards}}";
+				if (path === `${userDir}/artifacts.toml`)
+					return '[[artifacts]]\ncapability = "clarify"\nkind = "open_questions"\ntitle = "Open questions"\nbody = "Ask."\n';
+				throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+					code: "ENOENT",
+				});
+			},
+			env: (key: string) => {
+				if (key === "PDX_DATA_DIR") return dataDir;
+				if (key === "PDX_USER_DATA_DIR") return userDir;
+				if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+				return undefined;
+			},
+		};
+
+		expect(renderAgent({ ...base, agent: "war", mode: "afk" }, services).prompt).not.toContain(
+			"Generated Artifact Contract",
+		);
+	});
+
+	it("fails loudly when present Artifact Contract config is invalid", () => {
+		const dataDir = "/tmp/pdx-artifacts-invalid-data";
+		const userDir = "/tmp/pdx-artifacts-invalid-user";
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				{
+					...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+					readText: (path: string) => {
+						if (path === `${dataDir}/agents.toml`)
+							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+						if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+						if (path === `${dataDir}/templates/war.md`)
+							return "{{claim_command}}\n{{command_cards}}";
+						if (path === `${userDir}/artifacts.toml`)
+							return '[[artifacts]]\ncapability = "execute"\nkind = "BadKind"\ntitle = "Bad"\nbody = "Bad"\n';
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					env: (key: string) => {
+						if (key === "PDX_DATA_DIR") return dataDir;
+						if (key === "PDX_USER_DATA_DIR") return userDir;
+						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+						return undefined;
+					},
+				},
+			),
+		).toThrow(/artifacts\[0\]\.kind must be lower snake case/);
+	});
+
 	it.each([
 		[
 			"missing definition",
@@ -1400,6 +1659,9 @@ remove = ["global-flow"]
 		expect(rendered.prompt).toContain("#### `pithos task claim`");
 		expect(rendered.prompt).toContain("#### `pithos task inspect`");
 		expect(rendered.prompt).toContain("#### `pithos task artifact add`");
+		expect(rendered.prompt).toContain("#### `pithos task artifact list`");
+		expect(rendered.prompt).toContain("#### `pithos task artifact show`");
+		expect(rendered.prompt).toContain("#### `pithos task artifact reject`");
 		expect(rendered.prompt).toContain("#### `pithos task complete`");
 		expect(rendered.prompt).toContain("#### `pithos task fail`");
 		expect(rendered.prompt).toContain("#### `pithos task enqueue`");
@@ -1409,9 +1671,7 @@ remove = ["global-flow"]
 		expect(rendered.prompt).toContain(
 			"- Use the rendered claim command above instead of reconstructing it by hand.",
 		);
-		expect(rendered.prompt).toContain(
-			"- Readable Markdown is a single-task dossier: full body, attached artifact bodies, and direct local context only.",
-		);
+		expect(rendered.prompt).toContain("- Default output shows compact active artifact refs only.");
 		expect(rendered.prompt).toContain(
 			"- Artifact bodies are optional; use `--stdin` with a quoted heredoc (`<<'EOF'`) only when the artifact needs a body.",
 		);
@@ -1425,14 +1685,15 @@ remove = ["global-flow"]
 		expect(enqueueSection).toContain("--gate-on text");
 		expect(enqueueSection).toContain("--repair text");
 		const inspectSection = commandSection(rendered.prompt, "pithos task inspect");
+		expect(inspectSection).toContain("- Default output shows compact active artifact refs only.");
 		expect(inspectSection).toContain(
-			"- Readable Markdown is a single-task dossier: full body, attached artifact bodies, and direct local context only.",
+			"- Use `--full` to render active artifact bodies inline in Markdown output.",
 		);
 		expect(inspectSection).toContain(
 			"- Use `pithos graph inspect --task <id>` first when you need chain topology, previews, artifact refs, gates, supersessions, or other drill-down task ids.",
 		);
 		expect(inspectSection).toContain(
-			"- Use `--json` only for exact fields, scripting, or lost-token recovery.",
+			"- Use `--json` only for exact fields, scripting, or lost-token recovery; `--full --json` is invalid.",
 		);
 		expect(inspectSection).not.toContain("- Default completion sends no stdin");
 		const graphSection = commandSection(rendered.prompt, "pithos graph inspect");
