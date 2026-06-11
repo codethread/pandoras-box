@@ -7,6 +7,7 @@ import {
 	type AgentKind,
 	type Capability,
 } from "./builtins.js";
+import { fail } from "./errors.js";
 import { REPAIR_ALERT_KINDS, decodeRow } from "./rows.js";
 
 export type Db = Database.Database;
@@ -267,7 +268,7 @@ CREATE INDEX IF NOT EXISTS idx_events_type_created_at
 	ensureScopesDescriptionColumn(db);
 	ensureScopesParentRepoPathColumn(db);
 	ensureRunsHasClaimedTaskColumn(db);
-	ensureArtifactsStatusColumn(db);
+	assertArtifactsSchemaCurrent(db);
 	ensureRepairAlertsKindConstraint(db);
 	seed(db);
 };
@@ -300,67 +301,34 @@ const ensureRunsHasClaimedTaskColumn = (db: Db): void => {
 	}
 };
 
-const ensureArtifactsStatusColumn = (db: Db): void => {
+const assertArtifactsSchemaCurrent = (db: Db): void => {
 	const rows = db
 		.prepare(sql`SELECT sql FROM sqlite_master WHERE type='table' AND name='artifacts'`)
 		.all() as { sql: string }[];
 	if (rows.length === 0) return;
 	const tableSql = rows[0]?.sql ?? "";
 	const columns = db.prepare(sql`PRAGMA table_info(artifacts)`).all() as { name: string }[];
-	const hasStatusColumn = columns.some((column) => column.name === "status");
-	const hasRejectedAtColumn = columns.some((column) => column.name === "rejected_at");
-	const hasRejectedByRunIdColumn = columns.some((column) => column.name === "rejected_by_run_id");
-	const hasRejectionReasonColumn = columns.some((column) => column.name === "rejection_reason");
-	const hasRejectionColumns =
-		hasRejectedAtColumn && hasRejectedByRunIdColumn && hasRejectionReasonColumn;
+	const columnNames = new Set(columns.map((column) => column.name));
+	const hasRequiredColumns = [
+		"id",
+		"task_id",
+		"run_id",
+		"kind",
+		"title",
+		"body",
+		"status",
+		"rejected_at",
+		"rejected_by_run_id",
+		"rejection_reason",
+		"created_at",
+	].every((name) => columnNames.has(name));
 	const hasStatusConstraint = tableSql.includes("status IN ('active', 'rejected')");
 	const hasRejectionConstraint = tableSql.includes("status = 'active' AND rejected_at IS NULL");
-	if (hasStatusConstraint && hasRejectionColumns && hasRejectionConstraint) return;
-
-	const statusExpr = hasStatusColumn ? "status" : "'active'";
-	const rejectedAtExpr = hasRejectedAtColumn ? "rejected_at" : "NULL";
-	const rejectedByRunIdExpr = hasRejectedByRunIdColumn ? "rejected_by_run_id" : "NULL";
-	const rejectionReasonExpr = hasRejectionReasonColumn ? "rejection_reason" : "NULL";
-	const copySql = sql`
-		INSERT INTO artifacts_new(
-			id,
-			task_id,
-			run_id,
-			kind,
-			title,
-			body,
-			status,
-			rejected_at,
-			rejected_by_run_id,
-			rejection_reason,
-			created_at
-		)
-		SELECT
-			id,
-			task_id,
-			run_id,
-			kind,
-			title,
-			body,
-			${statusExpr},
-			${rejectedAtExpr},
-			${rejectedByRunIdExpr},
-			${rejectionReasonExpr},
-			created_at
-		FROM artifacts
-	`;
-
-	db.pragma("foreign_keys = OFF");
-	try {
-		db.transaction(() => {
-			db.prepare(artifactsTableSql("artifacts_new")).run();
-			db.prepare(copySql).run();
-			db.prepare(sql`DROP TABLE artifacts`).run();
-			db.prepare(sql`ALTER TABLE artifacts_new RENAME TO artifacts`).run();
-		})();
-	} finally {
-		db.pragma("foreign_keys = ON");
-	}
+	if (hasRequiredColumns && hasStatusConstraint && hasRejectionConstraint) return;
+	fail(
+		"VALIDATION_ERROR",
+		"artifacts table schema is incompatible with this alpha release; reset the Pithos database with `pithos init --fresh`, or use `pdx init --clean` for a pdx-managed data dir",
+	);
 };
 
 const RETIRED_REPAIR_ALERT_KINDS = ["input_hook_stuck", "hook_config_error"] as const;

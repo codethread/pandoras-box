@@ -114,6 +114,8 @@ is only the tiny direct-agent pointer. Validate changes with
 
 Useful reset modes:
 
+Artifact status/rejection is an alpha schema break. If an existing DB fails with an incompatible `artifacts` schema error, reset runtime state with `pdx init --clean` / `pdx open --clean`; standalone Pithos users can run `pithos init --fresh`.
+
 - `pdx init` or `pdx open` — re-seed `<data-dir>/agents.toml`, `<data-dir>/templates/`, `<data-dir>/AGENTS.md`, and `<user-data-dir>/PANDORA.md`; scaffold missing `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml`; keep user config, DB, runs, and logs
 - `pdx init --clean` or `pdx open --clean` — wipe runtime state only (DB, runs, logs); keep bundle-owned config and user config
 - `pdx init --nuke` or `pdx open --nuke` — wipe pdx-owned runtime/bundled state, preserve `<user-data-dir>`, then reseed fresh canonical config

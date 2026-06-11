@@ -145,7 +145,9 @@ Important details:
 - library-only `pruneEvents` retention maintenance (default: heartbeat events older than 1 day, other events older than 7 days) through `src/engine/event-log.ts`
 - text renderers for task/graph/briefing views
 
-Engine code opens the SQLite DB, runs migrations, executes transition logic, and closes the DB per operation. Race-sensitive updates run inside SQLite transactions and use fenced preconditions so stale writes fail rather than drifting state. Artifact add/reject mutations require active held-task ownership and a matching fencing token. Rejection is one-way: rejected Artifacts remain exact-id inspectable but are excluded from primary active-artifact views. Scope/task admission validates external filesystem state at the Pithos boundary: repo/worktree paths must exist as directories when scopes are upserted and when tasks are enqueued or superseded into those scopes.
+Engine code opens the SQLite DB, checks/updates schema, executes transition logic, and closes the DB per operation. Race-sensitive updates run inside SQLite transactions and use fenced preconditions so stale writes fail rather than drifting state. Artifact add/reject mutations require active held-task ownership and a matching fencing token. Rejection is one-way: rejected Artifacts remain exact-id inspectable but are excluded from primary active-artifact views. Scope/task admission validates external filesystem state at the Pithos boundary: repo/worktree paths must exist as directories when scopes are upserted and when tasks are enqueued or superseded into those scopes.
+
+Artifact status/rejection is an alpha schema break rather than a data migration: an incompatible existing `artifacts` table fails loudly. Reset standalone Pithos databases with `pithos init --fresh`; for pdx-managed data dirs use `pdx init --clean` or `pdx open --clean`.
 
 ### `src/db.ts` — schema and seed data
 
@@ -164,7 +166,7 @@ Key tables:
 - `artifacts`
 - `events` (indexed for age-based pruning by `created_at` and `(type, created_at)`)
 
-`migrate` enables foreign keys, creates/updates schema, and seeds the built-in global scope, Agent kinds, Capabilities, claim rules, and enqueue rules.
+`migrate` enables foreign keys, creates/checks schema, and seeds the built-in global scope, Agent kinds, Capabilities, claim rules, and enqueue rules. Alpha schema breaks may require a fresh DB instead of in-place migration.
 
 ### `src/builtins.ts` — durable built-in contract
 

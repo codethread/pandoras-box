@@ -177,6 +177,8 @@ ALTER TABLE artifacts ADD COLUMN rejection_reason TEXT;
 
 The implemented schema should enforce valid status values and the consistency of rejection metadata. Rejected artifacts keep their body and original authorship metadata.
 
+Because this is alpha software, Pithos does not migrate pre-Artifact-Contract artifact tables into this shape. If an existing DB has an incompatible `artifacts` schema, startup fails loudly and the operator must reset the DB with `pithos init --fresh` for standalone Pithos use or `pdx init --clean` / `pdx open --clean` for a pdx-managed data dir.
+
 Artifact mutations require active held-task ownership:
 
 - parent Task status is `claimed` or `running`
@@ -354,7 +356,7 @@ Implementation areas:
 
 | Path                                            | Responsibility                                                                               |
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `packages/pithos/src/db.ts`                     | Artifact status/rejection schema migration.                                                  |
+| `packages/pithos/src/db.ts`                     | Artifact status/rejection schema and incompatible alpha-schema check.                        |
 | `packages/pithos/src/rows.ts`                   | Artifact row parsing and status validation.                                                  |
 | `packages/pithos/src/artifact-contracts.ts`     | Resolve and parse `$PDX_USER_DATA_DIR/artifacts.toml`; export parser/normalizer for Spawner. |
 | `packages/pithos/src/engine/claim-loop.ts`      | Fenced artifact add/reject and completion enforcement.                                       |

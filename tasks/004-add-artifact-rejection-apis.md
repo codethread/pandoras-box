@@ -9,7 +9,7 @@ Add active/rejected artifact status, fenced artifact rejection, and targeted art
 ## Must implement exactly
 
 - Migrate artifacts to include `status = active | rejected` plus rejection metadata fields: rejected timestamp, rejecting run id, rejection reason.
-- Existing artifacts migrate as `active`.
+- Existing pre-Artifact-Contract artifact tables are not migrated; incompatible artifact schemas fail loudly with reset instructions for alpha users.
 - Enforce schema-level integrity for valid status values and rejection metadata consistency: active artifacts must not carry rejection metadata, and rejected artifacts must carry rejection timestamp, rejecting run id, and non-empty reason.
 - Add `pithos task artifact reject <artifact-id> [--run <run-id>] --token <token> --reason <reason>`.
 - Resolve parent task from artifact id; require active held-task ownership and matching token.
