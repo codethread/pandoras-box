@@ -1,0 +1,51 @@
+tasks:
+  - id: 1
+    description: Add clarify capability plumbing
+    task_file: tasks/001-add-clarify-capability-plumbing.md
+    status: pending
+    blocked_by: []
+  - id: 2
+    description: Add artifact contract parser
+    task_file: tasks/002-add-artifact-contract-parser.md
+    status: pending
+    blocked_by: []
+  - id: 3
+    description: Harden artifact add ownership
+    task_file: tasks/003-harden-artifact-add-ownership.md
+    status: pending
+    blocked_by: []
+  - id: 4
+    description: Add artifact rejection APIs
+    task_file: tasks/004-add-artifact-rejection-apis.md
+    status: pending
+    blocked_by: [3]
+  - id: 5
+    description: Compact inspect and graph artifacts
+    task_file: tasks/005-compact-inspect-and-graph-artifacts.md
+    status: pending
+    blocked_by: [4]
+  - id: 6
+    description: Enforce required artifact completion
+    task_file: tasks/006-enforce-required-artifact-completion.md
+    status: pending
+    blocked_by: [2, 4]
+  - id: 7
+    description: Scaffold artifact contracts
+    task_file: tasks/007-scaffold-artifact-contracts.md
+    status: pending
+    blocked_by: [1, 2]
+  - id: 8
+    description: Render artifact contracts in prompts
+    task_file: tasks/008-render-artifact-contracts-in-prompts.md
+    status: pending
+    blocked_by: [1, 2, 7]
+  - id: 9
+    description: Merge artifact specs
+    task_file: tasks/009-merge-artifact-specs.md
+    status: pending
+    blocked_by: [1, 3, 4, 5, 6, 7, 8]
+  - id: 10
+    description: Update artifact package docs
+    task_file: tasks/010-update-artifact-package-docs.md
+    status: pending
+    blocked_by: [9]
