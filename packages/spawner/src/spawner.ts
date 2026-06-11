@@ -30,24 +30,16 @@ interface RenderAgentInputBase {
 	readonly runId: string;
 	readonly sessionId: string;
 	readonly scopeId: string;
-	readonly scopeKind?: "global" | "repo" | "worktree";
-	readonly scopePath?: string;
+	readonly scopeKind?: "global" | "repo" | "worktree" | undefined;
+	readonly scopePath?: string | undefined;
 	readonly cwd: string;
-	readonly parentRepoPath?: string;
+	readonly parentRepoPath?: string | undefined;
 }
 
-type GreedClaimCapability = (typeof BUILTIN_AGENT_CLAIMS.greed)[number];
-type SingleClaimAgent = Exclude<SpawnableAgentKind, "greed">;
-
-export type RenderAgentInput =
-	| (RenderAgentInputBase & {
-			readonly agent: "greed";
-			readonly selectedCapability: GreedClaimCapability;
-	  })
-	| (RenderAgentInputBase & {
-			readonly agent: SingleClaimAgent;
-			readonly selectedCapability?: never;
-	  });
+export interface RenderAgentInput extends RenderAgentInputBase {
+	readonly agent: SpawnableAgentKind;
+	readonly selectedCapability?: Capability | undefined;
+}
 
 const HarnessKindSchema = Schema.Literal("claude", "pi");
 export type HarnessKind = Schema.Schema.Type<typeof HarnessKindSchema>;

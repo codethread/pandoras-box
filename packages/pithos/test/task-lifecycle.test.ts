@@ -342,6 +342,54 @@ describe("task lifecycle", () => {
 		);
 	});
 
+	it("enforces clarify capability authorization: envy enqueues and claims, others rejected", () => {
+		const { engine } = setup();
+		engine.runUpsert({
+			agent: "envy",
+			mode: "afk",
+			scope: "global",
+			cwd: "/tmp",
+			sessionId: "s_envy",
+			harnessKind: "pi",
+			sessionLogPath: "/tmp/s_envy.jsonl",
+			runId: "run_envy",
+		});
+		engine.enqueue({
+			scope: "global",
+			capability: "clarify",
+			title: "measure requirements",
+			body: "interpretive signal",
+			bodyFile: undefined,
+			runId: "run_envy",
+			after: [],
+			chain: "none",
+		});
+		expect(
+			engine.claim({ runId: "run_envy", scope: "global", capability: "clarify" }).task.capability,
+		).toBe("clarify");
+		expect(() =>
+			engine.enqueue({
+				scope: "global",
+				capability: "clarify",
+				title: "bad clarify",
+				body: "body",
+				bodyFile: undefined,
+				runId: "run_toil",
+				after: [],
+				chain: "none",
+			}),
+		).toThrow(PithosError);
+		expect(() =>
+			engine.claim({ runId: "run_toil", scope: "global", capability: "clarify" }),
+		).toThrow(PithosError);
+		expect(() =>
+			engine.claim({ runId: "run_pandora", scope: "global", capability: "clarify" }),
+		).toThrow(PithosError);
+		expect(() =>
+			engine.claim({ runId: "run_war", scope: "global", capability: "clarify" }),
+		).toThrow(PithosError);
+	});
+
 	it("rejects intake tasks enqueued in non-global scope", () => {
 		const { engine } = setup();
 		const { scope: repoScope } = engine.scopeUpsert({ kind: "repo", path: "/some/repo" });

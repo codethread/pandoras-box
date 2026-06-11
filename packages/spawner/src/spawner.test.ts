@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BUILTIN_CAPABILITIES } from "@pdx/pithos/builtins";
 import { describe, expect, it } from "vitest";
 import { SpawnerError } from "./errors.js";
 import { LiveSpawnerServices } from "./services.js";
@@ -32,6 +33,8 @@ const claudeRealSessionPath = (cwd: string, sessionId: string, realCwd: string):
 	`${homedir()}/.claude/projects/${realCwd.replace(/[^A-Za-z0-9-]/g, "-")}/${sessionId}.jsonl`;
 const piSessionPath = (cwd: string, sessionId: string): string =>
 	`${homedir()}/.pi/agent/sessions/${piBucket(cwd)}/${sessionId}.jsonl`;
+
+const capabilityUsage = BUILTIN_CAPABILITIES.join(" | ");
 
 const pithosHelpTree = {
 	tool: "pithos",
@@ -93,8 +96,7 @@ const pithosHelpTree = {
 					tool: "pithos",
 					name: "claim",
 					path: "pithos task claim",
-					usage:
-						"claim [--run text] --scope text --capability triage | design | execute | review | escalate | intake",
+					usage: `claim [--run text] --scope text --capability ${capabilityUsage}`,
 					description: "Claim one claimable task for a run and return its fencing token.",
 					subcommands: [],
 				},
@@ -143,8 +145,7 @@ const pithosHelpTree = {
 					tool: "pithos",
 					name: "enqueue",
 					path: "pithos task enqueue",
-					usage:
-						"enqueue [--run text] --scope text --capability triage | design | execute | review | escalate | intake --title text [--stdin] [--chain auto | none | held] [--after text] [--about text] [--gate-on text] [--repair text]",
+					usage: `enqueue [--run text] --scope text --capability ${capabilityUsage} --title text [--stdin] [--chain auto | none | held] [--after text] [--about text] [--gate-on text] [--repair text]`,
 					description: "Create a new queued task.",
 					subcommands: [],
 				},
@@ -566,7 +567,9 @@ describe("bundled agent templates", () => {
 		const input: Parameters<typeof renderAgent>[0] =
 			agent === "greed"
 				? { ...base, agent, mode, selectedCapability: "design" }
-				: { ...base, agent, mode };
+				: agent === "envy"
+					? { ...base, agent, mode, selectedCapability: "intake" }
+					: { ...base, agent, mode };
 		const rendered = renderAgent(input, liveTemplateServices());
 
 		expect(rendered.prompt).not.toContain("cwd/scope guard");
@@ -1451,7 +1454,7 @@ remove = ["global-flow"]
 			"- Use to abandon non-held work, not normal successful completion.",
 		);
 		expect(rendered.prompt).toContain(
-			"```sh\npithos task claim [--run text] --scope text --capability triage | design | execute | review | escalate | intake\n```",
+			`\`\`\`sh\npithos task claim [--run text] --scope text --capability ${capabilityUsage}\n\`\`\``,
 		);
 
 		expect(rendered.prompt).toContain(
@@ -1472,7 +1475,9 @@ remove = ["global-flow"]
 			const input: Parameters<typeof renderAgent>[0] =
 				agent === "greed"
 					? { ...base, agent, mode: "hitl", selectedCapability: "design" }
-					: { ...base, agent, mode: "afk" };
+					: agent === "envy"
+						? { ...base, agent, mode: "afk", selectedCapability: "intake" }
+						: { ...base, agent, mode: "afk" };
 			const rendered = renderAgent(
 				input,
 				fakeRenderServices(

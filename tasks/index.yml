@@ -2,7 +2,7 @@ tasks:
   - id: 1
     description: Add clarify capability plumbing
     task_file: tasks/001-add-clarify-capability-plumbing.md
-    status: pending
+    status: complete
     blocked_by: []
   - id: 2
     description: Add artifact contract parser

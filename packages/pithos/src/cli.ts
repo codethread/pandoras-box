@@ -13,6 +13,7 @@ import {
 	renderTaskInspectMarkdown,
 } from "./engine.js";
 import { exitCodeFor, PithosError } from "./errors.js";
+import { BUILTIN_CAPABILITIES } from "./builtins.js";
 import type { ChainPolicy } from "./chain-policy.js";
 import {
 	TASK_STATUSES,
@@ -791,17 +792,9 @@ export const makePithosCommand = (ctx: CliContext) => {
 		Command.withDescription("Inspect durable Pithos event history."),
 		Command.withSubcommands([eventsTail]),
 	);
-	const capability = Options.choice("capability", [
-		"triage",
-		"design",
-		"execute",
-		"review",
-		"escalate",
-		"intake",
-	] as const).pipe(
-		Options.withDescription(
-			"Task capability used for claim authorization: triage, design, execute, review, escalate, or intake.",
-		),
+	const capabilityChoices = BUILTIN_CAPABILITIES.join(", ");
+	const capability = Options.choice("capability", BUILTIN_CAPABILITIES).pipe(
+		Options.withDescription(`Task capability used for claim authorization: ${capabilityChoices}.`),
 	);
 	const taskEnqueue = Command.make(
 		"enqueue",

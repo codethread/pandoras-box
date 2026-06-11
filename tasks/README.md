@@ -27,3 +27,5 @@ No HITL tasks are required: the product decisions are captured in the specs and 
 ## Developer Notes
 
 Append notes here. Do not rewrite earlier notes.
+
+- Task 1: Implemented `clarify` plumbing from the artifact-contract deltas. The current implemented `specs/control-plane-supervision.md` still lists the pre-delta capability table; left spec merge to Task 9 per plan.

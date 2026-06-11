@@ -64,6 +64,7 @@ describe("pithos foundation", () => {
 				.pluck()
 				.all(),
 		).toEqual([
+			"envy:clarify",
 			"envy:intake",
 			"greed:design",
 			"greed:review",
@@ -77,6 +78,7 @@ describe("pithos foundation", () => {
 				.pluck()
 				.all(),
 		).toEqual([
+			"envy:clarify",
 			"envy:design",
 			"envy:escalate",
 			"envy:triage",
@@ -156,7 +158,7 @@ describe("pithos foundation", () => {
 		initEngine(dbPath).close();
 		const db = new Database(dbPath);
 		expect(db.prepare("SELECT COUNT(*) FROM agent_kinds").pluck().get()).toBe(6);
-		expect(db.prepare("SELECT COUNT(*) FROM agent_enqueues").pluck().get()).toBe(18);
+		expect(db.prepare("SELECT COUNT(*) FROM agent_enqueues").pluck().get()).toBe(19);
 	});
 
 	it("exported built-in contract matches seeded rows", () => {

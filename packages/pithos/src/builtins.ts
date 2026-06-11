@@ -11,6 +11,7 @@ export const BUILTIN_CAPABILITIES = [
 	"review",
 	"escalate",
 	"intake",
+	"clarify",
 ] as const;
 
 export type SystemActor = (typeof BUILTIN_SYSTEM_ACTORS)[number];
@@ -23,7 +24,7 @@ export const BUILTIN_AGENT_CLAIMS = {
 	toil: ["triage"],
 	greed: ["design", "review"],
 	war: ["execute"],
-	envy: ["intake"],
+	envy: ["intake", "clarify"],
 } as const satisfies Partial<Record<AgentKind, readonly Capability[]>>;
 
 export const BUILTIN_AGENT_ENQUEUES = {
@@ -32,7 +33,7 @@ export const BUILTIN_AGENT_ENQUEUES = {
 	toil: ["triage", "design", "execute", "review", "escalate"],
 	greed: ["triage", "design", "escalate"],
 	war: ["escalate"],
-	envy: ["triage", "design", "escalate"],
+	envy: ["clarify", "triage", "design", "escalate"],
 } as const satisfies Record<AgentKind, readonly Capability[]>;
 
 export const BUILTIN_CONTRACT = {

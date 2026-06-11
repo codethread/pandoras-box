@@ -185,21 +185,16 @@ interface LaunchAgentInputBase {
 	readonly runId: string;
 	readonly sessionId: string;
 	readonly scopeId: string;
-	readonly scopeKind?: "global" | "repo" | "worktree";
-	readonly scopePath?: string;
+	readonly scopeKind?: "global" | "repo" | "worktree" | undefined;
+	readonly scopePath?: string | undefined;
 	readonly cwd: string;
-	readonly parentRepoPath?: string;
+	readonly parentRepoPath?: string | undefined;
 }
 
-export type LaunchAgentInput =
-	| (LaunchAgentInputBase & {
-			readonly agent: "greed";
-			readonly selectedCapability: "design" | "review";
-	  })
-	| (LaunchAgentInputBase & {
-			readonly agent: "pandora" | "toil" | "war" | "envy";
-			readonly selectedCapability?: never;
-	  });
+export interface LaunchAgentInput extends LaunchAgentInputBase {
+	readonly agent: "pandora" | "toil" | "greed" | "war" | "envy";
+	readonly selectedCapability?: Capability | undefined;
+}
 
 export type RenderedAgent = SpawnerRenderedAgent;
 

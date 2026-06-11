@@ -27,7 +27,7 @@ import {
 	type SpawnerService,
 	type TmuxService,
 } from "../src/services.js";
-import { type Services as PithosServices } from "@pdx/pithos";
+import { type Capability, type Services as PithosServices } from "@pdx/pithos";
 import { PANDORA_TARGET, reconcileTick } from "../src/controller.js";
 
 export const execFileAsync = promisify(execFile);
@@ -110,7 +110,7 @@ export const parseConfig = (dataDir: string, envHome = "/tmp/user-home") =>
 export interface ReadyTaskInput {
 	readonly id?: string;
 	readonly scope_id: string;
-	readonly capability: "triage" | "design" | "execute" | "review" | "escalate" | "intake";
+	readonly capability: Capability;
 	readonly scope_kind?: "global" | "repo" | "worktree";
 	readonly canonical_path?: string | null;
 	readonly parent_repo_path?: string | null;

@@ -1,4 +1,5 @@
 import { Either, Schema } from "effect";
+import { BUILTIN_CAPABILITIES } from "./builtins.js";
 import { fail } from "./errors.js";
 
 const NonEmptyString = Schema.String.pipe(Schema.minLength(1));
@@ -23,7 +24,7 @@ export const RunRowSchema = Schema.Struct({
 export const TaskRowSchema = Schema.Struct({
 	id: NonEmptyString,
 	scope_id: NonEmptyString,
-	capability: Schema.Literal("triage", "design", "execute", "review", "escalate", "intake"),
+	capability: Schema.Literal(...BUILTIN_CAPABILITIES),
 	title: Schema.String,
 	body: Schema.String,
 	status: Schema.Literal(

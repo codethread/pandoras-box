@@ -1,6 +1,6 @@
 import { Deferred, Effect, Fiber, Ref, Schedule, Either } from "effect";
 import { resolve } from "node:path";
-import { PDX_SYSTEM_RUN_ID, type Capability } from "@pdx/pithos";
+import { BUILTIN_AGENT_CLAIMS, PDX_SYSTEM_RUN_ID, type Capability } from "@pdx/pithos";
 import { requestIpc, listenIpc } from "./ipc-socket.js";
 import { listenIntakeSocket } from "./intake-socket.js";
 import type { IpcResponse } from "./ipc.js";
@@ -757,8 +757,14 @@ const agentForCapability = {
 	review: "greed",
 	execute: "war",
 	intake: "envy",
+	clarify: "envy",
 	escalate: undefined,
 } as const satisfies Record<Capability, LaunchableAgent | undefined>;
+
+const selectedCapabilityForLaunch = (
+	agent: LaunchableAgent,
+	capability: Capability,
+): Capability | undefined => (BUILTIN_AGENT_CLAIMS[agent].length > 1 ? capability : undefined);
 
 const launchPreconditionTitle = (taskId: string): string => `Repair unlaunchable task ${taskId}`;
 
@@ -1037,19 +1043,12 @@ const spawnReadyAgent = (config: PdxConfig, maxAfk: number) =>
 				cwd,
 				...(task.parent_repo_path === null ? {} : { parentRepoPath: task.parent_repo_path }),
 			} as const;
-			const selectedCapability =
-				task.capability === "design" || task.capability === "review" ? task.capability : undefined;
-			const rendered =
-				agent === "greed"
-					? selectedCapability === undefined
-						? yield* Effect.fail(
-								new PdxError({
-									code: "VALIDATION_ERROR",
-									message: `greed cannot launch capability ${task.capability}`,
-								}),
-							)
-						: yield* spawner.renderAgent({ ...renderInput, agent, selectedCapability })
-					: yield* spawner.renderAgent({ ...renderInput, agent });
+			const selectedCapability = selectedCapabilityForLaunch(agent, task.capability);
+			const rendered = yield* spawner.renderAgent({
+				...renderInput,
+				agent,
+				...(selectedCapability === undefined ? {} : { selectedCapability }),
+			});
 			const cwdExistsBeforeRunUpsert = yield* cwdExists(cwd);
 			if (!cwdExistsBeforeRunUpsert) {
 				if (task.scope_kind === "global") {

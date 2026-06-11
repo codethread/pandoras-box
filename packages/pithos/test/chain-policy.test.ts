@@ -83,19 +83,21 @@ describe("chain policy resolver", () => {
 		});
 	});
 
-	it("treats review as ordinary held follow-up", () => {
-		expect(
-			resolveChainPolicy({
-				policy: "auto",
-				newTaskCapability: "review",
-				heldTask: ordinary,
-				heldSource: null,
-			}),
-		).toMatchObject({
-			applied: "depends_on_held",
-			implicitDependencyIds: ["held"],
-			sourceTaskId: null,
-		});
+	it("treats review and clarify as ordinary held follow-up", () => {
+		for (const newTaskCapability of ["review", "clarify"] as const) {
+			expect(
+				resolveChainPolicy({
+					policy: "auto",
+					newTaskCapability,
+					heldTask: ordinary,
+					heldSource: null,
+				}),
+			).toMatchObject({
+				applied: "depends_on_held",
+				implicitDependencyIds: ["held"],
+				sourceTaskId: null,
+			});
+		}
 	});
 
 	it("source-links escalation from ordinary held work without blocking it", () => {

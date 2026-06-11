@@ -1,4 +1,8 @@
-import { BUILTIN_CAPABILITIES, BUILTIN_SPAWNABLE_AGENT_KINDS } from "@pdx/pithos/builtins";
+import {
+	BUILTIN_AGENT_CLAIMS,
+	BUILTIN_CAPABILITIES,
+	BUILTIN_SPAWNABLE_AGENT_KINDS,
+} from "@pdx/pithos/builtins";
 import { Command, Options } from "@effect/cli";
 import { Effect, Option, ParseResult, Schema } from "effect";
 import { SpawnerError } from "./errors.js";
@@ -6,7 +10,6 @@ import { renderHelp } from "./help.js";
 import { AgentKindSchema, ModeSchema } from "./spawner.js";
 
 const CapabilitySchema = Schema.Literal(...BUILTIN_CAPABILITIES);
-const PREVIEW_SELECTED_CAPABILITIES = ["design", "review"] as const;
 
 const PreviewInputRawSchema = Schema.Struct({
 	agent: AgentKindSchema,
@@ -23,26 +26,7 @@ const PreviewInputRawSchema = Schema.Struct({
 
 type PreviewInputRaw = Schema.Schema.Type<typeof PreviewInputRawSchema>;
 
-interface PreviewInputBase {
-	readonly mode: "afk" | "hitl";
-	readonly runId: string;
-	readonly sessionId: string;
-	readonly scopeId: string;
-	readonly scopeKind?: "global" | "repo" | "worktree";
-	readonly scopePath?: string;
-	readonly cwd: string;
-	readonly parentRepoPath?: string;
-}
-
-export type PreviewInput =
-	| (PreviewInputBase & {
-			readonly agent: "greed";
-			readonly selectedCapability: "design" | "review";
-	  })
-	| (PreviewInputBase & {
-			readonly agent: "pandora" | "toil" | "war" | "envy";
-			readonly selectedCapability?: never;
-	  });
+export type PreviewInput = PreviewInputRaw;
 
 const opt = <A>(value: Option.Option<A>): A | undefined => Option.getOrUndefined(value);
 
@@ -76,24 +60,33 @@ const parsePreviewInput = (raw: PreviewInputRaw): Effect.Effect<PreviewInput, Sp
 				cwd: input.cwd,
 				...(input.parentRepoPath === undefined ? {} : { parentRepoPath: input.parentRepoPath }),
 			} as const;
-			if (input.agent === "greed") {
-				if (input.selectedCapability !== "design" && input.selectedCapability !== "review") {
-					return Effect.fail(
-						invalidPreview("greed preview requires --selected-capability design|review"),
-					);
-				}
-				return Effect.succeed<PreviewInput>({
-					...base,
-					agent: "greed",
-					selectedCapability: input.selectedCapability,
-				});
-			}
-			if (input.selectedCapability !== undefined) {
+			const claims = BUILTIN_AGENT_CLAIMS[input.agent];
+			if (claims.length === 1 && input.selectedCapability !== undefined) {
 				return Effect.fail(
 					invalidPreview(`${input.agent} preview must not set --selected-capability`),
 				);
 			}
-			return Effect.succeed<PreviewInput>({ ...base, agent: input.agent });
+			if (claims.length > 1) {
+				if (input.selectedCapability === undefined) {
+					return Effect.fail(
+						invalidPreview(
+							`${input.agent} preview requires --selected-capability ${claims.join("|")}`,
+						),
+					);
+				}
+				if (!(claims as readonly string[]).includes(input.selectedCapability)) {
+					return Effect.fail(
+						invalidPreview(
+							`${input.agent} preview selected capability ${input.selectedCapability} is not authorized`,
+						),
+					);
+				}
+			}
+			return Effect.succeed<PreviewInput>({
+				...base,
+				agent: input.agent,
+				selectedCapability: input.selectedCapability,
+			});
 		}),
 	);
 
@@ -138,8 +131,8 @@ export const makeSpawnerCommand = (
 				"path",
 				"Durable parent repo root for worktree scope previews.",
 			).pipe(Options.optional),
-			selectedCapability: Options.choice("selected-capability", PREVIEW_SELECTED_CAPABILITIES).pipe(
-				Options.withDescription("Greed preview Capability: design or review."),
+			selectedCapability: Options.choice("selected-capability", BUILTIN_CAPABILITIES).pipe(
+				Options.withDescription("Capability to render for multi-claim agents."),
 				Options.optional,
 			),
 		},

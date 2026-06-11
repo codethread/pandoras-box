@@ -21,13 +21,13 @@ You don't run shell commands in the loop — Pandora does.
 
 **The Evils**
 
-| Evil    | Mode | Claims             | Role                                                     |
-| ------- | ---- | ------------------ | -------------------------------------------------------- |
-| Pandora | HITL | `escalate`         | Long-lived. Talks to you. Routes the chain.              |
-| Envy    | AFK  | `intake`           | Classifies external signals into follow-up work.         |
-| Toil    | AFK  | `triage`           | Decomposes incoming work; routes to design or execute.   |
-| Greed   | HITL | `design`, `review` | Produces design briefs and explicitly requested reviews. |
-| War     | AFK  | `execute`          | Runs in a repo/worktree and changes code.                |
+| Evil    | Mode | Claims              | Role                                                     |
+| ------- | ---- | ------------------- | -------------------------------------------------------- |
+| Pandora | HITL | `escalate`          | Long-lived. Talks to you. Routes the chain.              |
+| Envy    | AFK  | `intake`, `clarify` | Classifies external signals and clarifies requirements.  |
+| Toil    | AFK  | `triage`            | Decomposes incoming work; routes to design or execute.   |
+| Greed   | HITL | `design`, `review`  | Produces design briefs and explicitly requested reviews. |
+| War     | AFK  | `execute`           | Runs in a repo/worktree and changes code.                |
 
 **Built with**
 

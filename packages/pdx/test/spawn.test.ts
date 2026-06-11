@@ -131,7 +131,40 @@ describe("pdx reconcile spawning and capacity", () => {
 		expect(pithosCalls).toContain("runUpsert:envy:run_envy");
 		expect(pithosCalls).not.toContain("runUpsert:toil:run_envy");
 		expect(launches).toEqual([
-			expect.objectContaining({ agent: "envy", mode: "afk", scopeId: "global" }),
+			expect.objectContaining({
+				agent: "envy",
+				mode: "afk",
+				scopeId: "global",
+				selectedCapability: "intake",
+			}),
+		]);
+	});
+
+	it("reconcile launches clarify work through Envy with selected capability", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
+		const registry = await run(makeRegistry);
+		await run(upsertPandora(registry));
+		const pithosCalls: string[] = [];
+		const pithos = makePithos(pithosCalls, [
+			{ scope_id: "global", capability: "clarify", scope_kind: "global", canonical_path: null },
+		]);
+		const launches: unknown[] = [];
+		await runSpawnTick({
+			dataDir,
+			registry,
+			pithos,
+			launches,
+			runId: "run_envy",
+			sessionId: "session_envy",
+		});
+		expect(pithosCalls).toContain("runUpsert:envy:run_envy");
+		expect(launches).toEqual([
+			expect.objectContaining({
+				agent: "envy",
+				mode: "afk",
+				scopeId: "global",
+				selectedCapability: "clarify",
+			}),
 		]);
 	});
 
