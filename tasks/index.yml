@@ -22,7 +22,7 @@ tasks:
   - id: 5
     description: Compact inspect and graph artifacts
     task_file: tasks/005-compact-inspect-and-graph-artifacts.md
-    status: pending
+    status: complete
     blocked_by: [4]
   - id: 6
     description: Enforce required artifact completion

@@ -83,11 +83,9 @@ describe("engine render helpers", () => {
 				"- task_parent [execute] [queued] Parent",
 				"  scope: repo:/work",
 				"  preview: Task preview",
-				"  artifacts: none",
 				"  - after ← task_child [execute] [queued] Child",
 				"    scope: repo:/work",
 				"    preview: Task preview",
-				"    artifacts: none",
 				"",
 			].join("\n"),
 		);
@@ -121,7 +119,6 @@ describe("engine render helpers", () => {
 				"- task_global [execute] [queued] Global",
 				"  scope: global",
 				"  preview: Task preview",
-				"  artifacts: none",
 				"",
 			].join("\n"),
 		);

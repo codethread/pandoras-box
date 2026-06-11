@@ -86,6 +86,12 @@ const fencedMarkdown = (body: string): string => {
 const renderArtifactMarkdown = (artifact: ArtifactOutput): string =>
 	`Artifact ${artifact.id} [${artifact.kind}] ${artifact.title}:\n\n${fencedMarkdown(artifact.body)}`;
 
+const renderArtifactReferenceMarkdown = (artifact: {
+	readonly id: string;
+	readonly kind: string;
+	readonly title: string;
+}): string => `- ${artifact.id} [${artifact.kind}] ${artifact.title}`;
+
 const artifactMetadataForJson = ({
 	body,
 	...metadata
@@ -156,7 +162,7 @@ const renderGraphArtifactLines = (
 	depth: number,
 ): readonly string[] =>
 	artifactRefs.length === 0
-		? [`${"  ".repeat(depth)}artifacts: none`]
+		? []
 		: [
 				`${"  ".repeat(depth)}artifacts:`,
 				...artifactRefs.map(
@@ -202,7 +208,10 @@ const renderGateMemberLines = (
 	return lines;
 };
 
-export const renderTaskInspectMarkdown = (inspect: TaskInspectOutput): string => {
+export const renderTaskInspectMarkdown = (
+	inspect: TaskInspectOutput,
+	fullArtifacts = false,
+): string => {
 	const sections = [`# ${taskTitleLine(inspect.task)}`];
 	if (inspect.superseded_by !== null) {
 		sections.push(`> ⚠️ This task has been superseded by ${inspect.superseded_by}`);
@@ -212,7 +221,12 @@ export const renderTaskInspectMarkdown = (inspect: TaskInspectOutput): string =>
 	}
 	sections.push(`Body:\n\n${fencedMarkdown(inspect.task.body)}`);
 	if (inspect.artifacts.length > 0) {
-		sections.push("Artifacts:", inspect.artifacts.map(renderArtifactMarkdown).join("\n\n"));
+		sections.push(
+			"Artifacts:",
+			fullArtifacts
+				? inspect.artifacts.map(renderArtifactMarkdown).join("\n\n")
+				: inspect.artifacts.map(renderArtifactReferenceMarkdown).join("\n"),
+		);
 	}
 	sections.push(
 		"Direct after dependencies:",

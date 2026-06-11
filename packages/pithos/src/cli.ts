@@ -122,7 +122,12 @@ type CommandInput =
 	  }
 	| { readonly command: "task.artifact.list"; readonly taskId: string; readonly json: boolean }
 	| { readonly command: "task.artifact.show"; readonly artifactId: string; readonly json: boolean }
-	| { readonly command: "task.inspect"; readonly taskId: string; readonly json: boolean }
+	| {
+			readonly command: "task.inspect";
+			readonly taskId: string;
+			readonly json: boolean;
+			readonly full: boolean;
+	  }
 	| {
 			readonly command: "task.cancel";
 			readonly taskId: string;
@@ -542,8 +547,14 @@ const runCommand = (ctx: CliContext, input: CommandInput) =>
 					return input.json ? showOutput : renderArtifactShowText(showOutput.artifact);
 				}
 				case "task.inspect": {
+					if (input.full && input.json) {
+						throw new PithosError({
+							code: "VALIDATION_ERROR",
+							message: "--full cannot be used with --json",
+						});
+					}
 					const inspectOutput = engine.taskInspect({ taskId: input.taskId });
-					return input.json ? inspectOutput : renderTaskInspectMarkdown(inspectOutput);
+					return input.json ? inspectOutput : renderTaskInspectMarkdown(inspectOutput, input.full);
 				}
 				case "task.cancel":
 					return engine.cancel(input);
@@ -1037,10 +1048,21 @@ export const makePithosCommand = (ctx: CliContext) => {
 			json: Options.boolean("json").pipe(
 				Options.withDescription("Return the full structured inspect object as JSON."),
 			),
+			full: Options.boolean("full").pipe(
+				Options.withDescription("Render active artifact bodies inline in Markdown output."),
+			),
 		},
-		(o) => runCommand(ctx, { command: "task.inspect", taskId: o.taskId, json: o.json }),
+		(o) =>
+			runCommand(ctx, {
+				command: "task.inspect",
+				taskId: o.taskId,
+				json: o.json,
+				full: o.full,
+			}),
 	).pipe(
-		Command.withDescription("Show a single-task dossier; pass --json for structured metadata."),
+		Command.withDescription(
+			"Show a single-task dossier with compact artifact refs; pass --full for artifact bodies or --json for structured metadata.",
+		),
 	);
 	const taskCancel = Command.make(
 		"cancel",

@@ -211,6 +211,34 @@ const artifactAddArgs = (taskId = "task_missing", extra: readonly string[] = [])
 	...extra,
 ];
 
+const addNoteArtifact = async (
+	dbPath: string,
+	taskId: string,
+	title: string,
+	body: string,
+): Promise<string> => {
+	const result = await runCli(
+		[
+			"task",
+			"artifact",
+			"add",
+			taskId,
+			"--token",
+			"1",
+			"--kind",
+			"note",
+			"--title",
+			title,
+			"--stdin",
+			"--run",
+			"run_toil",
+		],
+		dbPath,
+		{ _tag: "RedirectedText", text: body },
+	);
+	return (JSON.parse(result.stdout[0] ?? "") as { artifact: { id: string } }).artifact.id;
+};
+
 const completeArgs = (taskId: string, extra: readonly string[] = []) => [
 	"task",
 	"complete",
@@ -919,27 +947,21 @@ describe("pithos cli", () => {
 			- task_cli_N [triage] [queued] Triage readable inspect API
 			  scope: repo:/tmp/pithos-cli
 			  preview: Triage readable inspect API
-			  artifacts: none
 			  - after ← task_cli_N [design] [queued] Design output mode contract
 			    scope: repo:/tmp/pithos-cli
 			    preview: Design output mode contract
-			    artifacts: none
 			    - after ← task_cli_N [execute] [queued] Execute A task inspect renderer
 			      scope: repo:/tmp/pithos-cli
 			      preview: Execute A task inspect renderer
-			      artifacts: none
 			      - after ← task_cli_N [execute] [queued] Follow-up A docs for inspect
 			        scope: repo:/tmp/pithos-cli
 			        preview: Follow-up A docs for inspect
-			        artifacts: none
 			    - after ← task_cli_N [execute] [queued] Execute B graph briefing help
 			      scope: repo:/tmp/pithos-cli
 			      preview: Execute B graph briefing help
-			      artifacts: none
 			      - after ← task_cli_N [execute] [queued] Follow-up B prompt verification
 			        scope: repo:/tmp/pithos-cli
 			        preview: Follow-up B prompt verification
-			        artifacts: none
 			"
 		`);
 	});
@@ -985,11 +1007,9 @@ describe("pithos cli", () => {
 			- task_cli_N [triage] [queued] Ready triage
 			  scope: global
 			  preview: Ready triage
-			  artifacts: none
 			  - after ← task_cli_N [triage] [queued] Blocked triage
 			    scope: global
 			    preview: Blocked triage
-			    artifacts: none
 			"
 		`);
 
@@ -1556,6 +1576,95 @@ describe("pithos cli", () => {
 		const showText = await runCli(["task", "artifact", "show", artifactId], dbPath);
 		expect(showText.stdout[0]).toContain("```json");
 		expect(showText.stdout[0]).toContain("artifact body");
+	});
+
+	it("renders compact active artifact refs in task and graph inspect", async () => {
+		const dbPath = tempDb();
+		await runCli(["init", "--fresh"], dbPath);
+		await upsertRun(dbPath, "run_toil");
+		const taskId = await enqueueGlobalTriage(dbPath, "run_toil", "artifact task", "task body");
+		await claimGlobal(dbPath, "run_toil", "triage");
+		const rejectedId = await addNoteArtifact(dbPath, taskId, "old evidence", "rejected body\n");
+		await runCli(
+			[
+				"task",
+				"artifact",
+				"reject",
+				rejectedId,
+				"--run",
+				"run_toil",
+				"--token",
+				"1",
+				"--reason",
+				"wrong artifact",
+			],
+			dbPath,
+		);
+		const activeId = await addNoteArtifact(dbPath, taskId, "active evidence", "active body\n");
+
+		const compact = (await runCli(["task", "inspect", taskId], dbPath)).stdout[0] ?? "";
+		expect(compact).toContain(`- ${activeId} [note] active evidence`);
+		expect(compact).not.toContain("active body");
+		expect(compact).not.toContain(rejectedId);
+		expect(compact).not.toContain("rejected body");
+
+		const full = (await runCli(["task", "inspect", taskId, "--full"], dbPath)).stdout[0] ?? "";
+		expect(full).toContain(`Artifact ${activeId} [note] active evidence:`);
+		expect(full).toContain("active body");
+		expect(full).not.toContain(rejectedId);
+
+		const jsonInspect = JSON.parse(
+			(await runCli(["task", "inspect", taskId, "--json"], dbPath)).stdout[0] ?? "",
+		) as { artifacts: { id: string; body: string }[] };
+		expect(jsonInspect.artifacts).toEqual([
+			expect.objectContaining({ id: activeId, body: "active body\n" }),
+		]);
+
+		const descendantId = await runCli(
+			[
+				"task",
+				"enqueue",
+				"--scope",
+				"global",
+				"--capability",
+				"triage",
+				"--title",
+				"artifact descendant",
+				"--stdin",
+				"--run",
+				"run_toil",
+				"--chain",
+				"none",
+				"--after",
+				taskId,
+			],
+			dbPath,
+			{ _tag: "RedirectedText", text: "descendant body" },
+		).then((result) => (JSON.parse(result.stdout[0] ?? "") as { task: { id: string } }).task.id);
+		const lineageInspect = JSON.parse(
+			(await runCli(["task", "inspect", descendantId, "--json"], dbPath)).stdout[0] ?? "",
+		) as { lineage: { task: { id: string }; artifacts: { id: string }[] }[] };
+		expect(lineageInspect.lineage.find((entry) => entry.task.id === taskId)?.artifacts).toEqual([
+			expect.objectContaining({ id: activeId }),
+		]);
+
+		const fullJson = await runCli(["task", "inspect", taskId, "--full", "--json"], dbPath);
+		expect(JSON.parse(fullJson.stderr[0] ?? "")).toEqual({
+			ok: false,
+			error: { code: "VALIDATION_ERROR", message: "--full cannot be used with --json" },
+		});
+
+		const graphText =
+			(await runCli(["graph", "inspect", "--task", taskId], dbPath)).stdout[0] ?? "";
+		expect(graphText).toContain(`- ${activeId} [note] active evidence`);
+		expect(graphText).not.toContain("artifacts: none");
+		expect(graphText).not.toContain(rejectedId);
+		const graphJson = JSON.parse(
+			(await runCli(["graph", "inspect", "--task", taskId, "--json"], dbPath)).stdout[0] ?? "",
+		) as { graph: { nodes: { id: string; artifact_refs: { id: string }[] }[] } };
+		expect(graphJson.graph.nodes.find((node) => node.id === taskId)?.artifact_refs).toEqual([
+			expect.objectContaining({ id: activeId }),
+		]);
 	});
 
 	it("validates artifact add stdin availability and non-empty content", async () => {
