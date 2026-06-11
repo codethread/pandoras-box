@@ -19,9 +19,17 @@ import { parseGraphSinceCutoff } from "../src/engine.js";
 
 const tempDb = () => join(mkdtempSync(join(tmpdir(), "pithos-task-")), "pithos.db");
 
-const services = (options?: { readonly existingDirectories?: ReadonlySet<string> }): Services => ({
+const services = (options?: {
+	readonly existingDirectories?: ReadonlySet<string>;
+	readonly textFiles?: ReadonlyMap<string, string>;
+}): Services => ({
 	fs: {
-		readText: () => Effect.succeed(JSON.stringify({ ok: true })),
+		readText: (path) => {
+			const text = options?.textFiles?.get(path);
+			return text === undefined
+				? Effect.fail(new PithosError({ code: "USER_ERROR", message: `ENOENT: ${path}` }))
+				: Effect.succeed(text);
+		},
 		removeFile: (path) => Effect.sync(() => rmSync(path, { force: true })),
 		existsDirectory: (path) =>
 			Effect.succeed(
@@ -36,9 +44,13 @@ const services = (options?: { readonly existingDirectories?: ReadonlySet<string>
 	clock: { nowIso: () => Effect.succeed("2026-05-08T00:00:00.000Z") },
 });
 
-const setup = (runIdEnv?: string, svc: Services = services()) => {
+const setup = (
+	runIdEnv?: string,
+	svc: Services = services(),
+	options?: { readonly userDataDir?: string },
+) => {
 	const dbPath = tempDb();
-	const engine = makeEngine({ config: { dbPath, runId: runIdEnv }, services: svc });
+	const engine = makeEngine({ config: { dbPath, runId: runIdEnv, ...options }, services: svc });
 	engine.init({ fresh: true });
 	const repo = engine.scopeUpsert({ kind: "repo", path: "/tmp/pithos-repo" }).scope.id;
 	engine.runUpsert({
@@ -184,6 +196,124 @@ const claimSourcedEscalationWithPandora = (engine: Engine) => {
 };
 
 describe("task lifecycle", () => {
+	it("enforces required active artifact contracts on completion and graph status", () => {
+		const userDataDir = "/tmp/pithos-user";
+		const contract = `[[artifacts]]
+capability = "execute"
+kind = "evidence"
+required = true
+title = "Evidence"
+body = "Attach evidence."
+
+[[artifacts]]
+capability = "execute"
+kind = "notes"
+required = false
+title = "Notes"
+body = "Optional notes."
+`;
+		const { engine, repo } = setup(
+			undefined,
+			services({
+				existingDirectories: new Set([userDataDir, "/tmp/pithos-repo"]),
+				textFiles: new Map([[`${userDataDir}/artifacts.toml`, contract]]),
+			}),
+			{ userDataDir },
+		);
+		const taskId = enqueueTask(engine, {
+			title: "needs artifact",
+			capability: "execute",
+			scope: repo,
+		}).task.id;
+		const claim = engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+		expect(() =>
+			engine.complete({ taskId, runId: "run_war", token: claim.task.token, resultJson: "{}" }),
+		).toThrow(/missing required artifacts for execute: evidence \(Evidence\)/);
+		const missingGraph = engine.graphInspect({ taskId, scope: undefined, all: false });
+		expect(missingGraph.graph.nodes[0]).toMatchObject({
+			requirement_status: { missing_required: ["evidence"] },
+		});
+		expect(renderGraphInspectText(missingGraph)).toContain("- evidence");
+		const rejected = engine.artifactAdd({
+			taskId,
+			runId: "run_war",
+			token: claim.task.token,
+			kind: "evidence",
+			title: "Rejected evidence",
+			body: "content",
+		}).artifact;
+		engine.artifactReject({
+			artifactId: rejected.id,
+			runId: "run_war",
+			token: claim.task.token,
+			reason: "wrong",
+		});
+		expect(() =>
+			engine.complete({ taskId, runId: "run_war", token: claim.task.token, resultJson: "{}" }),
+		).toThrow(/missing required artifacts/);
+		engine.artifactAdd({
+			taskId,
+			runId: "run_war",
+			token: claim.task.token,
+			kind: "evidence",
+			title: "Empty evidence",
+			body: "",
+		});
+		expect(
+			engine.graphInspect({ taskId, scope: undefined, all: false }).graph.nodes[0],
+		).toMatchObject({
+			requirement_status: { missing_required: [] },
+		});
+		expect(
+			engine.complete({ taskId, runId: "run_war", token: claim.task.token, resultJson: "{}" }),
+		).toEqual({ ok: true, task: { id: taskId, status: "done" } });
+		const completedNode = engine.graphInspect({ taskId, scope: undefined, all: false }).graph
+			.nodes[0];
+		expect(completedNode?.requirement_status).toBeUndefined();
+	});
+
+	it("completes without artifact contracts when user config is absent", () => {
+		const userDataDir = "/tmp/pithos-user-no-contract";
+		const { engine, repo } = setup(
+			undefined,
+			services({ existingDirectories: new Set([userDataDir, "/tmp/pithos-repo"]) }),
+			{ userDataDir },
+		);
+		const taskId = enqueueTask(engine, {
+			title: "no contract",
+			capability: "execute",
+			scope: repo,
+		}).task.id;
+		const claim = engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+		expect(
+			engine.complete({ taskId, runId: "run_war", token: claim.task.token, resultJson: "{}" }),
+		).toEqual({ ok: true, task: { id: taskId, status: "done" } });
+	});
+
+	it("fails loudly for malformed artifact contract config during completion", () => {
+		const userDataDir = "/tmp/pithos-user-bad-contract";
+		const { engine, repo } = setup(
+			undefined,
+			services({
+				existingDirectories: new Set([userDataDir, "/tmp/pithos-repo"]),
+				textFiles: new Map([[`${userDataDir}/artifacts.toml`, "[[artifacts]]\ncapability = 1\n"]]),
+			}),
+			{ userDataDir },
+		);
+		const taskId = enqueueTask(engine, {
+			title: "bad contract",
+			capability: "execute",
+			scope: repo,
+		}).task.id;
+		const claim = engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+		expect(() =>
+			engine.complete({ taskId, runId: "run_war", token: claim.task.token, resultJson: "{}" }),
+		).toThrow(/artifacts\[0\]\.capability must be a string/);
+		expect(() => engine.graphInspect({ taskId, scope: undefined, all: false })).toThrow(
+			/artifacts\[0\]\.capability must be a string/,
+		);
+	});
+
 	it("round trips enqueue claim heartbeat complete with fencing", () => {
 		const { dbPath, engine, repo } = setup();
 		const enq = engine.enqueue({

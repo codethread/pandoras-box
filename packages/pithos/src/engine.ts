@@ -1,5 +1,6 @@
 import { Effect, Either, Schema } from "effect";
 import { resolve } from "node:path";
+import { loadConfiguredArtifactContractSync } from "./artifact-contracts.js";
 import { finalDependencyIds, resolveChainPolicy } from "./chain-policy.js";
 import type { Db } from "./db.js";
 import { migrate, openDb, sql, type Capability, type HarnessKind } from "./db.js";
@@ -1172,7 +1173,17 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 			};
 		}),
 	graphInspect: ({ taskId, scope, all, status = [], search = [], sinceCutoff }) =>
-		withDb(ctx, (db) => inspectGraph(db, { taskId, scope, all, status, search, sinceCutoff })),
+		withDb(ctx, (db) =>
+			inspectGraph(db, {
+				taskId,
+				scope,
+				all,
+				status,
+				search,
+				sinceCutoff,
+				contract: loadConfiguredArtifactContractSync(ctx.config, ctx.services.fs),
+			}),
+		),
 	briefing: ({ agent }) =>
 		withDb(ctx, (db) => {
 			const caps =

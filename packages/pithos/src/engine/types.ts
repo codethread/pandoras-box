@@ -339,6 +339,9 @@ export interface GraphNodeOutput extends TaskSummaryOutput {
 	readonly superseded_by_task_id: string | null;
 	readonly preview: string | null;
 	readonly artifact_refs: readonly ArtifactReferenceOutput[];
+	readonly requirement_status?: {
+		readonly missing_required: readonly string[];
+	};
 }
 
 export type GraphEdgeOutput =

@@ -1,8 +1,15 @@
 import { Effect } from "effect";
+import { loadConfiguredArtifactContractSync } from "../artifact-contracts.js";
 import { sql, type Capability } from "../db.js";
 import type { Db } from "../db.js";
 import { fail } from "../errors.js";
 import { ArtifactMetadataRowSchema, decodeRow, type RunRow } from "../rows.js";
+import {
+	activeArtifactKinds,
+	formatMissingRequiredRules,
+	missingRequiredRules,
+	requiredArtifactRules,
+} from "./artifact-requirements.js";
 import { withCollisionGuard, withDb } from "./db-helpers.js";
 import { event } from "./event-log.js";
 import { createRepairAlertInTxn } from "./repair-alerts.js";
@@ -71,6 +78,9 @@ const requireArtifactKind = (kind: string): string => {
 	}
 	return kind;
 };
+
+const loadCurrentArtifactContract = (ctx: EngineContext) =>
+	loadConfiguredArtifactContractSync(ctx.config, ctx.services.fs);
 
 export const makeClaimLoopOps = (
 	ctx: EngineContext,
@@ -218,6 +228,29 @@ export const makeClaimLoopOps = (
 			const actorRunId = deps.resolveRunId(ctx, runId);
 			deps.liveRun(db, actorRunId);
 			db.transaction(() => {
+				const task = db
+					.prepare(sql`
+						SELECT capability
+						FROM tasks
+						WHERE id=?
+						  AND fencing_token=?
+						  AND status IN ('claimed','running')
+						  AND EXISTS (SELECT 1 FROM runs WHERE id=? AND task_id=tasks.id)
+					`)
+					.get(taskId, token, actorRunId) as { readonly capability: Capability } | undefined;
+				const heldTask =
+					task ?? fail("STALE_TOKEN", "complete token is stale or task is not held by run");
+				const requiredRules = requiredArtifactRules(
+					loadCurrentArtifactContract(ctx),
+					heldTask.capability,
+				);
+				const missing = missingRequiredRules(requiredRules, activeArtifactKinds(db, taskId));
+				if (missing.length > 0) {
+					fail(
+						"VALIDATION_ERROR",
+						`missing required artifacts for ${heldTask.capability}: ${formatMissingRequiredRules(missing)}`,
+					);
+				}
 				const result = db
 					.prepare(sql`
 					UPDATE tasks

@@ -7,6 +7,7 @@ export const ConfigSchema = Schema.Struct({
 	dbPath: RequiredEnvString,
 	runId: Schema.optional(RequiredEnvString),
 	homeDir: Schema.optional(RequiredEnvString),
+	userDataDir: Schema.optional(RequiredEnvString),
 });
 
 export type Config = typeof ConfigSchema.Type;
@@ -18,10 +19,12 @@ export interface EnvReader {
 export const loadConfig = (env: EnvReader): Config => {
 	const rawRunId = env.get("PITHOS_RUN_ID");
 	const rawHomeDir = env.get("HOME");
+	const rawUserDataDir = env.get("PDX_USER_DATA_DIR");
 	const raw = {
 		dbPath: env.get("PITHOS_DB"),
 		runId: rawRunId === "" ? undefined : rawRunId,
 		homeDir: rawHomeDir === "" ? undefined : rawHomeDir,
+		userDataDir: rawUserDataDir === "" ? undefined : rawUserDataDir,
 	};
 	const result = Schema.decodeUnknownEither(ConfigSchema)(raw);
 	return Either.match(result, {

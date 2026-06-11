@@ -85,6 +85,7 @@ Parses process environment into typed config:
 
 - `PITHOS_DB` — required database path
 - `PITHOS_RUN_ID` — optional default actor Run id for mutating Agent commands
+- `PDX_USER_DATA_DIR` — optional user config directory used to load `artifacts.toml` for Artifact Contract completion gates and graph requirement status
 
 If both `PITHOS_RUN_ID` and `--run` are present for a command, Engine code fails loudly when they conflict.
 
@@ -219,11 +220,14 @@ Required for normal CLI execution:
 export PITHOS_DB=/path/to/pithos.sqlite
 ```
 
-Optional for Agent commands:
+Optional for Agent commands and Artifact Contracts:
 
 ```sh
 export PITHOS_RUN_ID=run_...
+export PDX_USER_DATA_DIR=/path/to/pdx-user-config
 ```
+
+When `PDX_USER_DATA_DIR` is unset, Artifact Contracts are disabled. When it is set, Pithos loads `$PDX_USER_DATA_DIR/artifacts.toml` if present; malformed present config fails loudly.
 
 Use isolated DBs for development and smoke tests:
 

@@ -1,6 +1,8 @@
+import type { ArtifactContract } from "../artifact-contracts.js";
 import type { Db } from "../db.js";
 import { sql, type TaskStatus } from "../db.js";
 import { fail } from "../errors.js";
+import { missingRequiredKinds, requiredArtifactRules } from "./artifact-requirements.js";
 import {
 	canonicalTaskId,
 	gateStateForTarget,
@@ -121,6 +123,7 @@ export const parseGraphSinceCutoff = (raw: string, nowIso: string): GraphSinceCu
 
 const graphForIds = (
 	db: Db,
+	contract: ArtifactContract,
 	selector: GraphSelectorOutput,
 	seedIds: readonly string[],
 ): GraphInspectOutput => {
@@ -172,33 +175,41 @@ const graphForIds = (
 	const nodes = [...ids]
 		.map((id) => taskDetail(db, id))
 		.sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
-		.map((task) => ({
-			id: task.id,
-			scope_id: task.scope_id,
-			scope_kind: task.scope_kind,
-			canonical_path: task.canonical_path,
-			parent_repo_path: task.parent_repo_path,
-			scope_description: task.scope_description,
-			capability: task.capability,
-			status: task.status,
-			title: task.title,
-			created_at: task.created_at,
-			completed_at: task.completed_at,
-			claimable: isClaimable(db, task),
-			unresolved_dependency_ids: unresolvedDependencies(db, task.id),
-			supersedes_task_id:
-				(db
-					.prepare(sql`SELECT old_task_id FROM task_supersessions WHERE new_task_id=?`)
-					.pluck()
-					.get(task.id) as string | undefined) ?? null,
-			superseded_by_task_id:
-				(db
-					.prepare(sql`SELECT new_task_id FROM task_supersessions WHERE old_task_id=?`)
-					.pluck()
-					.get(task.id) as string | undefined) ?? null,
-			preview: task.title,
-			artifact_refs: taskArtifactReferences(db, task.id),
-		}));
+		.map((task) => {
+			const requiredRules = requiredArtifactRules(contract, task.capability);
+			const requirementStatus =
+				requiredRules.length > 0 && (task.status === "claimed" || task.status === "running")
+					? { missing_required: missingRequiredKinds(db, task.id, requiredRules) }
+					: undefined;
+			return {
+				id: task.id,
+				scope_id: task.scope_id,
+				scope_kind: task.scope_kind,
+				canonical_path: task.canonical_path,
+				parent_repo_path: task.parent_repo_path,
+				scope_description: task.scope_description,
+				capability: task.capability,
+				status: task.status,
+				title: task.title,
+				created_at: task.created_at,
+				completed_at: task.completed_at,
+				claimable: isClaimable(db, task),
+				unresolved_dependency_ids: unresolvedDependencies(db, task.id),
+				supersedes_task_id:
+					(db
+						.prepare(sql`SELECT old_task_id FROM task_supersessions WHERE new_task_id=?`)
+						.pluck()
+						.get(task.id) as string | undefined) ?? null,
+				superseded_by_task_id:
+					(db
+						.prepare(sql`SELECT new_task_id FROM task_supersessions WHERE old_task_id=?`)
+						.pluck()
+						.get(task.id) as string | undefined) ?? null,
+				preview: task.title,
+				artifact_refs: taskArtifactReferences(db, task.id),
+				...(requirementStatus === undefined ? {} : { requirement_status: requirementStatus }),
+			};
+		});
 	const edges = [
 		...taskEdges(db)
 			.filter((e) => e.kind === "after" && ids.has(e.task_id) && ids.has(e.target_task_id))
@@ -269,6 +280,7 @@ export const inspectGraph = (
 		readonly status?: readonly TaskStatus[];
 		readonly search?: readonly string[];
 		readonly sinceCutoff: GraphSinceCutoff | undefined;
+		readonly contract: ArtifactContract;
 	},
 ): GraphInspectOutput => {
 	const { taskId, scope, all, sinceCutoff } = input;
@@ -296,6 +308,7 @@ export const inspectGraph = (
 		taskSummary(db, taskId);
 		return graphForIds(
 			db,
+			input.contract,
 			{ kind: "task", value: taskId },
 			(
 				db
@@ -317,6 +330,7 @@ export const inspectGraph = (
 		if (scopeExists === undefined) fail("NOT_FOUND", `scope not found: ${scope}`);
 		return graphForIds(
 			db,
+			input.contract,
 			{ kind: "scope", value: scope },
 			(
 				db
@@ -336,6 +350,7 @@ export const inspectGraph = (
 
 	return graphForIds(
 		db,
+		input.contract,
 		{ kind: "all" },
 		(
 			db

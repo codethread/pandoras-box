@@ -27,7 +27,7 @@ tasks:
   - id: 6
     description: Enforce required artifact completion
     task_file: tasks/006-enforce-required-artifact-completion.md
-    status: pending
+    status: complete
     blocked_by: [2, 4]
   - id: 7
     description: Scaffold artifact contracts

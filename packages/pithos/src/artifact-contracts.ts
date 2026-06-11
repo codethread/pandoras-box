@@ -1,8 +1,8 @@
 import * as Toml from "@iarna/toml";
-import { Effect } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import { BUILTIN_CAPABILITIES, type Capability } from "./builtins.js";
 import { PithosError } from "./errors.js";
-import type { EnvReader } from "./config.js";
+import type { Config, EnvReader } from "./config.js";
 import type { FsService } from "./services.js";
 
 export interface ArtifactContractRule {
@@ -29,6 +29,9 @@ const validationError = (message: string): PithosError =>
 
 const userError = (message: string): PithosError =>
 	new PithosError({ code: "USER_ERROR", message });
+
+const isPithosError = (error: unknown): error is PithosError =>
+	isRecord(error) && error._tag === "PithosError";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
@@ -147,7 +150,7 @@ export const loadArtifactContract = (
 		return yield* Effect.try({
 			try: () => parseArtifactContractToml(text),
 			catch: (error) =>
-				error instanceof PithosError
+				isPithosError(error)
 					? error
 					: new PithosError({
 							code: "INTERNAL_ERROR",
@@ -155,4 +158,24 @@ export const loadArtifactContract = (
 						}),
 		});
 	});
+};
+
+export const loadConfiguredArtifactContract = (
+	config: Pick<Config, "userDataDir">,
+	fs: FsService,
+): Effect.Effect<ArtifactContract, PithosError> =>
+	loadArtifactContract(
+		{ get: (name) => (name === "PDX_USER_DATA_DIR" ? config.userDataDir : undefined) },
+		fs,
+	);
+
+export const loadConfiguredArtifactContractSync = (
+	config: Pick<Config, "userDataDir">,
+	fs: FsService,
+): ArtifactContract => {
+	const exit = Effect.runSyncExit(loadConfiguredArtifactContract(config, fs));
+	if (Exit.isSuccess(exit)) return exit.value;
+	const failure = Option.getOrUndefined(Cause.failureOption(exit.cause));
+	if (failure !== undefined) throw failure;
+	throw new PithosError({ code: "INTERNAL_ERROR", message: Cause.pretty(exit.cause) });
 };

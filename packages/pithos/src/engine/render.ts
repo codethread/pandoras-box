@@ -348,6 +348,12 @@ export const renderGraphInspectText = (
 		lines.push(`${"  ".repeat(depth)}${prefix}${graphTaskTitleLineColored(node, colorEnabled)}`);
 		lines.push(`${"  ".repeat(depth + 1)}scope: ${graphScopeLabel(node)}`);
 		lines.push(`${"  ".repeat(depth + 1)}preview: ${node.preview ?? "none"}`);
+		if ((node.requirement_status?.missing_required.length ?? 0) > 0) {
+			lines.push(`${"  ".repeat(depth + 1)}missing required artifacts:`);
+			for (const missing of node.requirement_status?.missing_required ?? []) {
+				lines.push(`${"  ".repeat(depth + 2)}- ${missing}`);
+			}
+		}
 		lines.push(...renderGraphArtifactLines(node.artifact_refs, depth + 1));
 		written.add(id);
 		return true;

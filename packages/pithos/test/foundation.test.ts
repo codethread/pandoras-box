@@ -774,9 +774,13 @@ describe("pithos foundation", () => {
 		expect(() => loadConfig({ get: () => undefined })).toThrow(PithosError);
 		expect(
 			loadConfig({
-				get: (name) => (name === "PITHOS_DB" ? "/tmp/pithos.db" : ""),
+				get: (name) => {
+					if (name === "PITHOS_DB") return "/tmp/pithos.db";
+					if (name === "PDX_USER_DATA_DIR") return "/tmp/pithos-user";
+					return "";
+				},
 			}),
-		).toEqual({ dbPath: "/tmp/pithos.db" });
+		).toEqual({ dbPath: "/tmp/pithos.db", userDataDir: "/tmp/pithos-user" });
 	});
 
 	it("live IdService produces word-based IDs for task/run/artifact and hex for event", async () => {
