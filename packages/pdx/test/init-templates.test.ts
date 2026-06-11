@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -199,16 +199,19 @@ describe("pdx init and template materialization", () => {
 	it("materialization scaffolds user config once and re-seeds installed reference docs", async () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "pdx-spawner-"));
 		const userDataDir = join(dataDir, "config");
-		await mkdir(userDataDir, { recursive: true });
 		const spawner = makeSpawnerLive({
 			dataDir,
 			userDataDir,
 			pithosDbPath: join(dataDir, "pithos.sqlite"),
 		});
 		await run(spawner.materializeTemplates());
+		expect(await readFile(join(userDataDir, "artifacts.toml"), "utf8")).toContain(
+			"Artifact Contracts are user-owned",
+		);
 		await writeFile(join(userDataDir, "AGENTS.md"), "custom agent note\n", "utf8");
 		await writeFile(join(userDataDir, "CLAUDE.md"), "custom claude note\n", "utf8");
 		await writeFile(join(userDataDir, "agents.toml"), "# custom manifest\n", "utf8");
+		await writeFile(join(userDataDir, "artifacts.toml"), "# custom artifact contract\n", "utf8");
 		await writeFile(join(userDataDir, "PANDORA.md"), "stale pandora ref\n", "utf8");
 		await chmod(join(dataDir, "AGENTS.md"), 0o644);
 		await writeFile(join(dataDir, "AGENTS.md"), "stale runtime note\n", "utf8");
@@ -216,6 +219,9 @@ describe("pdx init and template materialization", () => {
 		expect(await readFile(join(userDataDir, "AGENTS.md"), "utf8")).toBe("custom agent note\n");
 		expect(await readFile(join(userDataDir, "CLAUDE.md"), "utf8")).toBe("custom claude note\n");
 		expect(await readFile(join(userDataDir, "agents.toml"), "utf8")).toBe("# custom manifest\n");
+		expect(await readFile(join(userDataDir, "artifacts.toml"), "utf8")).toBe(
+			"# custom artifact contract\n",
+		);
 		expect(await readFile(join(userDataDir, "PANDORA.md"), "utf8")).toContain(
 			"Pandora's Box config reference",
 		);

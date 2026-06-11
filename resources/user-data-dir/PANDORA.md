@@ -19,7 +19,7 @@ If you version-control your config directory, add `PANDORA.md` to `.gitignore` u
 - `<data-dir>/` is pdx-owned runtime state plus bundled canonical config reference.
   `pdx init` and `pdx open` overwrite `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`.
 - `<user-data-dir>/` is user-owned config.
-  `pdx` scaffolds `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, and `<user-data-dir>/agents.toml` once and re-seeds this `PANDORA.md` reference on `init` / `open`.
+  `pdx` scaffolds `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml` once and re-seeds this `PANDORA.md` reference on `init` / `open`.
 
 Defaults and related env vars:
 
@@ -45,6 +45,25 @@ When an agent helps edit any context file that a particular Agent will read, it 
 They do not own your habits for artifacts, review cadence, fan-out shape, handoff format, Git flow, intake routing, or project-specific release rules. Put those preferences in user-owned policy packs.
 
 The CLI and Pithos authorization remain the enforcement layer for invalid commands, unsupported capabilities, stale tokens, and malformed graph operations.
+
+## Artifact Contracts
+
+`artifacts.toml` is a user-owned Artifact Contract file. `pdx init` and `pdx open` scaffold it with commented examples only and do not overwrite your edits.
+
+When `PDX_USER_DATA_DIR` is set, Pithos reads active entries from `<user-data-dir>/artifacts.toml` at Artifact Contract use sites. If the file is missing or contains only comments, no artifact rules apply. Direct Pithos invocations with `PDX_USER_DATA_DIR` unset intentionally run without Artifact Contracts.
+
+Active entries use `[[artifacts]]` tables:
+
+```toml
+[[artifacts]]
+capability = "clarify"
+kind = "open_questions"
+required = true
+title = "Open questions"
+body = "List material questions requiring user intent, or write: No open questions."
+```
+
+`required = true` gates completion for matching tasks until at least one active artifact with the configured `kind` exists on the task. `title` and `body` are prompt guidance only; Pithos does not compare produced artifact titles or body text to them.
 
 ## Policy packs
 
@@ -363,7 +382,8 @@ Preview shows the final Harness config, matched rules, selected policy ids, poli
 ## Reset behavior
 
 - `pdx init` / `pdx open` re-seed bundle-owned canonical config and this reference file
+- `pdx init` / `pdx open` scaffold missing user-owned `agents.toml`, `artifacts.toml`, and pointer files once
 - `--clean` wipes runtime state only: DB, runs, logs, socket
 - `--nuke` wipes pdx-owned runtime/bundled state while preserving `<user-data-dir>`, then re-seeds canonicals
 
-Prefer editing user-owned `agents.toml` and user-owned `policies/` files instead of editing bundle-owned reference material.
+Prefer editing user-owned `agents.toml`, `artifacts.toml`, and user-owned `policies/` files instead of editing bundle-owned reference material.

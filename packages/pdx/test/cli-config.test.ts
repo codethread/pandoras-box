@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -102,6 +102,27 @@ describe("pdx cli and config", () => {
 		expect(existsSync(join(dataDir, "CLAUDE.md"))).toBe(false);
 		expect(existsSync(join(dataDir, "runs"))).toBe(true);
 		expect(existsSync(join(tmux.binDir, "tmux.log"))).toBe(false);
+	});
+
+	it("CLI init --nuke removes read-only seeded templates while preserving user artifacts", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-cli-nuke-"));
+		const userDataDir = join(dataDir, "config");
+		const tmux = await makeFakeTmux();
+		await runPdxCli(["init", "--data-dir", dataDir], {
+			...tmux.env(),
+			PDX_USER_DATA_DIR: userDataDir,
+		});
+		await writeFile(join(userDataDir, "artifacts.toml"), "# custom artifact contract\n", "utf8");
+		await runPdxCli(["init", "--data-dir", dataDir, "--nuke"], {
+			...tmux.env(),
+			PDX_USER_DATA_DIR: userDataDir,
+		});
+		expect(await readFile(join(userDataDir, "artifacts.toml"), "utf8")).toBe(
+			"# custom artifact contract\n",
+		);
+		expect(await readFile(join(dataDir, "templates", "agents", "war.md"), "utf8")).not.toHaveLength(
+			0,
+		);
 	});
 
 	it("CLI open rejects --clean with --nuke", async () => {

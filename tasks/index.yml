@@ -32,7 +32,7 @@ tasks:
   - id: 7
     description: Scaffold artifact contracts
     task_file: tasks/007-scaffold-artifact-contracts.md
-    status: pending
+    status: complete
     blocked_by: [1, 2]
   - id: 8
     description: Render artifact contracts in prompts

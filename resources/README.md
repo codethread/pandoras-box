@@ -27,6 +27,7 @@ re-seeded on `init` / `open`:
 - `AGENTS.md` — direct-agent pointer
 - `CLAUDE.md` — Claude direct-agent pointer
 - `agents.toml` — user policy registry starter
+- `artifacts.toml` — user-owned Artifact Contract starter with commented examples only
 - `PANDORA.md` — user-facing config reference
 
 ## Documentation boundary
@@ -43,8 +44,9 @@ lifecycle contract here; update the spec and `PANDORA.md` instead.
 
 - `pdx init` / `pdx open` — re-seed bundled `<data-dir>/agents.toml`,
   `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`; scaffold missing
-  `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, and
-  `<user-data-dir>/agents.toml`; re-seed installed `<user-data-dir>/PANDORA.md`.
+  `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`,
+  `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml`;
+  re-seed installed `<user-data-dir>/PANDORA.md`.
 - `--clean` — wipe runtime state only: db, runs, logs. Keep bundled config and
   user config.
 - `--nuke` — wipe pdx-owned runtime/bundled state while preserving

@@ -1,0 +1,53 @@
+# Artifact Contracts are user-owned guidance and completion policy.
+#
+# Uncomment entries to make them active. Leaving every example commented means
+# Pithos has no artifact requirements to enforce.
+#
+# Fields:
+# - capability: built-in Pithos Capability such as "clarify" or "triage"
+# - kind: lower_snake_case artifact kind agents attach with `pithos task artifact add`
+# - required: when true, task completion requires at least one active artifact of this kind
+# - title/body: prompt guidance only; Pithos does not validate artifact title or body text
+
+# Recommended clarify examples:
+#
+# [[artifacts]]
+# capability = "clarify"
+# kind = "open_questions"
+# required = true
+# title = "Open questions"
+# body = """
+# List material questions requiring user intent, or write:
+#
+# No open questions.
+# """
+#
+# [[artifacts]]
+# capability = "clarify"
+# kind = "assertions"
+# required = true
+# title = "Assertions"
+# body = """
+# List contested assertions with binary acceptance criteria.
+# """
+#
+# [[artifacts]]
+# capability = "clarify"
+# kind = "assumptions"
+# required = true
+# title = "Assumptions"
+# body = """
+# List non-escalated defaults chosen for non-material ambiguity.
+# """
+
+# Generic optional guidance example:
+#
+# [[artifacts]]
+# capability = "triage"
+# kind = "decision_log"
+# required = false
+# title = "Decision log"
+# body = """
+# Record key routing decisions, rejected options, and the reason for the chosen next step.
+# """
+

@@ -174,7 +174,15 @@ export const FileSystemLive = FileSystem.of({
 		}).pipe(Effect.asVoid),
 	removeFile: (path) =>
 		Effect.tryPromise({
-			try: () => rm(path, { force: true, recursive: true }),
+			try: async () => {
+				try {
+					await rm(path, { force: true, recursive: true });
+				} catch (error) {
+					if (!isNodeErrorCode(error, "EACCES") && !isNodeErrorCode(error, "EPERM")) throw error;
+					await chmodTree(path, 0o755);
+					await rm(path, { force: true, recursive: true });
+				}
+			},
 			catch: (error) => fsError("removeFile", error),
 		}).pipe(Effect.asVoid),
 });
@@ -306,9 +314,15 @@ const isNodeErrorCode = (error: unknown, code: string): boolean =>
 	typeof error === "object" && error !== null && "code" in error && error.code === code;
 
 const chmodTree = async (path: string, mode: number): Promise<void> => {
+	const pathStat = await stat(path);
+	if (!pathStat.isDirectory()) {
+		await chmod(path, mode);
+		return;
+	}
 	const entries = await readdir(path, { withFileTypes: true });
 	for (const entry of entries) {
 		if (entry.isDirectory()) await chmodTree(join(path, entry.name), mode);
+		else await chmod(join(path, entry.name), mode);
 	}
 	await chmod(path, mode);
 };
@@ -354,6 +368,10 @@ const ensureUserScaffold = async (userDataDir: string): Promise<void> => {
 	await writeIfMissing(
 		join(userDataDir, "agents.toml"),
 		await readFile(join(bundledUserDataDirResourcesDir, "agents.toml"), "utf8"),
+	);
+	await writeIfMissing(
+		join(userDataDir, "artifacts.toml"),
+		await readFile(join(bundledUserDataDirResourcesDir, "artifacts.toml"), "utf8"),
 	);
 	await writeFile(
 		join(userDataDir, "PANDORA.md"),

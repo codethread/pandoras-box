@@ -107,7 +107,7 @@ Binds services to real implementations:
 - `PithosClient` wraps `@pdx/pithos` `makeEngine(...)`; this is the library boundary to durable state.
 - `Spawner` wraps `@pdx/spawner` render/launch/Harness session transcript APIs; pdx persists render metadata before launch.
 - `pdx init` materializes repo-root `resources/data-dir/` into bundle-owned `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`, and seeds user-config docs under `<user-data-dir>/`, without starting tmux, the daemon, or Pandora.
-- `pdx open` also re-materializes `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md` before startup; `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, and `<user-data-dir>/agents.toml` are preserved while `<user-data-dir>/PANDORA.md` is re-seeded.
+- `pdx open` also re-materializes `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md` before startup; `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml` are preserved while `<user-data-dir>/PANDORA.md` is re-seeded.
 - `--clean` wipes runtime state only (DB, runs, logs, socket); `--nuke` preserves `<user-data-dir>` while clearing pdx-owned state before init/startup.
 - AFK stdout/stderr files are created under `<data-dir>/runs` before Spawner launches detached work.
 
@@ -115,7 +115,7 @@ Binds services to real implementations:
 
 Owns pdx behavior:
 
-- `initPdx` creates the data dir, initializes Pithos, creates `runs`, materializes bundle-owned config, preserves `<user-data-dir>/AGENTS.md`, and re-seeds `<user-data-dir>/PANDORA.md` without touching tmux or Harness CLIs.
+- `initPdx` creates the data dir, initializes Pithos, creates `runs`, materializes bundle-owned config, scaffolds missing user-owned config files, and re-seeds `<user-data-dir>/PANDORA.md` without touching tmux or Harness CLIs.
 - `openPdx` supports normal reuse, `--clean` runtime-state reset, and `--nuke` pdx-owned state reset with user-config preservation before starting the pdx daemon tmux session and waiting for IPC readiness.
 - `runDaemon` settles startup orphans, upserts the `pdx` system Run, starts the reconcile loop, opens the daemon IPC socket and the external intake socket, and serves IPC.
 - `reconcileTick` performs Cleanup/settlement first, runs event-pruning maintenance on daemon startup and then hourly, maintains Pandora, sends Nudges for new Escalation tasks, validates launch preconditions, and spawns at most one ready non-Pandora Agent run per tick.
@@ -172,6 +172,7 @@ For a data dir `<data-dir>` (`~/.pdx` by default):
 <user-data-dir>/AGENTS.md         # direct-agent pointer scaffolded once
 <user-data-dir>/CLAUDE.md         # Claude direct-agent pointer scaffolded once
 <user-data-dir>/agents.toml       # user policy registry and Harness partial scaffolded once
+<user-data-dir>/artifacts.toml    # user-owned Artifact Contracts scaffolded once
 <user-data-dir>/PANDORA.md        # installed user-config reference, re-seeded on init/open
 <user-data-dir>/policies/*.md     # user-owned policy packs declared from agents.toml
 ```
