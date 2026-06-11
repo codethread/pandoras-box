@@ -33,12 +33,14 @@ re-seeded on `init` / `open`:
 ## Documentation boundary
 
 The durable system contract lives in specs, especially
-[`specs/agent-configuration.md`](../specs/agent-configuration.md). The
+[`specs/agent-configuration.md`](../specs/agent-configuration.md) and
+[`specs/artifact-contracts.md`](../specs/artifact-contracts.md). The
 user-facing machine-local configuration guide is
 [`resources/user-data-dir/PANDORA.md`](./user-data-dir/PANDORA.md).
 
-Do not duplicate the policy registry, external intake, prompt-composition, or
-lifecycle contract here; update the spec and `PANDORA.md` instead.
+Keep this file to resource ownership. Artifact rules live in
+`<user-data-dir>/artifacts.toml`, not `agents.toml`; detailed behavior belongs in
+the Artifact Contract spec and `PANDORA.md`.
 
 ## Lifecycle flags
 

@@ -73,6 +73,21 @@ Exported from `@pdx/pithos/builtins`:
 
 Consumers should import from package roots, not sibling `src/*` internals.
 
+## Artifact Contract and artifact APIs
+
+Pithos parses and enforces user-owned Artifact Contracts from `$PDX_USER_DATA_DIR/artifacts.toml`; rules do not live in `agents.toml`. The package root exports the parser/loader, normalized types, and Capability selector for Spawner reuse.
+
+Implemented artifact commands:
+
+```sh
+pithos task artifact add <task-id> [--run <run-id>] --token <token> --kind <kind> --title <title> [--stdin]
+pithos task artifact reject <artifact-id> [--run <run-id>] --token <token> --reason <reason>
+pithos task artifact list <task-id> [--json]
+pithos task artifact show <artifact-id> [--json]
+```
+
+Add/reject require the resolved Run (`--run` or `PITHOS_RUN_ID`) to hold the parent Task with the current Fencing token. Rejected artifacts stay inspectable through list/show, but primary task/graph views and required-artifact checks use active artifacts only. `task inspect` shows compact active refs by default; `--full` adds active bodies for Markdown output. Required rules check active artifact `kind` presence only; titles and bodies are guidance.
+
 ## Implemented module design
 
 ### `src/main.ts` — process boundary

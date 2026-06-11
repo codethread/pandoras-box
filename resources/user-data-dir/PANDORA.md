@@ -63,7 +63,19 @@ title = "Open questions"
 body = "List material questions requiring user intent, or write: No open questions."
 ```
 
-`required = true` gates completion for matching tasks until at least one active artifact with the configured `kind` exists on the task. `title` and `body` are prompt guidance only; Pithos does not compare produced artifact titles or body text to them.
+`required = true` gates completion for matching tasks until at least one active artifact with the configured `kind` exists on the task. `title` and `body` are guidance only; empty artifact bodies still satisfy required kinds.
+
+Useful commands:
+
+```sh
+pithos task artifact add <task-id> [--run <run-id>] --token <token> --kind <kind> --title <title> [--stdin]
+pithos task artifact reject <artifact-id> [--run <run-id>] --token <token> --reason <reason>
+pithos task artifact list <task-id> [--json]
+pithos task artifact show <artifact-id> [--json]
+pithos task inspect <task-id> [--full]
+```
+
+Primary task and graph views show active artifacts only. Rejected artifacts remain available through `task artifact list/show`. Spawner renders applicable rules into Agent prompts; invalid present `artifacts.toml` fails preview/launch rendering loudly.
 
 ## Policy packs
 

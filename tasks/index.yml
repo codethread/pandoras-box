@@ -47,5 +47,5 @@ tasks:
   - id: 10
     description: Update artifact package docs
     task_file: tasks/010-update-artifact-package-docs.md
-    status: pending
+    status: complete
     blocked_by: [9]

@@ -179,6 +179,12 @@ For a data dir `<data-dir>` (`~/.pdx` by default):
 
 HITL mode runtime state lives in tmux targets. AFK mode runtime state lives in pid/stdout/stderr files plus the daemon Registry while live. Harness session transcripts live at harness-native session log paths returned by Spawner and stored on Pithos Runs.
 
+## User config and Artifact Contracts
+
+`pdx init` and `pdx open` scaffold `<user-data-dir>/artifacts.toml` once with commented examples only. Existing `artifacts.toml` survives `init`, `open`, `--clean`, and `--nuke` because it is user config, not pdx-owned runtime state.
+
+pdx-launched Agents receive `PITHOS_DB`, `PDX_USER_DATA_DIR`, and their `PITHOS_RUN_ID`, so prompt rendering and Pithos completion checks use the same user Artifact Contract file. Direct Pithos invocations without `PDX_USER_DATA_DIR` run with Artifact Contracts disabled.
+
 ## Development
 
 ```sh
