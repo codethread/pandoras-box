@@ -36,7 +36,7 @@ Update task and graph inspection so primary views show the current active artifa
 ## References
 
 - `specs/artifact-contracts.md` section 8.
-- `specs/task-graph.delta.md` inspection surfaces.
+- `specs/task-graph.md` inspection surfaces.
 - `packages/pithos/src/engine/render.ts`.
 - `packages/pithos/src/engine/task-read-model.ts`.
 - `packages/pithos/src/engine/graph-inspect.ts`.

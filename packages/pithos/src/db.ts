@@ -307,16 +307,46 @@ const ensureArtifactsStatusColumn = (db: Db): void => {
 	if (rows.length === 0) return;
 	const tableSql = rows[0]?.sql ?? "";
 	const columns = db.prepare(sql`PRAGMA table_info(artifacts)`).all() as { name: string }[];
-	const hasRejectionColumns = ["rejected_at", "rejected_by_run_id", "rejection_reason"].every(
-		(name) => columns.some((column) => column.name === name),
-	);
+	const hasStatusColumn = columns.some((column) => column.name === "status");
+	const hasRejectedAtColumn = columns.some((column) => column.name === "rejected_at");
+	const hasRejectedByRunIdColumn = columns.some((column) => column.name === "rejected_by_run_id");
+	const hasRejectionReasonColumn = columns.some((column) => column.name === "rejection_reason");
+	const hasRejectionColumns =
+		hasRejectedAtColumn && hasRejectedByRunIdColumn && hasRejectionReasonColumn;
 	const hasStatusConstraint = tableSql.includes("status IN ('active', 'rejected')");
 	const hasRejectionConstraint = tableSql.includes("status = 'active' AND rejected_at IS NULL");
 	if (hasStatusConstraint && hasRejectionColumns && hasRejectionConstraint) return;
 
+	const statusExpr = hasStatusColumn ? "status" : "'active'";
+	const rejectedAtExpr = hasRejectedAtColumn ? "rejected_at" : "NULL";
+	const rejectedByRunIdExpr = hasRejectedByRunIdColumn ? "rejected_by_run_id" : "NULL";
+	const rejectionReasonExpr = hasRejectionReasonColumn ? "rejection_reason" : "NULL";
 	const copySql = sql`
-		INSERT INTO artifacts_new(id, task_id, run_id, kind, title, body, status, created_at)
-		SELECT id, task_id, run_id, kind, title, body, 'active', created_at
+		INSERT INTO artifacts_new(
+			id,
+			task_id,
+			run_id,
+			kind,
+			title,
+			body,
+			status,
+			rejected_at,
+			rejected_by_run_id,
+			rejection_reason,
+			created_at
+		)
+		SELECT
+			id,
+			task_id,
+			run_id,
+			kind,
+			title,
+			body,
+			${statusExpr},
+			${rejectedAtExpr},
+			${rejectedByRunIdExpr},
+			${rejectionReasonExpr},
+			created_at
 		FROM artifacts
 	`;
 

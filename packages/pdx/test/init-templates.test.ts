@@ -108,11 +108,24 @@ describe("pdx init and template materialization", () => {
 		]);
 	});
 
-	it("render does not implicitly materialize bundled templates", async () => {
+	it("renders fails fast for invalid PDX_USER_DATA_DIR even when templates are present", async () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "pdx-spawner-"));
-		const spawner = makeSpawnerLive({
+		const bootstrap = makeSpawnerLive({
 			dataDir,
 			userDataDir: join(dataDir, "config"),
+			pithosDbPath: join(dataDir, "pithos.sqlite"),
+		});
+		await run(bootstrap.materializeTemplates());
+		await chmod(join(dataDir, "agents.toml"), 0o644);
+		await writeFile(
+			join(dataDir, "agents.toml"),
+			`[agents.pandora]\n\ttemplate = "agents/pandora.md"\n\n[agents.pandora.harness]\n\tkind = "pi"\n\tmodel = "openai-codex/gpt-5.4"\n\tsystem_prompt_mode = "append"\n\n[agents.toil]\n\ttemplate = "agents/toil.md"\n\n[agents.toil.harness]\n\tkind = "pi"\n\tmodel = "openai-codex/gpt-5.4"\n\tsystem_prompt_mode = "append"\n\n[agents.greed]\n\ttemplate = "agents/greed.md"\n\n[agents.greed.harness]\n\tkind = "pi"\n\tmodel = "openai-codex/gpt-5.4"\n\tsystem_prompt_mode = "append"\n\n[agents.war]\n\ttemplate = "agents/war.md"\n\n[agents.war.harness]\n\tkind = "pi"\n\tmodel = "openai-codex/gpt-5.4"\n\tsystem_prompt_mode = "append"\n\n[agents.envy]\n\ttemplate = "agents/envy.md"\n\n[agents.envy.harness]\n\tkind = "pi"\n\tmodel = "openai-codex/gpt-5.4"\n\tsystem_prompt_mode = "append"\n`,
+			"utf8",
+		);
+		const userDataDir = join(dataDir, "invalid-user-config");
+		const spawner = makeSpawnerLive({
+			dataDir,
+			userDataDir,
 			pithosDbPath: join(dataDir, "pithos.sqlite"),
 		});
 		const error = await run(
@@ -127,11 +140,11 @@ describe("pdx init and template materialization", () => {
 				}),
 			),
 		);
-		expect(error.code).toBe("CONFIG_ERROR");
-		expect(error.message).toContain(`${dataDir}/agents.toml`);
-		await expect(stat(join(dataDir, "agents.toml"))).rejects.toMatchObject({
-			code: "ENOENT",
-		});
+		expect(error.code).toBe("VALIDATION_ERROR");
+		expect(error.message).toContain(
+			`PDX_USER_DATA_DIR is not an inspectable directory: ${userDataDir}`,
+		);
+		expect(await readFile(join(dataDir, "agents.toml"), "utf8")).toContain("[agents.war]");
 	});
 
 	it("materializeTemplates seeds bundled spawner templates into the data dir", async () => {

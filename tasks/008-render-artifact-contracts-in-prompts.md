@@ -40,8 +40,8 @@ Render normalized Artifact Contract guidance into Agent prompts using the shared
 ## References
 
 - `specs/artifact-contracts.md` section 4.
-- `specs/agent-command-reference.delta.md`.
-- `specs/agent-configuration.delta.md`.
+- `specs/agent-command-reference.md`.
+- `specs/agent-configuration.md`.
 - `packages/spawner/src/spawner.ts`.
 - `packages/spawner/src/spawner.test.ts`.
 - `packages/pithos/src/index.ts`.

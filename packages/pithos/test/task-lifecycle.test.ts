@@ -786,6 +786,16 @@ CREATE TABLE runs (
 
 	it("migrates older artifacts tables to enforce active/rejected status", () => {
 		const { dbPath, engine } = setup();
+		const seedTaskId = engine.enqueue({
+			scope: "global",
+			capability: "triage",
+			title: "migration fixture",
+			body: "body",
+			bodyFile: undefined,
+			runId: "run_toil",
+			after: [],
+			chain: "none",
+		}).task.id;
 		const db = new Database(dbPath);
 		db.pragma("foreign_keys = OFF");
 		db.exec(`
@@ -800,6 +810,9 @@ CREATE TABLE artifacts (
 	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 `);
+		db.prepare(
+			"INSERT INTO artifacts(id, task_id, run_id, kind, title, body) VALUES (?, ?, ?, ?, ?, ?)",
+		).run("artifact_legacy", seedTaskId, "run_toil", "note", "note", "body");
 		db.pragma("foreign_keys = ON");
 		db.close();
 
@@ -816,6 +829,21 @@ CREATE TABLE artifacts (
 			chain: "none",
 		}).task.id;
 		const migrated = new Database(dbPath);
+		const migratedLegacy = migrated
+			.prepare(
+				"SELECT id, status, rejected_at, rejected_by_run_id, rejection_reason FROM artifacts WHERE id=?",
+			)
+			.get("artifact_legacy") as {
+			readonly id: string;
+			readonly status: string;
+			readonly rejected_at: string | null;
+			readonly rejected_by_run_id: string | null;
+			readonly rejection_reason: string | null;
+		};
+		expect(migratedLegacy.status).toBe("active");
+		expect(migratedLegacy.rejected_at).toBeNull();
+		expect(migratedLegacy.rejected_by_run_id).toBeNull();
+		expect(migratedLegacy.rejection_reason).toBeNull();
 		expect(() =>
 			migrated
 				.prepare(
@@ -866,6 +894,94 @@ CREATE TABLE artifacts (
 					"   ",
 				),
 		).toThrow();
+		migrated.close();
+	});
+
+	it("preserves existing artifact rejection metadata during status migration", () => {
+		const { dbPath, engine } = setup();
+		const taskId = engine.enqueue({
+			scope: "global",
+			capability: "triage",
+			title: "artifact migration target",
+			body: "body",
+			bodyFile: undefined,
+			runId: "run_toil",
+			after: [],
+			chain: "none",
+		}).task.id;
+		const db = new Database(dbPath);
+		db.pragma("foreign_keys = OFF");
+		db.exec(`
+DROP TABLE artifacts;
+CREATE TABLE artifacts (
+	id TEXT PRIMARY KEY,
+	task_id TEXT NOT NULL REFERENCES tasks(id),
+	run_id TEXT NOT NULL REFERENCES runs(id),
+	kind TEXT NOT NULL,
+	title TEXT NOT NULL,
+	body TEXT NOT NULL,
+	status TEXT,
+	rejected_at TEXT,
+	rejected_by_run_id TEXT REFERENCES runs(id),
+	rejection_reason TEXT,
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`);
+		db.prepare(
+			"INSERT INTO artifacts(id, task_id, run_id, kind, title, body, status, rejected_at, rejected_by_run_id, rejection_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		).run(
+			"artifact_preserve_active",
+			taskId,
+			"run_toil",
+			"note",
+			"note title",
+			"body active",
+			"active",
+			null,
+			null,
+			null,
+		);
+		db.prepare(
+			"INSERT INTO artifacts(id, task_id, run_id, kind, title, body, status, rejected_at, rejected_by_run_id, rejection_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		).run(
+			"artifact_preserve_rejected",
+			taskId,
+			"run_toil",
+			"note",
+			"note title rejected",
+			"artifact body",
+			"rejected",
+			"2026-05-08T00:00:00Z",
+			"run_toil",
+			"wrong artifact",
+		);
+		db.pragma("foreign_keys = ON");
+		db.close();
+
+		engine.init({ fresh: false });
+
+		const migrated = new Database(dbPath);
+		const rows = migrated
+			.prepare(
+				"SELECT id, status, rejected_at, rejected_by_run_id, rejection_reason FROM artifacts WHERE id IN (?, ?) ORDER BY id",
+			)
+			.all("artifact_preserve_active", "artifact_preserve_rejected");
+		expect(rows).toEqual([
+			{
+				id: "artifact_preserve_active",
+				status: "active",
+				rejected_at: null,
+				rejected_by_run_id: null,
+				rejection_reason: null,
+			},
+			{
+				id: "artifact_preserve_rejected",
+				status: "rejected",
+				rejected_at: "2026-05-08T00:00:00Z",
+				rejected_by_run_id: "run_toil",
+				rejection_reason: "wrong artifact",
+			},
+		]);
 		migrated.close();
 	});
 

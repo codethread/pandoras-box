@@ -28,7 +28,7 @@ No HITL tasks are required: the product decisions are captured in the specs and 
 
 Append notes here. Do not rewrite earlier notes.
 
-- Task 1: Implemented `clarify` plumbing from the artifact-contract deltas. The current implemented `specs/control-plane-supervision.md` still lists the pre-delta capability table; left spec merge to Task 9 per plan.
+- Task 1: Implemented `clarify` plumbing from artifact specs. The current implemented `specs/control-plane-supervision.md` records the pre-delta capability table for this work stream; consolidated deltas were finalized in Task 9.
 - Task 2: Added the Pithos Artifact Contract parser at `packages/pithos/src/artifact-contracts.ts`, exported it from `@pdx/pithos`, and covered disabled/missing/invalid/normalized cases. The loader treats an unset `PDX_USER_DATA_DIR` as disabled and a set-but-non-directory value as a loud `USER_ERROR`.
 - Task 3: Hardened `task artifact add` as a fenced held-task mutation requiring `--token`; it now rejects queued/terminal tasks, stale tokens, non-owner runs, and non-lower-snake-case kinds while preserving omitted-stdin empty bodies and returning compact metadata.
 - Task 4: Added active/rejected artifact persistence, one-way fenced rejection, exact-id list/show APIs, and compact mutation metadata. Primary task/graph inspect still intentionally show active artifacts only; future inspect compaction remains Task 5.

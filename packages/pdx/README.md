@@ -190,7 +190,7 @@ pdx-launched Agents receive `PITHOS_DB`, `PDX_USER_DATA_DIR`, and their `PITHOS_
 ```sh
 pnpm --filter @pdx/pdx typecheck
 pnpm --filter @pdx/pdx test
-pnpm --filter @pdx/pdx start --help
+pnpm --filter @pdx/pdx start -- --help
 ```
 
 Useful package-local help checks:

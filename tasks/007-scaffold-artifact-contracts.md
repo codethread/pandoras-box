@@ -35,7 +35,7 @@ Add the user-owned `artifacts.toml` scaffold to pdx init/open and document it in
 ## References
 
 - `specs/artifact-contracts.md` sections 2 and 3.
-- `specs/control-plane-supervision.delta.md`.
+- `specs/control-plane-supervision.md`.
 - `packages/pdx/src/live.ts`.
 - `resources/user-data-dir/PANDORA.md`.
 - `resources/README.md`.

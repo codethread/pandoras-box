@@ -37,7 +37,7 @@ Make artifact addition a fenced active-task-owner mutation and normalize its out
 ## References
 
 - `specs/artifact-contracts.md` sections 6 and 7.
-- `specs/task-graph.delta.md` payload CLI contract.
+- `specs/task-graph.md` payload CLI contract.
 - `packages/pithos/src/engine/claim-loop.ts`.
 - `packages/pithos/src/cli.ts`.
 - `packages/pithos/test/cli.test.ts`.

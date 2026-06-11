@@ -120,7 +120,7 @@ Selection:
 Prompt preamble:
 
 ```md
-Artifact contract for your current capability follows as normalized JSON. `required: true` blocks task completion until an active artifact with that `kind` exists on the task. `title` and `body` are guidance only.
+Applicable artifact contracts follow as normalized JSON. `required: true` blocks task completion until an active artifact with that `kind` exists on the task. `title` and `body` are guidance only.
 ```
 
 Example payload:

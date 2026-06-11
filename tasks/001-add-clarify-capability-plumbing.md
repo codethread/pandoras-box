@@ -31,7 +31,7 @@ Add the planned `clarify` Capability to the durable built-in authorization surfa
 ## References
 
 - `specs/artifact-contracts.md` section 9.
-- `specs/control-plane-supervision.delta.md`.
+- `specs/control-plane-supervision.md`.
 - `packages/pithos/src/builtins.ts`.
 - `packages/pithos/src/chain-policy.ts`.
 - `packages/pithos/src/cli.ts`.
