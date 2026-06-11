@@ -1,5 +1,6 @@
 export {
 	loadArtifactContract,
+	loadConfiguredArtifactContractSync,
 	parseArtifactContractToml,
 	selectArtifactContractRules,
 	type ArtifactContract,

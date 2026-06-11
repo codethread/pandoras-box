@@ -358,7 +358,6 @@ Implementation areas:
 | `packages/pithos/src/rows.ts`                   | Artifact row parsing and status validation.                                                  |
 | `packages/pithos/src/artifact-contracts.ts`     | Resolve and parse `$PDX_USER_DATA_DIR/artifacts.toml`; export parser/normalizer for Spawner. |
 | `packages/pithos/src/engine/claim-loop.ts`      | Fenced artifact add/reject and completion enforcement.                                       |
-| `packages/pithos/src/engine/task-read-model.ts` | Active artifact queries, list/show read models, requirement status.                          |
 | `packages/pithos/src/engine/task-read-model.ts` | Active artifact refs, list/show read models, and live missing-required status.               |
 | `packages/pithos/src/engine/render.ts`          | Compact/full inspect, graph artifact rendering, artifact list/show renderers.                |
 | `packages/pithos/src/cli.ts`                    | CLI flags and command dispatch.                                                              |

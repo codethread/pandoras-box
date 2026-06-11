@@ -61,7 +61,7 @@ Exported from `@pdx/pithos`:
 - Schema/DB helpers: `migrate`, `openDb`, row schemas, decoded row helpers.
 - Chain helpers: chain-policy resolution and typed-edge graph utilities.
 - Config/services/errors: `loadConfig`, `liveServices`, `PithosError`.
-- Artifact Contracts: `loadArtifactContract`, `parseArtifactContractToml`, `selectArtifactContractRules`, and normalized contract/rule types.
+- Artifact Contracts: `loadArtifactContract`, `loadConfiguredArtifactContractSync`, `parseArtifactContractToml`, `selectArtifactContractRules`, and normalized contract/rule types.
 
 Exported from `@pdx/pithos/builtins`:
 

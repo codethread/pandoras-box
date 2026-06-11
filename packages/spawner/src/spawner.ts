@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import {
-	parseArtifactContractToml,
+	loadConfiguredArtifactContractSync,
+	PithosError,
 	selectArtifactContractRules,
 	type ArtifactContract,
 } from "@pdx/pithos";
@@ -11,7 +12,7 @@ import {
 	type Capability,
 	type SpawnableAgentKind,
 } from "@pdx/pithos/builtins";
-import { Either, ParseResult, Schema } from "effect";
+import { Effect, Either, ParseResult, Schema } from "effect";
 import { SpawnerError } from "./errors.js";
 import {
 	loadResolvedAgentConfig,
@@ -495,37 +496,32 @@ const renderCommandHelpMarkdown = (
 	].join("\n");
 };
 
-const isMissingFileError = (error: unknown): boolean =>
-	typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
-
 const loadArtifactContractForRender = (
 	config: Pick<SpawnerConfig, "pdxUserDataDir">,
 	services: RenderServices,
 ): ArtifactContract => {
-	if (config.pdxUserDataDir === undefined) return { artifacts: [] };
-	if (services.existsDirectory?.(config.pdxUserDataDir) === false) {
+	try {
+		return loadConfiguredArtifactContractSync(
+			{ userDataDir: config.pdxUserDataDir },
+			{
+				readText: (path) =>
+					Effect.try({
+						try: () => services.readText(path),
+						catch: (error) =>
+							new PithosError({
+								code: "USER_ERROR",
+								message: error instanceof Error ? error.message : String(error),
+							}),
+					}),
+				removeFile: () => Effect.void,
+				existsDirectory: (path) => Effect.succeed(services.existsDirectory?.(path) ?? true),
+			},
+		);
+	} catch (error) {
 		throw new SpawnerError({
 			code: "VALIDATION_ERROR",
-			message: `PDX_USER_DATA_DIR is not an inspectable directory: ${config.pdxUserDataDir}`,
+			message: error instanceof Error ? error.message : String(error),
 		});
-	}
-	const path = `${config.pdxUserDataDir.replace(/\/+$/, "")}/artifacts.toml`;
-	let text: string;
-	try {
-		text = services.readText(path);
-	} catch (error) {
-		if (isMissingFileError(error)) return { artifacts: [] };
-		const message = error instanceof Error ? error.message : String(error);
-		throw new SpawnerError({
-			code: "VALIDATION_ERROR",
-			message: `${path}: failed to read artifacts.toml: ${message}`,
-		});
-	}
-	try {
-		return parseArtifactContractToml(text);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new SpawnerError({ code: "VALIDATION_ERROR", message: `${path}: ${message}` });
 	}
 };
 
