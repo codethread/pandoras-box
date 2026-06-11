@@ -1,4 +1,11 @@
 export {
+	loadArtifactContract,
+	parseArtifactContractToml,
+	selectArtifactContractRules,
+	type ArtifactContract,
+	type ArtifactContractRule,
+} from "./artifact-contracts.js";
+export {
 	BUILTIN_CONTRACT,
 	BUILTIN_AGENT_CLAIMS,
 	BUILTIN_AGENT_ENQUEUES,

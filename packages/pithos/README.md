@@ -43,12 +43,12 @@ Pithos is the durable source of truth for:
 
 ## Relation to other packages
 
-| Package                       | Pithos integration                                               | Boundary                                                            |
-| ----------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `@pdx/pdx`                    | imports `makeEngine` and `liveServices` through the package root | typed in-process durable state transitions; no subprocess parsing   |
-| `@pdx/spawner`                | imports `@pdx/pithos/builtins` and calls `pithos --help-json`    | validates render config against built-ins and renders command cards |
-| `@pdx/cli-help`               | renders human `pithos --help` from the Effect command descriptor | custom terminal layout without duplicating command definitions      |
-| Harness CLIs (`claude`, `pi`) | no direct integration                                            | Harness sessions are represented only by Run transcript metadata    |
+| Package                       | Pithos integration                                                                           | Boundary                                                                                               |
+| ----------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `@pdx/pdx`                    | imports `makeEngine` and `liveServices` through the package root                             | typed in-process durable state transitions; no subprocess parsing                                      |
+| `@pdx/spawner`                | imports `@pdx/pithos/builtins` and Artifact Contract helpers, and calls `pithos --help-json` | validates render config against built-ins, shares artifact-contract parsing, and renders command cards |
+| `@pdx/cli-help`               | renders human `pithos --help` from the Effect command descriptor                             | custom terminal layout without duplicating command definitions                                         |
+| Harness CLIs (`claude`, `pi`) | no direct integration                                                                        | Harness sessions are represented only by Run transcript metadata                                       |
 
 The composed behavior is specified in [`../../specs/control-plane-supervision.md`](../../specs/control-plane-supervision.md) and Task graph semantics in [`../../specs/task-graph.md`](../../specs/task-graph.md). Use [`../../UBIQUITOUS_LANGUAGE.md`](../../UBIQUITOUS_LANGUAGE.md) for terms.
 
@@ -61,6 +61,7 @@ Exported from `@pdx/pithos`:
 - Schema/DB helpers: `migrate`, `openDb`, row schemas, decoded row helpers.
 - Chain helpers: chain-policy resolution and typed-edge graph utilities.
 - Config/services/errors: `loadConfig`, `liveServices`, `PithosError`.
+- Artifact Contracts: `loadArtifactContract`, `parseArtifactContractToml`, `selectArtifactContractRules`, and normalized contract/rule types.
 
 Exported from `@pdx/pithos/builtins`:
 
@@ -86,6 +87,10 @@ Parses process environment into typed config:
 - `PITHOS_RUN_ID` — optional default actor Run id for mutating Agent commands
 
 If both `PITHOS_RUN_ID` and `--run` are present for a command, Engine code fails loudly when they conflict.
+
+### `src/artifact-contracts.ts` — user Artifact Contract parsing
+
+Owns the optional parser for `$PDX_USER_DATA_DIR/artifacts.toml`. It returns an empty normalized contract when `PDX_USER_DATA_DIR` is unset or the file is absent, fails loudly for unreadable configured directories/files and invalid TOML/schema, defaults `required` to `false`, and exports capability-filtering helpers for Spawner reuse.
 
 ### `src/cli.ts` — CLI and output contract
 

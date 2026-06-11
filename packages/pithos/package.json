@@ -22,6 +22,7 @@
 	"dependencies": {
 		"@effect/cli": "catalog:",
 		"@effect/platform-node": "catalog:",
+		"@iarna/toml": "2.2.5",
 		"@pdx/cli-help": "workspace:*",
 		"better-sqlite3": "^12.9.0",
 		"effect": "catalog:"
