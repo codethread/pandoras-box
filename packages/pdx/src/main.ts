@@ -144,7 +144,7 @@ const runCommand = (runtime: RuntimeInput, input: CommandInput) =>
 							"Next: configure your agents, then run `pdx open` to release Pandora.",
 							"",
 							`  cd ${config.userDataDir}`,
-							`  claude \"help me set up agents.toml\"`,
+							`  claude "help me set up agents.toml"`,
 							'  # or: pi "help me set up agents.toml"',
 						].join("\n") + "\n",
 					),

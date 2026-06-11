@@ -232,4 +232,4 @@ All commands resolve data dir as `--data-dir`, then `PDX_DATA_DIR`, then `$HOME/
 - `specs/agent-configuration.md` — manifest policy-pack contract and user `agents.toml` semantics, including harness `tools` / `argv` merge rules
 - `resources/user-data-dir/PANDORA.md` — machine-local user configuration guide and edit-time contract
 
-Automated coverage lives primarily in `packages/pdx/test/substrate.test.ts`, `packages/pithos/test/`, and `packages/spawner/src/spawner.test.ts`.
+Automated coverage lives primarily in `packages/pdx/test/`, `packages/pithos/test/`, and `packages/spawner/src/spawner.test.ts`.

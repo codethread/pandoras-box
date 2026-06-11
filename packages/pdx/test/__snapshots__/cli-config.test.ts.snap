@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`pdx substrate > keeps default help human-readable 1`] = `
+exports[`pdx cli and config > keeps default help human-readable 1`] = `
 "pdx
 
 Local supervisor for Pandora's Box agent runs, processes, tmux sessions, and Pandora.
