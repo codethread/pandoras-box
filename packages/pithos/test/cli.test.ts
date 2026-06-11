@@ -1504,6 +1504,60 @@ describe("pithos cli", () => {
 		expect(artifactBody(dbPath, artifactId)).toBe("");
 	});
 
+	it("rejects, lists, and shows artifacts through the CLI", async () => {
+		const dbPath = tempDb();
+		await runCli(["init", "--fresh"], dbPath);
+		await upsertRun(dbPath, "run_toil");
+		const taskId = await enqueueGlobalTriage(dbPath, "run_toil", "artifact task", "task body");
+		await claimGlobal(dbPath, "run_toil", "triage");
+		const added = await runCli(artifactAddArgs(taskId, ["--stdin", "--run", "run_toil"]), dbPath, {
+			_tag: "RedirectedText",
+			text: "artifact body\n",
+		});
+		const artifactId = (JSON.parse(added.stdout[0] ?? "") as { artifact: { id: string } }).artifact
+			.id;
+
+		const rejected = await runCli(
+			[
+				"task",
+				"artifact",
+				"reject",
+				artifactId,
+				"--run",
+				"run_toil",
+				"--token",
+				"1",
+				"--reason",
+				"wrong artifact",
+			],
+			dbPath,
+		);
+		expect(JSON.parse(rejected.stdout[0] ?? "")).toMatchObject({
+			ok: true,
+			artifact: { id: artifactId, status: "rejected", rejection_reason: "wrong artifact" },
+		});
+		expect(rejected.stdout[0]).not.toContain("artifact body");
+
+		const listJson = await runCli(["task", "artifact", "list", taskId, "--json"], dbPath);
+		expect(JSON.parse(listJson.stdout[0] ?? "")).toMatchObject({
+			ok: true,
+			artifacts: [{ id: artifactId, status: "rejected", rejection_reason: "wrong artifact" }],
+		});
+		expect(listJson.stdout[0]).not.toContain("artifact body");
+		const listText = await runCli(["task", "artifact", "list", taskId], dbPath);
+		expect(listText.stdout[0]).toContain(`[rejected: wrong artifact]`);
+		expect(listText.stdout[0]).not.toContain("artifact body");
+
+		const showJson = await runCli(["task", "artifact", "show", artifactId, "--json"], dbPath);
+		expect(JSON.parse(showJson.stdout[0] ?? "")).toMatchObject({
+			ok: true,
+			artifact: { id: artifactId, status: "rejected", body: "artifact body\n" },
+		});
+		const showText = await runCli(["task", "artifact", "show", artifactId], dbPath);
+		expect(showText.stdout[0]).toContain("```json");
+		expect(showText.stdout[0]).toContain("artifact body");
+	});
+
 	it("validates artifact add stdin availability and non-empty content", async () => {
 		for (const stdin of [
 			{ _tag: "NoRedirectedStdin" as const },
@@ -2002,6 +2056,18 @@ describe("pithos cli", () => {
 		expect(commands.filter((command) => command.path === "pithos task artifact add")).toHaveLength(
 			1,
 		);
+		const artifactReject = commands.find(
+			(command) => command.path === "pithos task artifact reject",
+		);
+		expect(artifactReject?.usage).toContain("--token");
+		expect(artifactReject?.usage).toContain("--reason");
+		expect(artifactReject?.description).toContain("Reject an active artifact");
+		expect(
+			commands.find((command) => command.path === "pithos task artifact list")?.usage,
+		).toContain("--json");
+		expect(
+			commands.find((command) => command.path === "pithos task artifact show")?.usage,
+		).toContain("--json");
 		expect(commands.some((command) => command.path === "pithos task task artifact add")).toBe(
 			false,
 		);

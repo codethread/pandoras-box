@@ -8,11 +8,15 @@ import {
 	TaskEdgeRowSchema,
 	TaskGateLateGrowthMarkerRowSchema,
 	TaskRowSchema,
+	ArtifactDetailRowSchema,
+	ArtifactMetadataRowSchema,
 	type ScopeRow,
 	type TaskEdgeRow,
 	type TaskGateLateGrowthMarkerRow,
 } from "../rows.js";
 import type {
+	ArtifactDetailOutput,
+	ArtifactMetadataOutput,
 	ArtifactOutput,
 	ArtifactReferenceOutput,
 	LineageEntryOutput,
@@ -255,6 +259,39 @@ const ArtifactRowSchema = Schema.Struct({
 const parseArtifact = (value: unknown): ArtifactOutput =>
 	decodeRow(ArtifactRowSchema, value, "malformed artifact row");
 
+export const toArtifactMetadataOutput = (
+	artifact: typeof ArtifactMetadataRowSchema.Type,
+): ArtifactMetadataOutput =>
+	artifact.status === "active"
+		? {
+				id: artifact.id,
+				task_id: artifact.task_id,
+				run_id: artifact.run_id,
+				kind: artifact.kind,
+				title: artifact.title,
+				status: artifact.status,
+				created_at: artifact.created_at,
+			}
+		: {
+				id: artifact.id,
+				task_id: artifact.task_id,
+				run_id: artifact.run_id,
+				kind: artifact.kind,
+				title: artifact.title,
+				status: artifact.status,
+				created_at: artifact.created_at,
+				rejected_at: artifact.rejected_at,
+				rejected_by_run_id: artifact.rejected_by_run_id,
+				rejection_reason: artifact.rejection_reason,
+			};
+
+const toArtifactDetailOutput = (
+	artifact: typeof ArtifactDetailRowSchema.Type,
+): ArtifactDetailOutput => ({
+	...toArtifactMetadataOutput(artifact),
+	body: artifact.body,
+});
+
 const TaskEdgeKindSchema = Schema.Literal("about", "repair");
 
 const TaskSourceEdgeRowSchema = Schema.Struct({
@@ -300,6 +337,40 @@ export const taskArtifactReferences = (
 	taskId: string,
 ): readonly ArtifactReferenceOutput[] =>
 	taskArtifacts(db, taskId).map(({ id, kind, title }) => ({ id, kind, title }));
+
+export const artifactList = (db: Db, taskId: string): readonly ArtifactMetadataOutput[] => {
+	if (db.prepare(sql`SELECT 1 FROM tasks WHERE id=?`).get(taskId) === undefined) {
+		fail("NOT_FOUND", `task not found: ${taskId}`);
+	}
+	return db
+		.prepare(sql`
+			SELECT id, task_id, run_id, kind, title, status, rejected_at, rejected_by_run_id, rejection_reason, created_at
+			FROM artifacts
+			WHERE task_id=?
+			ORDER BY created_at ASC, id ASC
+		`)
+		.all(taskId)
+		.map((row) =>
+			toArtifactMetadataOutput(
+				decodeRow(ArtifactMetadataRowSchema, row, "malformed artifact metadata row"),
+			),
+		);
+};
+
+export const artifactShow = (db: Db, artifactId: string): ArtifactDetailOutput =>
+	toArtifactDetailOutput(
+		decodeRow(
+			ArtifactDetailRowSchema,
+			db
+				.prepare(sql`
+					SELECT id, task_id, run_id, kind, title, body, status, rejected_at, rejected_by_run_id, rejection_reason, created_at
+					FROM artifacts
+					WHERE id=?
+				`)
+				.get(artifactId),
+			`artifact not found: ${artifactId}`,
+		),
+	);
 
 export const firstMeaningfulBodyLine = (body: string): string | null => {
 	for (const line of body.split(/\r?\n/u)) {

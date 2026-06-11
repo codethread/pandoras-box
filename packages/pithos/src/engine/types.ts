@@ -145,17 +145,20 @@ export interface Engine {
 		readonly kind: string;
 		readonly title: string;
 		readonly body: string;
-	}) => {
+	}) => { readonly ok: true; readonly artifact: ArtifactMetadataOutput };
+	readonly artifactReject: (input: {
+		readonly artifactId: string;
+		readonly runId: string | undefined;
+		readonly token: number;
+		readonly reason: string;
+	}) => { readonly ok: true; readonly artifact: ArtifactMetadataOutput };
+	readonly artifactList: (input: { readonly taskId: string }) => {
 		readonly ok: true;
-		readonly artifact: {
-			readonly id: string;
-			readonly task_id: string;
-			readonly run_id: string;
-			readonly kind: string;
-			readonly title: string;
-			readonly status: "active";
-			readonly created_at: string;
-		};
+		readonly artifacts: readonly ArtifactMetadataOutput[];
+	};
+	readonly artifactShow: (input: { readonly artifactId: string }) => {
+		readonly ok: true;
+		readonly artifact: ArtifactDetailOutput;
 	};
 	readonly taskInspect: (input: { readonly taskId: string }) => TaskInspectOutput;
 	readonly cancel: (input: {
@@ -299,6 +302,25 @@ export interface ArtifactReferenceOutput {
 	readonly kind: string;
 	readonly title: string;
 }
+
+export type ArtifactMetadataOutput =
+	| (ArtifactReferenceOutput & {
+			readonly task_id: string;
+			readonly run_id: string;
+			readonly status: "active";
+			readonly created_at: string;
+	  })
+	| (ArtifactReferenceOutput & {
+			readonly task_id: string;
+			readonly run_id: string;
+			readonly status: "rejected";
+			readonly created_at: string;
+			readonly rejected_at: string;
+			readonly rejected_by_run_id: string;
+			readonly rejection_reason: string;
+	  });
+
+export type ArtifactDetailOutput = ArtifactMetadataOutput & { readonly body: string };
 
 export interface ArtifactOutput extends ArtifactReferenceOutput {
 	readonly body: string;

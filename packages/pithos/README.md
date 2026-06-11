@@ -31,7 +31,7 @@ Pithos is the durable source of truth for:
 - Runs and Held tasks
 - Fencing tokens, Attempts, and monotonic Claim sequences
 - typed Task edges (`after`, `about`, `repair`, `gate`) and Supersessions
-- Artifacts and Events
+- Artifacts (including active/rejected audit metadata) and Events
 - Task graph invariants and text/JSON inspection views
 
 ## What Pithos is not
@@ -129,7 +129,7 @@ Important details:
 - library-only `pruneEvents` retention maintenance (default: heartbeat events older than 1 day, other events older than 7 days) through `src/engine/event-log.ts`
 - text renderers for task/graph/briefing views
 
-Engine code opens the SQLite DB, runs migrations, executes transition logic, and closes the DB per operation. Race-sensitive updates run inside SQLite transactions and use fenced preconditions so stale writes fail rather than drifting state. Scope/task admission validates external filesystem state at the Pithos boundary: repo/worktree paths must exist as directories when scopes are upserted and when tasks are enqueued or superseded into those scopes.
+Engine code opens the SQLite DB, runs migrations, executes transition logic, and closes the DB per operation. Race-sensitive updates run inside SQLite transactions and use fenced preconditions so stale writes fail rather than drifting state. Artifact add/reject mutations require active held-task ownership and a matching fencing token. Rejection is one-way: rejected Artifacts remain exact-id inspectable but are excluded from primary active-artifact views. Scope/task admission validates external filesystem state at the Pithos boundary: repo/worktree paths must exist as directories when scopes are upserted and when tasks are enqueued or superseded into those scopes.
 
 ### `src/db.ts` — schema and seed data
 

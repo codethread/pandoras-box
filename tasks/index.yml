@@ -17,7 +17,7 @@ tasks:
   - id: 4
     description: Add artifact rejection APIs
     task_file: tasks/004-add-artifact-rejection-apis.md
-    status: pending
+    status: complete
     blocked_by: [3]
   - id: 5
     description: Compact inspect and graph artifacts

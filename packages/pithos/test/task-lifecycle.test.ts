@@ -316,6 +316,84 @@ describe("task lifecycle", () => {
 		]);
 	});
 
+	it("rejects artifacts one way and exposes targeted list/show APIs", () => {
+		const { dbPath, engine, repo } = setup();
+		const taskId = engine.enqueue({
+			scope: repo,
+			capability: "execute",
+			title: "artifact rejection",
+			body: "body",
+			bodyFile: undefined,
+			runId: "run_toil",
+			after: [],
+			chain: "none",
+		}).task.id;
+		const claim = engine.claim({ runId: "run_war", scope: repo, capability: "execute" });
+		const artifact = engine.artifactAdd({
+			taskId,
+			runId: "run_war",
+			token: claim.task.token,
+			kind: "note",
+			title: "bad evidence",
+			body: "body should only appear in show",
+		}).artifact;
+
+		expect(() =>
+			engine.artifactReject({
+				artifactId: artifact.id,
+				runId: "run_war",
+				token: claim.task.token + 1,
+				reason: "wrong artifact",
+			}),
+		).toThrow("artifact reject token is stale or task is not held by run");
+		const rejected = engine.artifactReject({
+			artifactId: artifact.id,
+			runId: "run_war",
+			token: claim.task.token,
+			reason: "wrong artifact",
+		}).artifact;
+		expect(rejected).toMatchObject({
+			id: artifact.id,
+			task_id: taskId,
+			run_id: "run_war",
+			kind: "note",
+			title: "bad evidence",
+			status: "rejected",
+			rejected_by_run_id: "run_war",
+			rejection_reason: "wrong artifact",
+		});
+		expect(rejected.status).toBe("rejected");
+		if (rejected.status !== "rejected") throw new Error("expected rejected artifact");
+		expect(rejected.rejected_at).toEqual(expect.any(String));
+		expect(engine.artifactList({ taskId }).artifacts).toEqual([rejected]);
+		expect(engine.artifactShow({ artifactId: artifact.id }).artifact).toEqual({
+			...rejected,
+			body: "body should only appear in show",
+		});
+		const eventDb = new Database(dbPath);
+		const rejectionEvent = eventDb
+			.prepare(
+				"SELECT task_id, actor_run_id, payload_json FROM events WHERE type='task.artifact_rejected'",
+			)
+			.get() as { task_id: string; actor_run_id: string; payload_json: string };
+		eventDb.close();
+		expect(rejectionEvent.task_id).toBe(taskId);
+		expect(rejectionEvent.actor_run_id).toBe("run_war");
+		expect(JSON.parse(rejectionEvent.payload_json)).toEqual({
+			artifact_id: artifact.id,
+			kind: "note",
+			reason: "wrong artifact",
+		});
+		expect(() =>
+			engine.artifactReject({
+				artifactId: artifact.id,
+				runId: "run_war",
+				token: claim.task.token,
+				reason: "again",
+			}),
+		).toThrow(`artifact is already rejected: ${artifact.id}`);
+	});
+
 	it("rejects artifact add for terminal task statuses", () => {
 		for (const status of ["done", "failed", "cancelled", "dead_letter"] as const) {
 			const { dbPath, engine, repo } = setup();
@@ -597,13 +675,66 @@ CREATE TABLE artifacts (
 
 		engine.init({ fresh: false });
 
+		const taskId = engine.enqueue({
+			scope: "global",
+			capability: "triage",
+			title: "constraint target",
+			body: "body",
+			bodyFile: undefined,
+			runId: "run_toil",
+			after: [],
+			chain: "none",
+		}).task.id;
 		const migrated = new Database(dbPath);
 		expect(() =>
 			migrated
 				.prepare(
 					"INSERT INTO artifacts(id, task_id, run_id, kind, title, body, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
 				)
-				.run("artifact_bad", "task_missing", "run_toil", "note", "note", "body", "invalid"),
+				.run("artifact_bad", taskId, "run_toil", "note", "note", "body", "invalid"),
+		).toThrow();
+		expect(() =>
+			migrated
+				.prepare(
+					"INSERT INTO artifacts(id, task_id, run_id, kind, title, body, status, rejected_at, rejected_by_run_id, rejection_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				)
+				.run(
+					"artifact_active_bad",
+					taskId,
+					"run_toil",
+					"note",
+					"note",
+					"body",
+					"active",
+					"now",
+					"run_toil",
+					"bad",
+				),
+		).toThrow();
+		expect(() =>
+			migrated
+				.prepare(
+					"INSERT INTO artifacts(id, task_id, run_id, kind, title, body, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+				)
+				.run("artifact_rejected_bad", taskId, "run_toil", "note", "note", "body", "rejected"),
+		).toThrow();
+		expect(() =>
+			migrated
+				.prepare(
+					"INSERT INTO artifacts(id, task_id, run_id, kind, title, body, status, rejected_at, rejected_by_run_id, rejection_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				)
+				.run(
+					"artifact_blank_reason_bad",
+					taskId,
+					"run_toil",
+					"note",
+					"note",
+					"body",
+					"rejected",
+					"now",
+					"run_toil",
+					"   ",
+				),
 		).toThrow();
 		migrated.close();
 	});

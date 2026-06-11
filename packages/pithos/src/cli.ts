@@ -8,6 +8,8 @@ import type { Config } from "./config.js";
 import {
 	makeEngine,
 	parseGraphSinceCutoff,
+	renderArtifactListText,
+	renderArtifactShowText,
 	renderBriefingText,
 	renderGraphInspectText,
 	renderTaskInspectMarkdown,
@@ -111,6 +113,15 @@ type CommandInput =
 			readonly title: string;
 			readonly stdin: boolean;
 	  }
+	| {
+			readonly command: "task.artifact.reject";
+			readonly artifactId: string;
+			readonly runId: string | undefined;
+			readonly token: number;
+			readonly reason: string;
+	  }
+	| { readonly command: "task.artifact.list"; readonly taskId: string; readonly json: boolean }
+	| { readonly command: "task.artifact.show"; readonly artifactId: string; readonly json: boolean }
 	| { readonly command: "task.inspect"; readonly taskId: string; readonly json: boolean }
 	| {
 			readonly command: "task.cancel";
@@ -520,6 +531,16 @@ const runCommand = (ctx: CliContext, input: CommandInput) =>
 					return engine.failTask(input);
 				case "task.artifact.add":
 					return engine.artifactAdd({ ...input, body: artifactBody! });
+				case "task.artifact.reject":
+					return engine.artifactReject(input);
+				case "task.artifact.list": {
+					const listOutput = engine.artifactList({ taskId: input.taskId });
+					return input.json ? listOutput : renderArtifactListText(listOutput.artifacts);
+				}
+				case "task.artifact.show": {
+					const showOutput = engine.artifactShow({ artifactId: input.artifactId });
+					return input.json ? showOutput : renderArtifactShowText(showOutput.artifact);
+				}
 				case "task.inspect": {
 					const inspectOutput = engine.taskInspect({ taskId: input.taskId });
 					return input.json ? inspectOutput : renderTaskInspectMarkdown(inspectOutput);
@@ -949,9 +970,65 @@ export const makePithosCommand = (ctx: CliContext) => {
 			"Attach an artifact to a held task using its current fencing token; optional body is read from stdin when requested.",
 		),
 	);
+	const artifactReject = Command.make(
+		"reject",
+		{
+			artifactId: textArg("artifact-id", "Artifact to reject."),
+			runId: runIdOption.pipe(Options.optional),
+			token: integerOption(
+				"token",
+				"token",
+				"Current fencing token proving ownership of the parent held Task.",
+			),
+			reason: reasonOption,
+		},
+		(o) =>
+			runCommand(ctx, {
+				command: "task.artifact.reject",
+				artifactId: o.artifactId,
+				runId: opt(o.runId),
+				token: o.token,
+				reason: o.reason,
+			}),
+	).pipe(Command.withDescription("Reject an active artifact using parent task ownership."));
+	const artifactListCommand = Command.make(
+		"list",
+		{
+			taskId: textArg("task-id", "Task whose artifacts should be listed."),
+			json: Options.boolean("json").pipe(
+				Options.withDescription("Return artifact metadata as JSON without bodies."),
+			),
+		},
+		(o) =>
+			runCommand(ctx, {
+				command: "task.artifact.list",
+				taskId: o.taskId,
+				json: o.json,
+			}),
+	).pipe(Command.withDescription("List active and rejected artifact metadata for a task."));
+	const artifactShowCommand = Command.make(
+		"show",
+		{
+			artifactId: textArg("artifact-id", "Artifact to show by exact id."),
+			json: Options.boolean("json").pipe(
+				Options.withDescription("Return artifact metadata and body as JSON."),
+			),
+		},
+		(o) =>
+			runCommand(ctx, {
+				command: "task.artifact.show",
+				artifactId: o.artifactId,
+				json: o.json,
+			}),
+	).pipe(Command.withDescription("Show one artifact, including rejected artifacts, by exact id."));
 	const taskArtifact = Command.make("artifact").pipe(
-		Command.withDescription("Attach evidence or output to a Pithos task."),
-		Command.withSubcommands([artifactAdd]),
+		Command.withDescription("Attach, reject, list, and show Pithos task artifacts."),
+		Command.withSubcommands([
+			artifactAdd,
+			artifactReject,
+			artifactListCommand,
+			artifactShowCommand,
+		]),
 	);
 	const taskInspect = Command.make(
 		"inspect",

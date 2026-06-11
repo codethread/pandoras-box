@@ -55,7 +55,14 @@ CREATE TABLE ${tableName} (
 	title TEXT NOT NULL,
 	body TEXT NOT NULL,
 	status TEXT NOT NULL CHECK (status IN ('active', 'rejected')) DEFAULT 'active',
-	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+	rejected_at TEXT,
+	rejected_by_run_id TEXT REFERENCES runs(id),
+	rejection_reason TEXT,
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	CHECK (
+		(status = 'active' AND rejected_at IS NULL AND rejected_by_run_id IS NULL AND rejection_reason IS NULL)
+		OR (status = 'rejected' AND rejected_at IS NOT NULL AND length(rejected_at) > 0 AND rejected_by_run_id IS NOT NULL AND length(rejected_by_run_id) > 0 AND rejection_reason IS NOT NULL AND length(trim(rejection_reason)) > 0)
+	)
 );
 `;
 
@@ -299,26 +306,19 @@ const ensureArtifactsStatusColumn = (db: Db): void => {
 		.all() as { sql: string }[];
 	if (rows.length === 0) return;
 	const tableSql = rows[0]?.sql ?? "";
-	const hasStatusColumn = db
-		.prepare(sql`PRAGMA table_info(artifacts)`)
-		.all()
-		.some((column) => (column as { name: string }).name === "status");
+	const columns = db.prepare(sql`PRAGMA table_info(artifacts)`).all() as { name: string }[];
+	const hasRejectionColumns = ["rejected_at", "rejected_by_run_id", "rejection_reason"].every(
+		(name) => columns.some((column) => column.name === name),
+	);
 	const hasStatusConstraint = tableSql.includes("status IN ('active', 'rejected')");
-	if (hasStatusColumn && hasStatusConstraint) return;
+	const hasRejectionConstraint = tableSql.includes("status = 'active' AND rejected_at IS NULL");
+	if (hasStatusConstraint && hasRejectionColumns && hasRejectionConstraint) return;
 
-	const copySql = hasStatusColumn
-		? sql`
-			INSERT INTO artifacts_new(id, task_id, run_id, kind, title, body, status, created_at)
-			SELECT id, task_id, run_id, kind, title, body,
-			       CASE status WHEN 'rejected' THEN 'rejected' ELSE 'active' END,
-			       created_at
-			FROM artifacts
-		`
-		: sql`
-			INSERT INTO artifacts_new(id, task_id, run_id, kind, title, body, status, created_at)
-			SELECT id, task_id, run_id, kind, title, body, 'active', created_at
-			FROM artifacts
-		`;
+	const copySql = sql`
+		INSERT INTO artifacts_new(id, task_id, run_id, kind, title, body, status, created_at)
+		SELECT id, task_id, run_id, kind, title, body, 'active', created_at
+		FROM artifacts
+	`;
 
 	db.pragma("foreign_keys = OFF");
 	try {

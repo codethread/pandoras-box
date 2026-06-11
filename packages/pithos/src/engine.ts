@@ -31,6 +31,8 @@ import {
 	parseScopeOutput,
 	parseTaskDetail,
 	parseTaskSummary,
+	artifactList,
+	artifactShow,
 	taskArtifacts,
 	taskAttachedContext,
 	taskEdges,
@@ -52,6 +54,8 @@ import {
 } from "./engine/task-read-model.js";
 export { parseGraphSinceCutoff } from "./engine/graph-inspect.js";
 export {
+	renderArtifactListText,
+	renderArtifactShowText,
 	renderBriefingText,
 	renderGraphInspectText,
 	renderTaskInspectMarkdown,
@@ -66,6 +70,8 @@ import type {
 	ScopeOutput,
 } from "./engine/types.js";
 export type {
+	ArtifactDetailOutput,
+	ArtifactMetadataOutput,
 	ArtifactOutput,
 	BlockerOutput,
 	BlockedTaskOutput,
@@ -1111,6 +1117,10 @@ export const makeEngine = (ctx: EngineContext): Engine => ({
 		authorized,
 		enforceCapScope,
 	}),
+	artifactList: ({ taskId }) =>
+		withDb(ctx, (db) => ({ ok: true, artifacts: artifactList(db, taskId) })),
+	artifactShow: ({ artifactId }) =>
+		withDb(ctx, (db) => ({ ok: true, artifact: artifactShow(db, artifactId) })),
 	taskInspect: ({ taskId }) =>
 		withDb(ctx, (db) => {
 			const task = taskInspectTask(db, taskId);

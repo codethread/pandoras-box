@@ -2,11 +2,17 @@ import { Effect } from "effect";
 import { sql, type Capability } from "../db.js";
 import type { Db } from "../db.js";
 import { fail } from "../errors.js";
-import { ActiveArtifactMetadataRowSchema, decodeRow, type RunRow } from "../rows.js";
+import { ArtifactMetadataRowSchema, decodeRow, type RunRow } from "../rows.js";
 import { withCollisionGuard, withDb } from "./db-helpers.js";
 import { event } from "./event-log.js";
 import { createRepairAlertInTxn } from "./repair-alerts.js";
-import { isClaimable, taskDetail, taskGates, taskSummary } from "./task-read-model.js";
+import {
+	isClaimable,
+	taskDetail,
+	taskGates,
+	taskSummary,
+	toArtifactMetadataOutput,
+} from "./task-read-model.js";
 import type { Engine, EngineContext } from "./types.js";
 
 export interface ClaimLoopDeps {
@@ -54,10 +60,10 @@ RETURNING id, fencing_token, attempts, claim_sequence, capability
 
 const artifactKindPattern = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 
-type ArtifactAddOutput = ReturnType<Engine["artifactAdd"]>["artifact"];
+type ArtifactMetadataOutput = ReturnType<Engine["artifactReject"]>["artifact"];
 
-const parseArtifactAddOutput = (value: unknown): ArtifactAddOutput =>
-	decodeRow(ActiveArtifactMetadataRowSchema, value, "artifact add output");
+const parseArtifactMetadataOutput = (value: unknown): ArtifactMetadataOutput =>
+	toArtifactMetadataOutput(decodeRow(ArtifactMetadataRowSchema, value, "artifact metadata output"));
 
 const requireArtifactKind = (kind: string): string => {
 	if (!artifactKindPattern.test(kind)) {
@@ -69,7 +75,10 @@ const requireArtifactKind = (kind: string): string => {
 export const makeClaimLoopOps = (
 	ctx: EngineContext,
 	deps: ClaimLoopDeps,
-): Pick<Engine, "claim" | "heartbeat" | "complete" | "failTask" | "artifactAdd" | "cancel"> => ({
+): Pick<
+	Engine,
+	"claim" | "heartbeat" | "complete" | "failTask" | "artifactAdd" | "artifactReject" | "cancel"
+> => ({
 	claim: ({ runId, scope, capability }) =>
 		withDb(ctx, (db) => {
 			const actorRunId = deps.resolveRunId(ctx, runId);
@@ -272,7 +281,7 @@ export const makeClaimLoopOps = (
 			const artifactTitle = deps.requireNonEmpty(title, "--title");
 			const artifactId = Effect.runSync(ctx.services.ids.make("artifact"));
 			const artifactResult = withCollisionGuard(artifactId, () =>
-				db.transaction((): ArtifactAddOutput => {
+				db.transaction((): ArtifactMetadataOutput => {
 					const inserted = db
 						.prepare(sql`
 							INSERT INTO artifacts(id,task_id,run_id,kind,title,body,status)
@@ -288,7 +297,7 @@ export const makeClaimLoopOps = (
 								    AND r.status = 'live'
 								    AND r.task_id = t.id
 							  )
-							RETURNING id, task_id, run_id, kind, title, status, created_at
+							RETURNING id, task_id, run_id, kind, title, status, rejected_at, rejected_by_run_id, rejection_reason, created_at
 						`)
 						.get(
 							artifactId,
@@ -299,7 +308,7 @@ export const makeClaimLoopOps = (
 							taskId,
 							token,
 							actorRunId,
-						) as ArtifactAddOutput | undefined;
+						);
 					if (inserted === undefined) {
 						const task = db.prepare(sql`SELECT status FROM tasks WHERE id=?`).get(taskId) as
 							| { readonly status: string }
@@ -315,11 +324,66 @@ export const makeClaimLoopOps = (
 						actor_run_id: actorRunId,
 						payload: { artifact_id: artifactId, kind: artifactKind },
 					});
-					return parseArtifactAddOutput(inserted);
+					return parseArtifactMetadataOutput(inserted);
 				})(),
 			);
-			const artifact: ArtifactAddOutput =
+			const artifact =
 				artifactResult ?? fail("ID_COLLISION", `artifact id collision: ${artifactId}`);
+			return { ok: true, artifact };
+		}),
+	artifactReject: ({ artifactId, runId, token, reason }) =>
+		withDb(ctx, (db) => {
+			const actorRunId = deps.resolveRunId(ctx, runId);
+			deps.liveRun(db, actorRunId);
+			const nonEmptyReason = deps.requireNonEmpty(reason.trim(), "--reason");
+			const artifact = db.transaction((): ArtifactMetadataOutput => {
+				const existingRow = db
+					.prepare(sql`SELECT task_id, status, kind FROM artifacts WHERE id=?`)
+					.get(artifactId) as
+					| { readonly task_id: string; readonly status: string; readonly kind: string }
+					| undefined;
+				const existing = existingRow ?? fail("NOT_FOUND", `artifact not found: ${artifactId}`);
+				if (existing.status === "rejected")
+					fail("VALIDATION_ERROR", `artifact is already rejected: ${artifactId}`);
+				if (existing.status !== "active")
+					fail("INTERNAL_ERROR", `unsupported artifact status: ${existing.status}`);
+				const updated = db
+					.prepare(sql`
+						UPDATE artifacts
+						SET status='rejected',
+						    rejected_at=CURRENT_TIMESTAMP,
+						    rejected_by_run_id=?,
+						    rejection_reason=?
+						WHERE id=?
+						  AND status='active'
+						  AND EXISTS (
+							  SELECT 1
+							  FROM tasks t
+							  JOIN runs r ON r.id=? AND r.status='live' AND r.task_id=t.id
+							  WHERE t.id=artifacts.task_id
+							    AND t.status IN ('claimed','running')
+							    AND t.fencing_token=?
+						  )
+						RETURNING id, task_id, run_id, kind, title, status, rejected_at, rejected_by_run_id, rejection_reason, created_at
+					`)
+					.get(actorRunId, nonEmptyReason, artifactId, actorRunId, token);
+				if (updated === undefined) {
+					const task = db
+						.prepare(sql`SELECT status FROM tasks WHERE id=?`)
+						.get(existing.task_id) as { readonly status: string } | undefined;
+					const parentTask = task ?? fail("NOT_FOUND", `task not found: ${existing.task_id}`);
+					if (!["claimed", "running"].includes(parentTask.status)) {
+						fail("VALIDATION_ERROR", `task status cannot reject artifacts: ${parentTask.status}`);
+					}
+					fail("STALE_TOKEN", "artifact reject token is stale or task is not held by run");
+				}
+				event(ctx, db, "task.artifact_rejected", {
+					task_id: existing.task_id,
+					actor_run_id: actorRunId,
+					payload: { artifact_id: artifactId, kind: existing.kind, reason: nonEmptyReason },
+				});
+				return parseArtifactMetadataOutput(updated);
+			})();
 			return { ok: true, artifact };
 		}),
 	cancel: ({ taskId, runId, reason }) =>

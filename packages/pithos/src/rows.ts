@@ -62,15 +62,40 @@ export const EventRowSchema = Schema.Struct({
 	created_at: NonEmptyString,
 });
 
-export const ActiveArtifactMetadataRowSchema = Schema.Struct({
+const ArtifactMetadataBaseRowSchema = Schema.Struct({
 	id: NonEmptyString,
 	task_id: NonEmptyString,
 	run_id: NonEmptyString,
 	kind: NonEmptyString,
 	title: Schema.String,
-	status: Schema.Literal("active"),
 	created_at: NonEmptyString,
 });
+
+export const ArtifactMetadataRowSchema = Schema.Union(
+	Schema.extend(
+		ArtifactMetadataBaseRowSchema,
+		Schema.Struct({
+			status: Schema.Literal("active"),
+			rejected_at: Schema.Null,
+			rejected_by_run_id: Schema.Null,
+			rejection_reason: Schema.Null,
+		}),
+	),
+	Schema.extend(
+		ArtifactMetadataBaseRowSchema,
+		Schema.Struct({
+			status: Schema.Literal("rejected"),
+			rejected_at: NonEmptyString,
+			rejected_by_run_id: NonEmptyString,
+			rejection_reason: NonEmptyString,
+		}),
+	),
+);
+
+export const ArtifactDetailRowSchema = Schema.extend(
+	ArtifactMetadataRowSchema,
+	Schema.Struct({ body: Schema.String }),
+);
 
 export const REPAIR_ALERT_KINDS = [
 	"interrupt",

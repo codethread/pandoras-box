@@ -1,5 +1,7 @@
 import type { Capability, TaskStatus } from "../db.js";
 import type {
+	ArtifactDetailOutput,
+	ArtifactMetadataOutput,
 	ArtifactOutput,
 	BriefingOutput,
 	GateInspectOutput,
@@ -83,6 +85,26 @@ const fencedMarkdown = (body: string): string => {
 
 const renderArtifactMarkdown = (artifact: ArtifactOutput): string =>
 	`Artifact ${artifact.id} [${artifact.kind}] ${artifact.title}:\n\n${fencedMarkdown(artifact.body)}`;
+
+const artifactMetadataForJson = ({
+	body,
+	...metadata
+}: ArtifactDetailOutput): ArtifactMetadataOutput => {
+	void body;
+	return metadata;
+};
+
+export const renderArtifactListText = (artifacts: readonly ArtifactMetadataOutput[]): string =>
+	`${artifacts
+		.map((artifact) =>
+			artifact.status === "rejected"
+				? `- ${artifact.id} [${artifact.kind}] ${artifact.title} [rejected: ${artifact.rejection_reason}]`
+				: `- ${artifact.id} [${artifact.kind}] ${artifact.title}`,
+		)
+		.join("\n")}${artifacts.length === 0 ? "- none" : ""}\n`;
+
+export const renderArtifactShowText = (artifact: ArtifactDetailOutput): string =>
+	`# ${artifact.id} [${artifact.kind}] ${artifact.title}\n\n\`\`\`json\n${JSON.stringify(artifactMetadataForJson(artifact), null, 2)}\n\`\`\`\n\n${fencedMarkdown(artifact.body)}\n`;
 
 const renderTaskBullet = (task: TaskDetailOutput): string => `- ${taskTitleLine(task)}`;
 
