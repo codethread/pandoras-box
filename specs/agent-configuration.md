@@ -1,7 +1,7 @@
 # Agent Policy Configuration
 
 **Status:** Implemented
-**Last Updated:** 2026-05-31
+**Last Updated:** 2026-06-11
 
 ## 1. Overview
 
@@ -85,6 +85,7 @@ $PDX_USER_DATA_DIR/
   CLAUDE.md          # Claude direct-agent pointer, scaffolded once
   agents.toml        # user policy registry and Harness partials, scaffolded once
   PANDORA.md         # installed config reference, re-seeded on init/open
+  artifacts.toml     # user-owned Artifact Contract guidance/completion rules
   policies/          # user-owned policy pack Markdown files
 ```
 
@@ -285,9 +286,10 @@ Spawner renders prompts in this order:
 1. bundled Agent template
 2. bundled shared runtime includes (`common/base.md`, `common/afk.md` or `common/hitl.md`)
 3. generated command reference (`{{command_cards}}`)
-4. selected policy packs in final order
+4. generated Artifact Contract section, when applicable
+5. selected policy packs in final order
 
-Bundled templates use simple `{{variable}}` substitutions. Unknown variables fail loudly. Policy packs are appended verbatim and do not receive template variables.
+Bundled templates use simple `{{variable}}` substitutions. Unknown variables fail loudly. Policy packs are appended verbatim and do not receive template variables. The generated Artifact Contract section is rendered by Spawner using the shared `@pdx/pithos` parser/normalizer; it is not configured through `agents.toml` and is omitted when no rules apply. It contains a short preamble plus minified normalized JSON for the selected/current Capability, or for all claimable Capabilities when no selected Capability is known. Pithos owns completion enforcement; Spawner only renders parsed guidance into prompts. See `specs/artifact-contracts.md` for the Artifact Contract format and enforcement semantics.
 
 Available bundled template variables:
 
@@ -325,20 +327,21 @@ A direct config-editing Agent can run from `$PDX_USER_DATA_DIR`, read `PANDORA.m
 
 ## 9. Code Locations
 
-| File / Directory                       | Responsibility                                                                                        |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `packages/spawner/src/manifest.ts`     | Parse user `agents.toml`, validate policy declarations/rules, merge policy and Harness config.        |
-| `packages/spawner/src/paths.ts`        | Resolve bundled resources, user config roots, policy file paths, and argv path expansion.             |
-| `packages/spawner/src/spawner.ts`      | Render bundled prompts, generated command cards, selected policies, Harness argv/env, and provenance. |
-| `packages/spawner/src/main.ts`         | `pandora-spawn preview` CLI boundary.                                                                 |
-| `packages/spawner/src/spawner.test.ts` | Policy selection, rule matching, validation, prompt rendering, and preview provenance tests.          |
-| `packages/pdx/src/config.ts`           | Parse `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, derived defaults, and invalid path relationships.          |
-| `packages/pdx/src/live.ts`             | Re-seed canonical config/templates and scaffold user config files.                                    |
-| `packages/pdx/src/controller.ts`       | Preserve user config during clean/nuke and pass launch context to Spawner.                            |
-| `resources/README.md`                  | Resource ownership map and pointers to this spec plus installed user reference docs.                  |
-| `resources/data-dir/`                  | Bundled canonical Agent prompt defaults, templates, and runtime `AGENTS.md` note.                     |
-| `resources/user-data-dir/PANDORA.md`   | User-facing policy registry, external intake, preview, and lifecycle reference.                       |
-| `resources/user-data-dir/`             | User config scaffold files and installed reference assets.                                            |
+| File / Directory                            | Responsibility                                                                                                                              |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/spawner/src/manifest.ts`          | Parse user `agents.toml`, validate policy declarations/rules, merge policy and Harness config.                                              |
+| `packages/spawner/src/paths.ts`             | Resolve bundled resources, user config roots, policy file paths, and argv path expansion.                                                   |
+| `packages/spawner/src/spawner.ts`           | Render bundled prompts, generated command cards, generated Artifact Contract guidance, selected policies, Harness argv/env, and provenance. |
+| `packages/spawner/src/main.ts`              | `pandora-spawn preview` CLI boundary.                                                                                                       |
+| `packages/spawner/src/spawner.test.ts`      | Policy selection, rule matching, validation, prompt rendering, and preview provenance tests.                                                |
+| `packages/pdx/src/config.ts`                | Parse `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, derived defaults, and invalid path relationships.                                                |
+| `packages/pdx/src/live.ts`                  | Re-seed canonical config/templates and scaffold user config files.                                                                          |
+| `packages/pdx/src/controller.ts`            | Preserve user config during clean/nuke and pass launch context to Spawner.                                                                  |
+| `resources/README.md`                       | Resource ownership map and pointers to this spec plus installed user reference docs.                                                        |
+| `resources/data-dir/`                       | Bundled canonical Agent prompt defaults, templates, and runtime `AGENTS.md` note.                                                           |
+| `resources/user-data-dir/PANDORA.md`        | User-facing policy registry, external intake, preview, and lifecycle reference.                                                             |
+| `resources/user-data-dir/`                  | User config scaffold files, `artifacts.toml`, and installed reference assets.                                                               |
+| `packages/pithos/src/artifact-contracts.ts` | Public Artifact Contract parser/normalizer used by Spawner.                                                                                 |
 
 ## 10. Testing
 
@@ -349,7 +352,7 @@ Automated tests cover:
 - Match rule validation and matching for exact path, glob path, scope kind, and Agent kind.
 - Policy merge behavior: top-level defaults, Agent-specific defaults, ordered rules, add/remove behavior, duplicate final policy detection, and removing absent policies.
 - Harness merge behavior: scalar replacement, rule-targeted scalar replacement, tool add/remove, argv add/replace, and path expansion.
-- Prompt composition order: bundled base before generated command cards before policy packs.
+- Prompt composition order: bundled base before generated command cards, generated Artifact Contract guidance when applicable, and policy packs.
 - Missing user Harness configuration fails render/open loudly instead of selecting a bundled runtime.
 - No user file can shadow bundled `agents/*.md` or `common/*.md` prompts.
 - Removed hook configuration fails loudly as an unknown manifest field.

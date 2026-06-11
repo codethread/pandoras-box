@@ -6,11 +6,11 @@ Implement the Artifact Contracts MVP described by `specs/artifact-contracts.md`:
 
 ## Important references
 
-- `specs/artifact-contracts.md` — primary planned design.
-- `specs/task-graph.delta.md` — required Task graph spec deltas.
-- `specs/control-plane-supervision.delta.md` — pdx scaffolding/environment and `clarify` capability deltas.
-- `specs/agent-command-reference.delta.md` — command-card deltas for artifact APIs.
-- `specs/agent-configuration.delta.md` — prompt-composition delta for generated Artifact Contract guidance.
+- `specs/artifact-contracts.md` — implemented Artifact Contract semantics and centralized config/API contract.
+- `specs/task-graph.md` — implemented Task graph artifact lifecycle, completion, and inspection behavior.
+- `specs/control-plane-supervision.md` — implemented pdx scaffolding/environment and `clarify` capability behavior.
+- `specs/agent-command-reference.md` — implemented command-card and artifact prompt guidance behavior.
+- `specs/agent-configuration.md` — implemented prompt-composition boundary for generated Artifact Contract guidance.
 - `packages/pithos/README.md` — Pithos package boundaries and invariant patterns.
 - `packages/spawner/README.md` — Spawner prompt rendering and preview boundary.
 - `packages/pdx/README.md` — pdx user config scaffolding and lifecycle boundary.
@@ -36,3 +36,4 @@ Append notes here. Do not rewrite earlier notes.
 - Task 6: Completion now loads `$PDX_USER_DATA_DIR/artifacts.toml` through the shared parser and gates only required active artifact kinds; graph JSON/readable output reports missing required artifacts for claimed/running tasks only. Deep review feedback narrowed graph JSON `missing_required` to compact kind strings and prompted README/config-boundary coverage. Validation passed with `pnpm --filter @pdx/pithos test` and full `pnpm verify` (first full verify exposed a transient pdx CLI test failure that passed on focused rerun and on the second full verify).
 - Task 7: Added the user-owned `artifacts.toml` scaffold with commented-only examples, wired pdx template materialization to create it only when missing, and documented ownership/enforcement semantics in the installed config reference. The existing launch environment path already passes `PDX_USER_DATA_DIR` through pdx/Spawner.
 - Task 8: Rendered applicable Artifact Contract rules next to generated command cards through the public Pithos parser/normalizer. Existing pdx spawn/open coverage exercises the same `renderAgent` boundary that now fails on invalid present `artifacts.toml`; focused `pnpm --filter @pdx/pdx test` passed.
+- Task 9: Merged artifact-contract deltas into living implemented specs, centralized detailed Artifact Contract semantics in `specs/artifact-contracts.md`, cross-linked related specs, removed active delta files, updated this plan’s reference list away from retired deltas, and verified with `pnpm verify`.

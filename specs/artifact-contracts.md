@@ -1,6 +1,6 @@
 # Artifact Contracts
 
-**Status:** Planned
+**Status:** Implemented
 **Last Updated:** 2026-06-11
 
 ## 1. Overview
@@ -17,7 +17,7 @@ Artifact Contracts define the user-owned rules that tell Agents what evidence sh
 - Require active task ownership and fencing tokens for artifact add/reject mutations.
 - Preserve artifact audit history while allowing mistaken WIP artifacts to be retired from primary views.
 - Keep graph and task inspection concise by default, with body/detail APIs available on demand.
-- Provide the artifact foundation needed for a future `clarify` requirements-measurement lane.
+- Support the `clarify` requirements-measurement lane without introducing a first-class Brief table.
 
 ### Non-Goals
 
@@ -91,9 +91,9 @@ Fields:
 | ------------ | -------- | ----------------------------------------------------------------------- |
 | `capability` | yes      | Built-in Pithos Capability this artifact rule applies to.               |
 | `kind`       | yes      | Lower-snake-case artifact kind.                                         |
-| `required`   | no       | Defaults to `false`; when `true`, gates Task completion by kind.         |
-| `title`      | yes      | Non-empty guidance title; not matched against produced artifact titles.  |
-| `body`       | yes      | Non-empty Markdown guidance; not parsed or matched during enforcement.   |
+| `required`   | no       | Defaults to `false`; when `true`, gates Task completion by kind.        |
+| `title`      | yes      | Non-empty guidance title; not matched against produced artifact titles. |
+| `body`       | yes      | Non-empty Markdown guidance; not parsed or matched during enforcement.  |
 
 Validation:
 
@@ -126,7 +126,17 @@ Artifact contract for your current capability follows as normalized JSON. `requi
 Example payload:
 
 ```json
-{"artifacts":[{"capability":"clarify","kind":"open_questions","required":true,"title":"Open questions","body":"List material questions requiring user intent, or write:\n\nNo open questions."}]}
+{
+	"artifacts": [
+		{
+			"capability": "clarify",
+			"kind": "open_questions",
+			"required": true,
+			"title": "Open questions",
+			"body": "List material questions requiring user intent, or write:\n\nNo open questions."
+		}
+	]
+}
 ```
 
 Pithos remains the enforcement owner. Prompt rendering is advisory except that it reports the same parsed contract Agents will encounter at completion time when the same environment is used. Because enforcement reads the current file at completion time, an operator changing `artifacts.toml` while a Task is held can change what completion requires; an Agent that hits a missing-artifact error should treat the error as the refreshed contract and attach the named artifacts before retrying completion.
@@ -196,16 +206,16 @@ Mutation commands return JSON only. `add` and `reject` return compact artifact m
 
 ```json
 {
-  "ok": true,
-  "artifact": {
-    "id": "artifact_abc",
-    "task_id": "task_123",
-    "run_id": "run_envy",
-    "kind": "open_questions",
-    "title": "Open questions",
-    "status": "active",
-    "created_at": "..."
-  }
+	"ok": true,
+	"artifact": {
+		"id": "artifact_abc",
+		"task_id": "task_123",
+		"run_id": "run_envy",
+		"kind": "open_questions",
+		"title": "Open questions",
+		"status": "active",
+		"created_at": "..."
+	}
 }
 ```
 
@@ -236,16 +246,16 @@ Default list output:
 
 ```json
 {
-  "id": "artifact_abc",
-  "task_id": "task_123",
-  "run_id": "run_envy",
-  "kind": "open_questions",
-  "title": "Open questions",
-  "status": "rejected",
-  "created_at": "...",
-  "rejected_at": "...",
-  "rejected_by_run_id": "run_envy",
-  "rejection_reason": "wrong artifact"
+	"id": "artifact_abc",
+	"task_id": "task_123",
+	"run_id": "run_envy",
+	"kind": "open_questions",
+	"title": "Open questions",
+	"status": "rejected",
+	"created_at": "...",
+	"rejected_at": "...",
+	"rejected_by_run_id": "run_envy",
+	"rejection_reason": "wrong artifact"
 }
 ```
 
@@ -287,29 +297,29 @@ Readable graph output omits `artifacts: none`. It renders an artifact block only
 For Tasks in `claimed` or `running` status whose Capability has required artifact rules, graph JSON includes compact live requirement status:
 
 ```json
-"artifact_requirements": { "missing_required": ["assertions"] }
+"requirement_status": { "missing_required": ["assertions"] }
 ```
 
 If all required artifacts are present, include an empty array for claimed/running Tasks with active requirements:
 
 ```json
-"artifact_requirements": { "missing_required": [] }
+"requirement_status": { "missing_required": [] }
 ```
 
 Do not include this field for non-claimed Tasks or Capabilities with no required rules. Human graph output should only surface missing required artifacts for claimed/running Tasks, not optional rules or satisfied requirements.
 
 ## 9. Clarify Capability Integration
 
-Artifact Contracts provide the minimal persistence mechanism for a future `clarify` requirements-measurement lane.
+Artifact Contracts are the persistence mechanism for the `clarify` requirements-measurement lane.
 
-Planned capability changes:
+Implemented capability behavior:
 
-- add `clarify` as a built-in Capability
+- `clarify` is a built-in Capability
 - Envy may claim `intake` and `clarify`
 - Envy may enqueue `clarify`, `triage`, `design`, and `escalate`
 - interpretive intake may enqueue `clarify`
 - `clarify` work normally enqueues `triage` and may enqueue escalation as needed
-- deterministic external intake remains unchanged unless it chooses to route into clarify by policy
+- deterministic external intake remains unchanged unless Envy routes interpretive work into clarify by policy
 
 Artifact Contracts can express the expected clarify outputs without hard-coding a Brief schema:
 
@@ -340,22 +350,22 @@ The stronger invariant that `design` and `execute` require a signed/auto brief i
 
 ## 10. Code Locations
 
-Expected implementation areas:
+Implementation areas:
 
-| Path | Responsibility |
-| ---- | -------------- |
-| `packages/pithos/src/db.ts` | Artifact status/rejection schema migration. |
-| `packages/pithos/src/rows.ts` | Artifact row parsing and status validation. |
-| `packages/pithos/src/config.ts` or new Pithos config module | Resolve and parse `$PDX_USER_DATA_DIR/artifacts.toml`; export parser/normalizer for Spawner. |
-| `packages/pithos/src/engine/claim-loop.ts` | Fenced artifact add/reject and completion enforcement. |
-| `packages/pithos/src/engine/task-read-model.ts` | Active artifact queries, list/show read models, requirement status. |
-| `packages/pithos/src/engine/graph-inspect.ts` | Active artifact refs and live missing-required status. |
-| `packages/pithos/src/engine/render.ts` | Compact/full inspect, graph artifact rendering, artifact list/show renderers. |
-| `packages/pithos/src/cli.ts` | CLI flags and command dispatch. |
-| `packages/spawner/src/spawner.ts` | Prompt injection of normalized artifact contract JSON. |
-| `packages/pdx/src/live.ts` | Scaffold user `artifacts.toml` once. |
-| `resources/user-data-dir/artifacts.toml` | Commented example scaffold. |
-| `resources/user-data-dir/PANDORA.md` | User-facing artifact-contract guidance. |
+| Path                                            | Responsibility                                                                               |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `packages/pithos/src/db.ts`                     | Artifact status/rejection schema migration.                                                  |
+| `packages/pithos/src/rows.ts`                   | Artifact row parsing and status validation.                                                  |
+| `packages/pithos/src/artifact-contracts.ts`     | Resolve and parse `$PDX_USER_DATA_DIR/artifacts.toml`; export parser/normalizer for Spawner. |
+| `packages/pithos/src/engine/claim-loop.ts`      | Fenced artifact add/reject and completion enforcement.                                       |
+| `packages/pithos/src/engine/task-read-model.ts` | Active artifact queries, list/show read models, requirement status.                          |
+| `packages/pithos/src/engine/task-read-model.ts` | Active artifact refs, list/show read models, and live missing-required status.               |
+| `packages/pithos/src/engine/render.ts`          | Compact/full inspect, graph artifact rendering, artifact list/show renderers.                |
+| `packages/pithos/src/cli.ts`                    | CLI flags and command dispatch.                                                              |
+| `packages/spawner/src/spawner.ts`               | Prompt injection of normalized artifact contract JSON.                                       |
+| `packages/pdx/src/live.ts`                      | Scaffold user `artifacts.toml` once.                                                         |
+| `resources/user-data-dir/artifacts.toml`        | Commented example scaffold.                                                                  |
+| `resources/user-data-dir/PANDORA.md`            | Installed user-facing artifact-contract guidance.                                            |
 
 ## 11. Testing
 

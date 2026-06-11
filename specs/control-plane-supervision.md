@@ -1,7 +1,7 @@
 # Control Plane Supervision
 
 **Status:** Implemented
-**Last Updated:** 2026-05-26
+**Last Updated:** 2026-06-11
 
 ## 1. Overview
 
@@ -64,22 +64,22 @@ Agents claim work themselves through Pithos. pdx never injects Task content into
 
 Pithos seeds and enforces the built-in Agent kinds, Capabilities, claim authorization, and enqueue authorization.
 
-| Agent kind | Mode today   | Claims             | Enqueues                                            |
-| ---------- | ------------ | ------------------ | --------------------------------------------------- |
-| `pdx`      | system actor | —                  | `escalate`, `intake`                                |
-| `pandora`  | HITL         | `escalate`         | `triage`, `design`, `review`, `escalate`            |
-| `envy`     | AFK          | `intake`           | `triage`, `design`, `escalate`                      |
-| `toil`     | AFK          | `triage`           | `triage`, `design`, `execute`, `review`, `escalate` |
-| `greed`    | HITL         | `design`, `review` | `triage`, `design`, `escalate`                      |
-| `war`      | AFK          | `execute`          | `escalate`                                          |
+| Agent kind | Mode today   | Claims              | Enqueues                                            |
+| ---------- | ------------ | ------------------- | --------------------------------------------------- |
+| `pdx`      | system actor | —                   | `escalate`, `intake`                                |
+| `pandora`  | HITL         | `escalate`          | `triage`, `design`, `review`, `escalate`            |
+| `envy`     | AFK          | `intake`, `clarify` | `clarify`, `triage`, `design`, `escalate`           |
+| `toil`     | AFK          | `triage`            | `triage`, `design`, `execute`, `review`, `escalate` |
+| `greed`    | HITL         | `design`, `review`  | `triage`, `design`, `escalate`                      |
+| `war`      | AFK          | `execute`           | `escalate`                                          |
 
-Capabilities are `intake`, `triage`, `design`, `execute`, `review`, and `escalate`. `execute` work must be in repo/worktree Scope. `intake` and `escalate` work lives in global Scope. `review` work may be global, repo, or worktree scoped and is ordinary non-escalation work claimed by Greed. Pithos enforces the durable authorization contract; bundled prompts and user policy packs guide workflow but are not authorization truth.
+Capabilities are `intake`, `clarify`, `triage`, `design`, `execute`, `review`, and `escalate`. `clarify` is Envy-owned requirements-measurement work between interpretive intake and triage; deterministic external intake remains unchanged unless Envy routes interpretive work into clarify by policy. `execute` work must be in repo/worktree Scope. `intake` and `escalate` work lives in global Scope. `review` work may be global, repo, or worktree scoped and is ordinary non-escalation work claimed by Greed. Pithos enforces the durable authorization contract; bundled prompts and user policy packs guide workflow but are not authorization truth.
 
 ## 4. pdx Lifecycle
 
 ### `pdx init`
 
-`pdx init` prepares the data dir, initializes Pithos, creates runtime directories, materializes bundle-owned `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`, preserves scaffold-once `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, and `<user-data-dir>/agents.toml`, and re-seeds installed `<user-data-dir>/PANDORA.md`. It does not touch tmux or Harness CLIs.
+`pdx init` prepares the data dir, initializes Pithos, creates runtime directories, materializes bundle-owned `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`, preserves scaffold-once `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml`, and re-seeds installed `<user-data-dir>/PANDORA.md`. The `artifacts.toml` scaffold contains commented recommended examples only and existing user files are never overwritten. It does not touch tmux or Harness CLIs.
 
 - normal init reuses existing state
 - `--clean` removes DB, runs, and logs while preserving bundled config and user config
@@ -178,6 +178,8 @@ If pdx creates a Run row but the launch cannot complete before the Agent claims 
 
 ## 8. Spawner Boundary
 
+pdx-launched Agents receive `PDX_USER_DATA_DIR` so Pithos and Spawner can read user-owned Artifact Contracts. Pithos owns parsing and completion enforcement; pdx does not validate artifact requirements, keep a bundled active contract, or retroactively revalidate Tasks when config changes. Spawner renders prompt guidance through the shared Pithos parser as described in `specs/artifact-contracts.md`.
+
 pdx renders before it launches:
 
 ```text
@@ -223,7 +225,7 @@ All commands resolve data dir as `--data-dir`, then `PDX_DATA_DIR`, then `$HOME/
 ## 11. Code Locations and Tests
 
 - `packages/pdx/src/controller.ts` — lifecycle, reconcile, Kill, launch-precondition handling, intake socket startup
-- `packages/pdx/src/live.ts` — live service bindings, Pithos/Spawner integration, template materialization
+- `packages/pdx/src/live.ts` — live service bindings, Pithos/Spawner integration, template and user `artifacts.toml` materialization
 - `packages/pdx/src/main.ts` — public CLI and IPC dispatch
 - `packages/pdx/src/services.ts` — injected services and Registry interface
 - `packages/pdx/src/log.ts` — Supervisor log JSONL
@@ -231,5 +233,6 @@ All commands resolve data dir as `--data-dir`, then `PDX_DATA_DIR`, then `$HOME/
 - `packages/spawner/src/spawner.ts` — render/launch/transcript behavior
 - `specs/agent-configuration.md` — manifest policy-pack contract and user `agents.toml` semantics, including harness `tools` / `argv` merge rules
 - `resources/user-data-dir/PANDORA.md` — machine-local user configuration guide and edit-time contract
+- `resources/user-data-dir/artifacts.toml` — scaffold-once commented Artifact Contract examples
 
 Automated coverage lives primarily in `packages/pdx/test/`, `packages/pithos/test/`, and `packages/spawner/src/spawner.test.ts`.

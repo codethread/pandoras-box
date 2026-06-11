@@ -1,11 +1,11 @@
 # Pithos Task Graph
 
 **Status:** Implemented
-**Last Updated:** 2026-05-26
+**Last Updated:** 2026-06-11
 
 ## 1. Overview
 
-Pithos owns the durable **Task graph** for Pandora's Box: Tasks, typed Task edges, Supersessions, Task Replay, Claims, Runs, Artifacts, Events, and inspection surfaces. The graph lets Agents and Pandora understand what work exists, what is claimable, what is waiting on branch completion, what replaced what, and what context belongs to a Task chain without relying on prompt memory.
+Pithos owns the durable **Task graph** for Pandora's Box: Tasks, typed Task edges, Supersessions, Task Replay, Claims, Runs, active/rejected Artifacts, Events, and inspection surfaces. The graph lets Agents and Pandora understand what work exists, what is claimable, what is waiting on branch completion, what replaced what, and what context belongs to a Task chain without relying on prompt memory.
 
 ## 2. Typed Task edges
 
@@ -132,20 +132,37 @@ Replay emits `task.replayed` for the target with the reason, Repair Alert id, pr
 
 Payload-bearing public CLI commands use one explicit stdin document:
 
-| Command                                  | Payload rule                                                 |
-| ---------------------------------------- | ------------------------------------------------------------ |
-| `pithos task enqueue ... --stdin`        | required non-empty Task body                                 |
-| `pithos task supersede ... --stdin`      | required non-empty replacement Task body                     |
-| `pithos task artifact add ... [--stdin]` | optional Artifact body; omitted means empty body             |
-| `pithos task complete ... [--stdin]`     | optional JSON object completion metadata; omitted means `{}` |
+| Command                                                      | Payload rule                                                                                                                 |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `pithos task enqueue ... --stdin`                            | required non-empty Task body                                                                                                 |
+| `pithos task supersede ... --stdin`                          | required non-empty replacement Task body                                                                                     |
+| `pithos task artifact add ... --token <token> ... [--stdin]` | optional Artifact body; omitted means empty body; held-task ownership, fencing token, and lower-snake-case kind are required |
+| `pithos task complete ... [--stdin]`                         | optional JSON object completion metadata; omitted means `{}`                                                                 |
 
 The CLI reads stdin only when `--stdin` is present. Missing redirected stdin, empty required payloads, invalid completion JSON, and conflicting `--run`/`PITHOS_RUN_ID` fail with tagged Pithos errors.
 
-## 8. Inspection surfaces
+## 8. Artifacts and completion contracts
 
-### `pithos task inspect <task-id> [--json]`
+Artifacts are append-only evidence rows with current status `active` or `rejected`. New artifacts start active. Rejection is one-way, preserves body/authorship history, emits `task.artifact_rejected`, and removes the artifact from primary task/graph views and required-artifact satisfaction. `task artifact list` and exact-id `task artifact show` expose active and rejected history.
 
-Readable output is the normal Agent handoff for a single Task dossier: full task body, full bodies of Artifacts attached to that Task, direct `after` blockers/dependents, direct `gate` coordination state and branch members, directly attached `about`/`repair` context, Supersession context, and late-growth markers. It does not recursively expand upstream lineage in readable mode. JSON remains the full structured inspect object, including lineage and other exact fields for tooling.
+Artifact mutation commands are fenced held-task writes:
+
+```text
+pithos task artifact add <task-id> [--run <run-id>] --token <token> --kind <kind> --title <title> [--stdin]
+pithos task artifact reject <artifact-id> [--run <run-id>] --token <token> --reason <reason>
+pithos task artifact list <task-id> [--json]
+pithos task artifact show <artifact-id> [--json]
+```
+
+`add` and `reject` require active held-task ownership and a matching Fencing token. Artifact `kind` values are lower snake case.
+
+When `$PDX_USER_DATA_DIR/artifacts.toml` exists and contains required rules for a Task Capability, `task complete` requires at least one active artifact with each required `kind`. Rejected artifacts do not satisfy requirements. Completion enforcement checks presence only, not artifact title, body, content, or count. Completed Tasks are not retroactively revalidated after config changes. `specs/artifact-contracts.md` owns the detailed user config, CLI, lifecycle, and enforcement contract.
+
+## 9. Inspection surfaces
+
+### `pithos task inspect <task-id> [--json] [--full]`
+
+Readable output is the normal Agent handoff for a single Task dossier: full task body, compact active Artifact refs, direct `after` blockers/dependents, direct `gate` coordination state and branch members, directly attached `about`/`repair` context, Supersession context, and late-growth markers. It does not recursively expand upstream lineage in readable mode. `--full` renders active Artifact bodies inline. `--json` returns the structured inspect object with active Artifacts only; `--full --json` is invalid because `--full` affects Markdown rendering only.
 
 ### `pithos graph inspect (--task <id>|--scope <id>|--all) [filters] [--json]`
 
@@ -157,15 +174,15 @@ Graph inspect is the relationship-map surface for Task graph topology, provenanc
 
 Closure may include related Tasks that do not match filters so blockers, attached context, gates, and replacement history remain understandable. Scope graph inspection may include global `about`/`repair` escalation Tasks attached to selected scoped work, and global checkpoint escalations whose `gate` target is in selected scoped closure.
 
-Readable graph output is map-oriented. It labels typed Task edges (`after`, `about`, `repair`, and `gate [state]`), shows referenced Tasks before incoming owners/follow-ups, and renders each Task as a compact card with id/capability/status/title, scope, `preview:` from the Task title, and `artifacts:` refs (`artifact_id [kind] title`). Gate members render as computed branch-closure blocks and Supersession renders as replacement history. It does not own full task bodies, full Artifact bodies, next-action hints, or agenda/sitrep summaries; use `task inspect` for single-Task drill-down and `briefing` for agenda/attention summaries.
+Readable graph output is map-oriented. It labels typed Task edges (`after`, `about`, `repair`, and `gate [state]`), shows referenced Tasks before incoming owners/follow-ups, and renders each Task as a compact card with id/capability/status/title, scope, `preview:` from the Task title, and active `artifacts:` refs (`artifact_id [kind] title`) only when active artifacts exist. Gate members render as computed branch-closure blocks and Supersession renders as replacement history. It does not own full task bodies, full Artifact bodies, next-action hints, or agenda/sitrep summaries; use `task inspect` for single-Task drill-down and `briefing` for agenda/attention summaries.
 
-`graph inspect --json` preserves the structured graph output contract for the same selection and closure, including edge kind, gate state, per-node preview, and artifact refs.
+`graph inspect --json` preserves the structured graph output contract for the same selection and closure, including edge kind, gate state, per-node preview, and active artifact refs. For claimed/running Tasks with required Artifact Contract rules, graph JSON includes compact `requirement_status.missing_required`; readable graph output surfaces only missing required artifacts.
 
 ### `pithos briefing [--agent pandora] [--json]`
 
 Briefing owns agenda questions: ready work, blocked/gated work, broken branches, recent completions, and Pandora-oriented summaries. Use graph inspect for graph inventory, provenance, and audit; use briefing for what needs attention next.
 
-## 9. Data model and code locations
+## 10. Data model and code locations
 
 Key tables include `tasks` (with resettable `attempts` and monotonic `claim_sequence`), `runs`, `task_edges`, `task_gate_releases`, `task_gate_release_members`, `task_gate_late_growth_markers`, `task_supersessions`, `artifacts`, and `events`. `runs.has_claimed_task` is the durable record that a Run has claimed work, so timeout/launch-abort semantics do not depend on retained event history. Event rows are retention-managed operational history and may be pruned by age through the Engine library boundary.
 
@@ -180,11 +197,11 @@ Implementation lives in:
 
 The package README documents module boundaries; generated CLI help is the command syntax source.
 
-## 10. Testing
+## 11. Testing
 
 Automated coverage lives in:
 
-- `packages/pithos/test/task-lifecycle.test.ts` — Task transitions, Claims, typed edges, gates, Supersession, Repair Alert behavior
+- `packages/pithos/test/task-lifecycle.test.ts` — Task transitions, Claims, typed edges, gates, Supersession, Repair Alert behavior, artifact lifecycle, and completion requirements
 - `packages/pithos/test/chain-policy.test.ts` — pure graph/chain policy behavior
 - `packages/pithos/test/cli.test.ts` — CLI parsing, help JSON, stdin payload contract, output contracts
 - `packages/pithos/test/render.test.ts` — typed-edge readable graph/task/briefing rendering snapshots

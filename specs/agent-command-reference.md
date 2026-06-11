@@ -1,7 +1,7 @@
 # Agent Command Reference Rendering
 
 **Status:** Implemented
-**Last Updated:** 2026-05-20
+**Last Updated:** 2026-06-11
 
 ## 1. Overview
 
@@ -52,7 +52,8 @@ Spawner.renderAgent
   -> parse and validate command trees
   -> validate role filters and annotations
   -> render filtered Markdown
-  -> inject as {{command_cards}}
+  -> render applicable Artifact Contract guidance from the shared Pithos parser
+  -> inject command cards as {{command_cards}} and append Artifact Contract guidance adjacent to them
 ```
 
 Templates receive launch/self-claim context only. They do not receive Task bodies.
@@ -61,10 +62,10 @@ Templates receive launch/self-claim context only. They do not receive Task bodie
 
 | Agent kind | Pithos command paths                                                              | pdx command paths                                                                             |
 | ---------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `war`      | `pithos task`                                                                     | none                                                                                          |
+| `war`      | `pithos task`, `pithos graph`                                                     | none                                                                                          |
 | `envy`     | `pithos scope`, `pithos task`                                                     | none                                                                                          |
-| `toil`     | `pithos scope`, `pithos task`                                                     | none                                                                                          |
-| `greed`    | `pithos scope`, `pithos task`                                                     | none                                                                                          |
+| `toil`     | `pithos scope`, `pithos task`, `pithos graph`                                     | none                                                                                          |
+| `greed`    | `pithos scope`, `pithos task`, `pithos graph`                                     | none                                                                                          |
 | `pandora`  | `pithos scope`, `pithos task`, `pithos graph`, `pithos events`, `pithos briefing` | `pdx daemon status`, `pdx daemon logs`, `pdx run transcript`, `pdx run show`, `pdx task show` |
 
 Pandora receives daemon status/log cards as debug-only inspection surfaces. Her template keeps normal sitrep on Pithos graph/briefing/task inspect and `pdx run transcript`; daemon status is for liveness questions or conflicting evidence, and daemon logs are for supervisor anomalies.
@@ -89,14 +90,28 @@ Show a single-task dossier; pass `--json` for structured metadata.
 Usage:
 
 ```sh
-pithos task inspect [--json] <task-id>
+pithos task inspect [--json] [--full] <task-id>
 ```
 
 Notes:
 
-- Default output is readable Markdown for one task: full body, attached artifact bodies, and direct local context only.
-- Use `--json` only for exact fields, scripting, or token recovery.
+- Default output is readable Markdown for one task: full body, compact active artifact refs, and direct local context only.
+- Use `--full` to render active artifact bodies inline.
+- Use `--json` only for exact fields, scripting, or token recovery; `--full --json` is invalid.
 ````
+
+Artifact command cards document the implemented Artifact Contract API from CLI metadata:
+
+- `pithos task artifact add <task-id> [--run <run-id>] --token <token> --kind <kind> --title <title> [--stdin]` requires the current task Fencing token, can mutate only the held Task, and requires lower-snake-case `kind`.
+- `pithos task artifact reject <artifact-id> [--run <run-id>] --token <token> --reason <reason>` retires a mistaken active artifact from current task/graph views and required-artifact satisfaction without deleting history.
+- `pithos task artifact list <task-id> [--json]` shows active and rejected artifact metadata, not bodies.
+- `pithos task artifact show <artifact-id> [--json]` is the exact-id body/detail command.
+
+### Artifact Contract prompt block
+
+When user-owned `$PDX_USER_DATA_DIR/artifacts.toml` has applicable rules, Spawner appends a generated Artifact Contract section adjacent to the generated command reference. The section is not a user-editable template variable and does not change `agents.toml` template-variable ownership. It contains a short preamble plus minified normalized JSON for the selected/current Capability, or for all claimable Capabilities when no selected Capability is known. No applicable rules means no Artifact Contract section.
+
+Spawner obtains parsed/normalized rules through the public `@pdx/pithos` Artifact Contract parser/normalizer, so prompt rendering and Pithos completion enforcement share validation logic. When `PDX_USER_DATA_DIR` is set and `artifacts.toml` exists but is invalid, render/open fails loudly.
 
 Pandora's `pithos graph inspect` annotations summarize the implemented graph contract: graph inspect is for inventory/provenance/audit, briefing is for ready/blocked agenda, readable output is threaded task cards with title-based preview lines and artifact refs, filters narrow seeds before closure, JSON is for exact typed-edge fields, and scope graph views include attached global `about`/`repair`/checkpoint context when closure reaches it.
 
@@ -108,12 +123,9 @@ Pandora's `pithos graph inspect` annotations summarize the implemented graph con
 
 ## 7. Code Locations and Tests
 
-- `packages/spawner/src/spawner.ts` — command tree parsing, role filters, annotations, Markdown rendering
+- `packages/spawner/src/spawner.ts` — command tree parsing, role filters, annotations, Markdown rendering, and Artifact Contract prompt block rendering
 - `packages/spawner/src/spawner.test.ts` — role filtering, raw-JSON regression coverage, annotation validation
 - `specs/agent-configuration.md` — bundled prompt, policy-pack, and template variable contract
 - `packages/pithos/src/cli.ts` — Pithos help JSON source
+- `packages/pithos/src/artifact-contracts.ts` — shared Artifact Contract parser/normalizer used for prompt rendering
 - `packages/pdx/src/main.ts` — pdx help JSON source
-
-```
-
-```
