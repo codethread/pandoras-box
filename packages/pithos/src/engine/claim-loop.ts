@@ -1,15 +1,15 @@
 import { Effect } from "effect";
 import { loadConfiguredArtifactContractSync } from "../artifact-contracts.js";
 import { sql, type Capability } from "../db.js";
-import type { Db } from "../db.js";
 import { fail } from "../errors.js";
-import { ArtifactMetadataRowSchema, decodeRow, type RunRow } from "../rows.js";
+import { ArtifactMetadataRowSchema, decodeRow } from "../rows.js";
 import {
 	activeArtifactKinds,
 	formatMissingRequiredRules,
 	missingRequiredRules,
 	requiredArtifactRules,
 } from "./artifact-requirements.js";
+import { authorized, enforceCapScope, liveRun } from "./actors.js";
 import { withCollisionGuard, withDb } from "./db-helpers.js";
 import { event } from "./event-log.js";
 import { createRepairAlertInTxn } from "./repair-alerts.js";
@@ -21,19 +21,7 @@ import {
 	toArtifactMetadataOutput,
 } from "./task-read-model.js";
 import type { Engine, EngineContext } from "./types.js";
-
-export interface ClaimLoopDeps {
-	readonly requireNonEmpty: (value: string, name: string) => string;
-	readonly resolveRunId: (ctx: EngineContext, explicit: string | undefined) => string;
-	readonly liveRun: (db: Db, runId: string) => RunRow;
-	readonly authorized: (
-		db: Db,
-		table: "agent_claims" | "agent_enqueues",
-		runId: string,
-		cap: Capability,
-	) => RunRow;
-	readonly enforceCapScope: (db: Db, scopeId: string, cap: Capability) => void;
-}
+import { requireNonEmpty, resolveRunId } from "./validate.js";
 
 const queuedTaskQuery = sql`
 SELECT id
@@ -84,21 +72,20 @@ const loadCurrentArtifactContract = (ctx: EngineContext) =>
 
 export const makeClaimLoopOps = (
 	ctx: EngineContext,
-	deps: ClaimLoopDeps,
 ): Pick<
 	Engine,
 	"claim" | "heartbeat" | "complete" | "failTask" | "artifactAdd" | "artifactReject" | "cancel"
 > => ({
 	claim: ({ runId, scope, capability }) =>
 		withDb(ctx, (db) => {
-			const actorRunId = deps.resolveRunId(ctx, runId);
-			deps.enforceCapScope(db, scope, capability);
-			const r = deps.authorized(db, "agent_claims", actorRunId, capability);
+			const actorRunId = resolveRunId(ctx, runId);
+			enforceCapScope(db, scope, capability);
+			const r = authorized(db, "agent_claims", actorRunId, capability);
 			if (r.scope_id !== scope)
 				fail("VALIDATION_ERROR", `claim scope ${scope} does not match run scope ${r.scope_id}`);
 
 			const claimed = db.transaction(() => {
-				const currentRun = deps.liveRun(db, actorRunId);
+				const currentRun = liveRun(db, actorRunId);
 				if (currentRun.task_id !== null) fail("VALIDATION_ERROR", "run already holds a task");
 
 				const candidates = db.prepare(queuedTaskQuery).all(scope, capability) as { id: string }[];
@@ -180,11 +167,11 @@ export const makeClaimLoopOps = (
 		}),
 	heartbeat: ({ runId, taskId, token }) =>
 		withDb(ctx, (db) => {
-			const actorRunId = deps.resolveRunId(ctx, runId);
+			const actorRunId = resolveRunId(ctx, runId);
 			if ((taskId === undefined) !== (token === undefined)) {
 				fail("VALIDATION_ERROR", "--task and --token must be supplied together");
 			}
-			const run = deps.liveRun(db, actorRunId);
+			const run = liveRun(db, actorRunId);
 			if (taskId === undefined) {
 				event(ctx, db, "run.heartbeat", { run_id: actorRunId, payload: { status: run.status } });
 				return { ok: true, status: run.status };
@@ -225,8 +212,8 @@ export const makeClaimLoopOps = (
 		}),
 	complete: ({ taskId, runId, token, resultJson }) =>
 		withDb(ctx, (db) => {
-			const actorRunId = deps.resolveRunId(ctx, runId);
-			deps.liveRun(db, actorRunId);
+			const actorRunId = resolveRunId(ctx, runId);
+			liveRun(db, actorRunId);
 			db.transaction(() => {
 				const task = db
 					.prepare(sql`
@@ -274,9 +261,9 @@ export const makeClaimLoopOps = (
 		}),
 	failTask: ({ taskId, runId, token, reason }) =>
 		withDb(ctx, (db) => {
-			const actorRunId = deps.resolveRunId(ctx, runId);
-			deps.liveRun(db, actorRunId);
-			const nonEmptyReason = deps.requireNonEmpty(reason, "--reason");
+			const actorRunId = resolveRunId(ctx, runId);
+			liveRun(db, actorRunId);
+			const nonEmptyReason = requireNonEmpty(reason, "--reason");
 			db.transaction(() => {
 				const affectedTask = taskDetail(db, taskId);
 				const result = db
@@ -308,10 +295,10 @@ export const makeClaimLoopOps = (
 		}),
 	artifactAdd: ({ taskId, runId, token, kind, title, body }) =>
 		withDb(ctx, (db) => {
-			const actorRunId = deps.resolveRunId(ctx, runId);
-			deps.liveRun(db, actorRunId);
-			const artifactKind = requireArtifactKind(deps.requireNonEmpty(kind, "--kind"));
-			const artifactTitle = deps.requireNonEmpty(title, "--title");
+			const actorRunId = resolveRunId(ctx, runId);
+			liveRun(db, actorRunId);
+			const artifactKind = requireArtifactKind(requireNonEmpty(kind, "--kind"));
+			const artifactTitle = requireNonEmpty(title, "--title");
 			const artifactId = Effect.runSync(ctx.services.ids.make("artifact"));
 			const artifactResult = withCollisionGuard(artifactId, () =>
 				db.transaction((): ArtifactMetadataOutput => {
@@ -366,9 +353,9 @@ export const makeClaimLoopOps = (
 		}),
 	artifactReject: ({ artifactId, runId, token, reason }) =>
 		withDb(ctx, (db) => {
-			const actorRunId = deps.resolveRunId(ctx, runId);
-			deps.liveRun(db, actorRunId);
-			const nonEmptyReason = deps.requireNonEmpty(reason.trim(), "--reason");
+			const actorRunId = resolveRunId(ctx, runId);
+			liveRun(db, actorRunId);
+			const nonEmptyReason = requireNonEmpty(reason.trim(), "--reason");
 			const artifact = db.transaction((): ArtifactMetadataOutput => {
 				const existingRow = db
 					.prepare(sql`SELECT task_id, status, kind FROM artifacts WHERE id=?`)
@@ -421,9 +408,9 @@ export const makeClaimLoopOps = (
 		}),
 	cancel: ({ taskId, runId, reason }) =>
 		withDb(ctx, (db) => {
-			const actorRunId = deps.resolveRunId(ctx, runId);
-			deps.liveRun(db, actorRunId);
-			const nonEmptyReason = deps.requireNonEmpty(reason, "--reason");
+			const actorRunId = resolveRunId(ctx, runId);
+			liveRun(db, actorRunId);
+			const nonEmptyReason = requireNonEmpty(reason, "--reason");
 			db.transaction(() => {
 				const task = taskSummary(db, taskId);
 				if (["claimed", "running"].includes(task.status)) {
