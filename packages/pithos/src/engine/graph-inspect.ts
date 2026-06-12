@@ -16,11 +16,7 @@ import {
 	unresolvedDependencies,
 } from "./task-read-model.js";
 import type { GraphInspectOutput, GraphSelectorOutput, GraphSinceCutoff } from "./types.js";
-
-const requireNonEmpty = (value: string, name: string): string => {
-	if (value.length === 0) fail("VALIDATION_ERROR", `${name} must be non-empty`);
-	return value;
-};
+import { requireNonEmpty } from "./validation.js";
 
 const statusFilterSql = (statuses: readonly TaskStatus[]): string =>
 	statuses.length === 0 ? "" : ` AND status IN (${statuses.map(() => "?").join(",")})`;
