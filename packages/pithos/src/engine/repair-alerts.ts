@@ -1,17 +1,14 @@
 import { Effect } from "effect";
-import { sql, type Capability } from "../db.js";
+import { sql } from "../db.js";
 import type { Db } from "../db.js";
 import { fail } from "../errors.js";
-import {
-	decodeRow,
-	RepairAlertKindSchema,
-	type RepairAlertKind,
-	type RunRow,
-	type ScopeRow,
-} from "../rows.js";
+import { decodeRow, RepairAlertKindSchema, type RepairAlertKind } from "../rows.js";
 import { withCollisionGuard, withDb } from "./db-helpers.js";
 import { event } from "./event-log.js";
+import { requireNonEmpty, resolveRunId } from "./inputs.js";
 import { enforceReleasedGateLateGrowth } from "./late-growth.js";
+import { liveRun } from "./run-read-model.js";
+import { scopeForCapability } from "./scopes.js";
 import { insertTaskSource, taskSummary } from "./task-read-model.js";
 import {
 	PDX_SYSTEM_RUN_ID,
@@ -20,13 +17,6 @@ import {
 	type LaunchPreconditionEscalationOutput,
 	type RepairAlertOutput,
 } from "./types.js";
-
-export interface RepairAlertDeps {
-	readonly requireNonEmpty: (value: string, name: string) => string;
-	readonly resolveRunId: (ctx: EngineContext, explicit: string | undefined) => string;
-	readonly liveRun: (db: Db, runId: string) => RunRow;
-	readonly scopeForCapability: (db: Db, scopeId: string, cap: Capability) => ScopeRow;
-}
 
 const insertRepairAlert = (db: Db, alertTaskId: string, kind: RepairAlertKind): void => {
 	db.prepare(sql`INSERT INTO repair_alerts(task_id, kind) VALUES (?, ?)`).run(alertTaskId, kind);
@@ -93,7 +83,6 @@ export const createRepairAlertInTxn = (
 
 const createRepairAlertTask = (
 	ctx: EngineContext,
-	deps: RepairAlertDeps,
 	db: Db,
 	input: {
 		readonly actorRunId: string;
@@ -103,15 +92,15 @@ const createRepairAlertTask = (
 		readonly escalationBody: string;
 	},
 ): RepairAlertOutput => {
-	const actorRun = deps.liveRun(db, input.actorRunId);
+	const actorRun = liveRun(db, input.actorRunId);
 	if (actorRun.agent_kind !== "pdx") {
 		fail("VALIDATION_ERROR", "repair alert must be authored by pdx");
 	}
-	deps.scopeForCapability(db, "global", "escalate");
+	scopeForCapability(db, "global", "escalate");
 	const affectedTask =
 		input.affectedTaskId !== undefined ? taskSummary(db, input.affectedTaskId) : undefined;
-	const title = deps.requireNonEmpty(input.escalationTitle, "escalation title");
-	const bodyText = deps.requireNonEmpty(input.escalationBody, "escalation body");
+	const title = requireNonEmpty(input.escalationTitle, "escalation title");
+	const bodyText = requireNonEmpty(input.escalationBody, "escalation body");
 	const escalationId = Effect.runSync(ctx.services.ids.make("task"));
 	return withCollisionGuard(escalationId, () =>
 		db.transaction((): RepairAlertOutput => {
@@ -161,7 +150,6 @@ const createRepairAlertTask = (
 
 export const makeRepairAlertOps = (
 	ctx: EngineContext,
-	deps: RepairAlertDeps,
 ): Pick<
 	Engine,
 	"escalateLaunchPrecondition" | "createRepairAlert" | "claimableRepairAlertKinds"
@@ -178,8 +166,8 @@ export const makeRepairAlertOps = (
 		escalationBody,
 	}) =>
 		withDb(ctx, (db) => {
-			const actorRunId = deps.resolveRunId(ctx, runId);
-			const actorRun = deps.liveRun(db, actorRunId);
+			const actorRunId = resolveRunId(ctx, runId);
+			const actorRun = liveRun(db, actorRunId);
 			if (actorRun.agent_kind !== "pdx") {
 				fail("VALIDATION_ERROR", "launch-precondition Repair Alert must be authored by pdx");
 			}
@@ -187,11 +175,11 @@ export const makeRepairAlertOps = (
 				.prepare(sql`SELECT 1 FROM agent_kinds WHERE agent_kind = ?`)
 				.get(agentKind);
 			if (agentExists === undefined) fail("VALIDATION_ERROR", `unknown agent kind: ${agentKind}`);
-			deps.scopeForCapability(db, "global", "escalate");
-			const nonEmptyReason = deps.requireNonEmpty(reason, "--reason");
-			const title = deps.requireNonEmpty(escalationTitle, "escalation title");
-			const bodyText = deps.requireNonEmpty(escalationBody, "escalation body");
-			const expectedPath = deps.requireNonEmpty(canonicalPath, "canonical path");
+			scopeForCapability(db, "global", "escalate");
+			const nonEmptyReason = requireNonEmpty(reason, "--reason");
+			const title = requireNonEmpty(escalationTitle, "escalation title");
+			const bodyText = requireNonEmpty(escalationBody, "escalation body");
+			const expectedPath = requireNonEmpty(canonicalPath, "canonical path");
 			const escalationId = Effect.runSync(ctx.services.ids.make("task"));
 			return withCollisionGuard(escalationId, () =>
 				db.transaction((): LaunchPreconditionEscalationOutput => {
@@ -286,8 +274,8 @@ export const makeRepairAlertOps = (
 		}),
 	createRepairAlert: ({ runId, affectedTaskId, kind, escalationTitle, escalationBody }) =>
 		withDb(ctx, (db) =>
-			createRepairAlertTask(ctx, deps, db, {
-				actorRunId: deps.resolveRunId(ctx, runId),
+			createRepairAlertTask(ctx, db, {
+				actorRunId: resolveRunId(ctx, runId),
 				affectedTaskId,
 				kind,
 				escalationTitle,

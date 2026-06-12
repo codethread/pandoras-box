@@ -123,27 +123,22 @@ Important details:
 
 ### `src/engine.ts` and `src/engine/*` — durable state transitions
 
-`src/engine.ts` owns the Pithos domain API used by both the CLI and `pdx`, while focused engine submodules hold stable shared contracts and cohesive helpers:
+`src/engine.ts` is the composition root for the Pithos domain API used by both the CLI and `pdx`: it implements `init`, spreads the per-domain ops factories into `makeEngine`, and owns the public re-export boundary. Each engine submodule reads as one domain — its SQL, row parsing, rules, and ops together:
 
 - `src/engine/types.ts` — public Engine input/output contracts.
+- `src/engine/inputs.ts` — shared input resolution (`--run` vs `PITHOS_RUN_ID`, `--body`/`--body-file`, non-empty checks).
 - `src/engine/render.ts` — pure task/graph/briefing text rendering.
 - `src/engine/db-helpers.ts` — shared Engine DB open/migrate/close and ID-collision handling.
-- `src/engine/event-log.ts` — durable event insert, tail, and retention pruning logic.
+- `src/engine/event-log.ts` — durable event insert, tail, and library-only `pruneEvents` retention maintenance (default: heartbeat events older than 1 day, other events older than 7 days).
+- `src/engine/scopes.ts` — scope row parsing, capability/scope admission rules (`scopeForCapability`, `enforceTaskAdmissionScope`), and scope upsert/list/archive ops including repo/worktree directory admission checks.
+- `src/engine/run-read-model.ts` — run row select/parsing, `liveRun`, and claim/enqueue authorization.
+- `src/engine/run-lifecycle.ts` — Run upsert/inspect/Cleanup/Interrupt/timeout/launch-abort transitions and dead-letter Repair Alert evidence rendering.
+- `src/engine/task-admission.ts` — task enqueue/supersede/replay transitions, including active-scope and repo/worktree directory admission checks, and graph-integrity assertions (acyclicity, gate-owner placement).
 - `src/engine/claim-loop.ts` — Claim-loop transitions for claim, heartbeat, completion, failure, cancellation, and artifact attachment.
-- `src/engine/task-read-model.ts` — DB row parsing and reusable Task/Scope/typed-edge read-model queries used by transitions and inspections.
+- `src/engine/task-read-model.ts` — DB row parsing and reusable Task/typed-edge read-model queries used by transitions and inspections.
 - `src/engine/graph-inspect.ts` — graph selector filtering, `--since` cutoff parsing, and typed-edge/Supersession closure assembly.
+- `src/engine/inspect-ops.ts` — read-only inspection ops: task inspect, graph inspect, briefing, and artifact list/show.
 - `src/engine/repair-alerts.ts` — Repair Alert task creation, `repair` edge provenance, launch-precondition repair, and claimable Repair Alert kind queries.
-
-`src/engine.ts` still implements the state-transition methods for:
-
-- scope upsert/list/archive, including repo/worktree directory admission checks
-- Run upsert/inspect/Cleanup/Interrupt/timeout/launch-abort
-- task enqueue/supersede/replay, including active-scope and repo/worktree directory admission checks
-- graph inspect
-- briefing
-- event tail
-- library-only `pruneEvents` retention maintenance (default: heartbeat events older than 1 day, other events older than 7 days) through `src/engine/event-log.ts`
-- text renderers for task/graph/briefing views
 
 Engine code opens the SQLite DB, checks/updates schema, executes transition logic, and closes the DB per operation. Race-sensitive updates run inside SQLite transactions and use fenced preconditions so stale writes fail rather than drifting state. Artifact add/reject mutations require active held-task ownership and a matching fencing token. Rejection is one-way: rejected Artifacts remain exact-id inspectable but are excluded from primary active-artifact views. Scope/task admission validates external filesystem state at the Pithos boundary: repo/worktree paths must exist as directories when scopes are upserted and when tasks are enqueued or superseded into those scopes.
 

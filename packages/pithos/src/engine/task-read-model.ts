@@ -4,13 +4,11 @@ import { sql } from "../db.js";
 import { fail } from "../errors.js";
 import {
 	decodeRow,
-	ScopeRowSchema,
 	TaskEdgeRowSchema,
 	TaskGateLateGrowthMarkerRowSchema,
 	TaskRowSchema,
 	ArtifactDetailRowSchema,
 	ArtifactMetadataRowSchema,
-	type ScopeRow,
 	type TaskEdgeRow,
 	type TaskGateLateGrowthMarkerRow,
 } from "../rows.js";
@@ -20,8 +18,6 @@ import type {
 	ArtifactOutput,
 	ArtifactReferenceOutput,
 	LineageEntryOutput,
-	ScopeIdentityOutput,
-	ScopeOutput,
 	TaskDetailOutput,
 	GateInspectOutput,
 	TaskInspectTaskOutput,
@@ -203,50 +199,6 @@ export const parseTaskDetail = (value: unknown, message: string): TaskDetailOutp
 		max_attempts: row.max_attempts,
 	};
 };
-
-const ScopeListRowSchema = Schema.extend(
-	ScopeRowSchema,
-	Schema.Struct({
-		task_count: Schema.Number,
-		run_count: Schema.Number,
-	}),
-);
-
-const ScopeArchiveCheckRowSchema = Schema.extend(
-	ScopeListRowSchema,
-	Schema.Struct({
-		live_run_count: Schema.Number,
-		active_task_count: Schema.Number,
-	}),
-);
-
-type ScopeListRow = typeof ScopeListRowSchema.Type;
-type ScopeArchiveCheckRow = typeof ScopeArchiveCheckRowSchema.Type;
-
-const toScopeIdentityOutput = (row: ScopeRow): ScopeIdentityOutput => ({
-	id: row.id,
-	kind: row.kind,
-	canonical_path: row.canonical_path,
-	parent_repo_path: row.parent_repo_path,
-	archived_at: row.archived_at,
-	description: row.description,
-});
-
-export const parseScopeIdentity = (value: unknown, message: string): ScopeIdentityOutput =>
-	toScopeIdentityOutput(decodeRow(ScopeRowSchema, value, message));
-
-export const toScopeOutput = (row: ScopeListRow): ScopeOutput => ({
-	...toScopeIdentityOutput(row),
-	task_count: row.task_count,
-	run_count: row.run_count,
-	path_missing: false,
-});
-
-export const parseScopeOutput = (value: unknown, message: string): ScopeOutput =>
-	toScopeOutput(decodeRow(ScopeListRowSchema, value, message));
-
-export const parseScopeArchiveCheck = (value: unknown, message: string): ScopeArchiveCheckRow =>
-	decodeRow(ScopeArchiveCheckRowSchema, value, message);
 
 const ArtifactRowSchema = Schema.Struct({
 	id: Schema.String,
