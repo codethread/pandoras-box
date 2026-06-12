@@ -136,6 +136,7 @@ Important details:
 - `src/engine/task-admission.ts` — task enqueue/supersede/replay transitions, including active-scope and repo/worktree directory admission checks, and graph-integrity assertions (acyclicity, gate-owner placement).
 - `src/engine/claim-loop.ts` — Claim-loop transitions for claim, heartbeat, completion, failure, cancellation, and artifact attachment.
 - `src/engine/task-read-model.ts` — DB row parsing and reusable Task/typed-edge read-model queries used by transitions and inspections.
+- `src/engine/late-growth.ts` — released-gate late-growth detection and marker recording for post-release graph mutations.
 - `src/engine/graph-inspect.ts` — graph selector filtering, `--since` cutoff parsing, and typed-edge/Supersession closure assembly.
 - `src/engine/inspect-ops.ts` — read-only inspection ops: task inspect, graph inspect, briefing, and artifact list/show.
 - `src/engine/repair-alerts.ts` — Repair Alert task creation, `repair` edge provenance, launch-precondition repair, and claimable Repair Alert kind queries.

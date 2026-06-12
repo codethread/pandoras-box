@@ -3,6 +3,7 @@ import type { Db } from "../db.js";
 import { sql, type TaskStatus } from "../db.js";
 import { fail } from "../errors.js";
 import { missingRequiredKinds, requiredArtifactRules } from "./artifact-requirements.js";
+import { requireNonEmpty } from "./inputs.js";
 import {
 	canonicalTaskId,
 	gateStateForTarget,
@@ -16,11 +17,6 @@ import {
 	unresolvedDependencies,
 } from "./task-read-model.js";
 import type { GraphInspectOutput, GraphSelectorOutput, GraphSinceCutoff } from "./types.js";
-
-const requireNonEmpty = (value: string, name: string): string => {
-	if (value.length === 0) fail("VALIDATION_ERROR", `${name} must be non-empty`);
-	return value;
-};
 
 const statusFilterSql = (statuses: readonly TaskStatus[]): string =>
 	statuses.length === 0 ? "" : ` AND status IN (${statuses.map(() => "?").join(",")})`;
