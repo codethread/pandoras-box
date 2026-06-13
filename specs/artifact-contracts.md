@@ -1,7 +1,7 @@
 # Artifact Contracts
 
 **Status:** Implemented
-**Last Updated:** 2026-06-11
+**Last Updated:** 2026-06-12
 
 ## 1. Overview
 
@@ -350,41 +350,6 @@ body = "List non-escalated defaults chosen for non-material ambiguity."
 
 The stronger invariant that `design` and `execute` require a signed/auto brief in branch closure is deferred until the system has observed whether presence-enforced clarify artifacts are sufficient. This spec deliberately avoids a first-class Brief table in MVP.
 
-## 10. Code Locations
-
-Implementation areas:
-
-| Path                                            | Responsibility                                                                               |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `packages/pithos/src/db.ts`                     | Artifact status/rejection schema and incompatible alpha-schema check.                        |
-| `packages/pithos/src/rows.ts`                   | Artifact row parsing and status validation.                                                  |
-| `packages/pithos/src/artifact-contracts.ts`     | Resolve and parse `$PDX_USER_DATA_DIR/artifacts.toml`; export parser/normalizer for Spawner. |
-| `packages/pithos/src/engine/claim-loop.ts`      | Fenced artifact add/reject and completion enforcement.                                       |
-| `packages/pithos/src/engine/task-read-model.ts` | Active artifact refs, list/show read models, and live missing-required status.               |
-| `packages/pithos/src/engine/render.ts`          | Compact/full inspect, graph artifact rendering, artifact list/show renderers.                |
-| `packages/pithos/src/cli.ts`                    | CLI flags and command dispatch.                                                              |
-| `packages/spawner/src/spawner.ts`               | Prompt injection of normalized artifact contract JSON.                                       |
-| `packages/pdx/src/live.ts`                      | Scaffold user `artifacts.toml` once.                                                         |
-| `resources/user-data-dir/artifacts.toml`        | Commented example scaffold.                                                                  |
-| `resources/user-data-dir/PANDORA.md`            | Installed user-facing artifact-contract guidance.                                            |
-
-## 11. Testing
-
-Automated coverage should include:
-
-- artifact config parser validation and disabled-env behavior
-- lower-snake-case artifact kind validation
-- fenced `artifact add` / `artifact reject` ownership checks
-- completion failure when required active artifact kinds are missing
-- rejected artifacts not satisfying requirements
-- artifact list/show text and JSON output
-- compact vs full task inspect rendering
-- graph omission of empty artifact blocks and rejected artifacts
-- graph live missing-required status for claimed/running Tasks only
-- prompt rendering of minified normalized JSON for selected/current Capability
-
-Manual smoke validation should use isolated `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR` as described in `AGENTS.md`.
-
-## 12. Open Questions
+## 10. Open Questions
 
 None for MVP.

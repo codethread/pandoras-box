@@ -1,7 +1,7 @@
 # Agent Policy Configuration
 
 **Status:** Implemented
-**Last Updated:** 2026-06-11
+**Last Updated:** 2026-06-12
 
 ## 1. Overview
 
@@ -166,7 +166,7 @@ For a given Agent, the final policy list is ordered by merge sequence:
 3. matching rule-level `[rules.policy]` additions/removals
 4. matching rule Agent policy additions/removals
 
-Spawner reads each selected policy id in final order. For each policy id, it reads the declared `files` entries in order, joins them with `\n\n---\n\n`, and appends the result to the rendered prompt after bundled base content and generated command cards, also separated by `\n\n---\n\n`.
+Spawner reads each selected policy id in final order. For each policy id, it reads the declared `files` entries in order, joins them with `\n\n---\n\n`, and appends the result to the rendered prompt after all bundled and generated content (see [Prompt Composition Guarantee](#6-prompt-composition-guarantee)), also separated by `\n\n---\n\n`.
 
 A policy id may appear at most once in the final list. Adding an already-present policy id or removing an absent policy id fails loudly.
 
@@ -279,33 +279,11 @@ Spawner applies only path-oriented expansion for `$PDX_DATA_DIR`, `${PDX_DATA_DI
 
 External intake is not configured in `agents.toml`. While `pdx open` is running, pdx owns `<data-dir>/intake.sock`; producers write newline-delimited JSON `{ title, body }` events to that socket. Each valid event creates a global `intake` Task for Envy. Producer process lifecycle belongs to the user rather than Spawner or pdx manifest configuration.
 
-## 6. Prompt Composition
+## 6. Prompt Composition Guarantee
 
-Spawner renders prompts in this order:
+For users, composition order is a contract: every rendered prompt starts from the bundled Agent template and shared includes, then generated content (the command reference and, when applicable, Artifact Contract guidance), and only then the selected policy packs, appended verbatim in final order. User content always extends the prompt — it never replaces or shadows bundled prompts or generated sections, and policy packs do not receive template variables.
 
-1. bundled Agent template
-2. bundled shared runtime includes (`common/base.md`, `common/afk.md` or `common/hitl.md`)
-3. generated command reference (`{{command_cards}}`)
-4. generated Artifact Contract section, when applicable
-5. selected policy packs in final order
-
-Bundled templates use simple `{{variable}}` substitutions. Unknown variables fail loudly. Policy packs are appended verbatim and do not receive template variables. The generated Artifact Contract section is rendered by Spawner using the shared `@pdx/pithos` parser/normalizer; it is not configured through `agents.toml` and is omitted when no rules apply. It contains a short preamble plus minified normalized JSON for the selected/current Capability, or for all claimable Capabilities when no selected Capability is known. Pithos owns completion enforcement; Spawner only renders parsed guidance into prompts. See `specs/artifact-contracts.md` for the Artifact Contract format and enforcement semantics.
-
-Available bundled template variables:
-
-- `agent`
-- `run_id`
-- `session_id`
-- `scope_id`
-- `cwd`
-- `claim_command`
-- `command_cards`
-- `claims` (derived from built-in Pithos authorization)
-- `enqueues` (derived from built-in Pithos authorization)
-- `model`
-- `tools_csv`
-
-Templates receive launch/self-claim context only. They do not receive Task bodies.
+The rendering pipeline, template variables, and generated sections are owned by [prompt-rendering.md](./prompt-rendering.md); Artifact Contract format and enforcement semantics by [artifact-contracts.md](./artifact-contracts.md).
 
 ## 7. Lifecycle Ownership
 
@@ -325,41 +303,6 @@ Templates receive launch/self-claim context only. They do not receive Task bodie
 
 A direct config-editing Agent can run from `$PDX_USER_DATA_DIR`, read `PANDORA.md`, edit `agents.toml` and policy files, then validate with `pandora-spawn preview`.
 
-## 9. Code Locations
-
-| File / Directory                            | Responsibility                                                                                                                              |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/spawner/src/manifest.ts`          | Parse user `agents.toml`, validate policy declarations/rules, merge policy and Harness config.                                              |
-| `packages/spawner/src/paths.ts`             | Resolve bundled resources, user config roots, policy file paths, and argv path expansion.                                                   |
-| `packages/spawner/src/spawner.ts`           | Render bundled prompts, generated command cards, generated Artifact Contract guidance, selected policies, Harness argv/env, and provenance. |
-| `packages/spawner/src/main.ts`              | `pandora-spawn preview` CLI boundary.                                                                                                       |
-| `packages/spawner/src/spawner.test.ts`      | Policy selection, rule matching, validation, prompt rendering, and preview provenance tests.                                                |
-| `packages/pdx/src/config.ts`                | Parse `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, derived defaults, and invalid path relationships.                                                |
-| `packages/pdx/src/live.ts`                  | Re-seed canonical config/templates and scaffold user config files.                                                                          |
-| `packages/pdx/src/controller.ts`            | Preserve user config during clean/nuke and pass launch context to Spawner.                                                                  |
-| `resources/README.md`                       | Resource ownership map and pointers to this spec plus installed user reference docs.                                                        |
-| `resources/data-dir/`                       | Bundled canonical Agent prompt defaults, templates, and runtime `AGENTS.md` note.                                                           |
-| `resources/user-data-dir/PANDORA.md`        | User-facing policy registry, external intake, preview, and lifecycle reference.                                                             |
-| `resources/user-data-dir/`                  | User config scaffold files, `artifacts.toml`, and installed reference assets.                                                               |
-| `packages/pithos/src/artifact-contracts.ts` | Public Artifact Contract parser/normalizer used by Spawner.                                                                                 |
-
-## 10. Testing
-
-Automated tests cover:
-
-- Config path parsing for `PDX_DATA_DIR` and `PDX_USER_DATA_DIR`.
-- Policy declaration validation: unknown ids, duplicate ids, invalid id syntax, missing files, unsupported relative paths, and unreadable files.
-- Match rule validation and matching for exact path, glob path, scope kind, and Agent kind.
-- Policy merge behavior: top-level defaults, Agent-specific defaults, ordered rules, add/remove behavior, duplicate final policy detection, and removing absent policies.
-- Harness merge behavior: scalar replacement, rule-targeted scalar replacement, tool add/remove, argv add/replace, and path expansion.
-- Prompt composition order: bundled base before generated command cards, generated Artifact Contract guidance when applicable, and policy packs.
-- Missing user Harness configuration fails render/open loudly instead of selecting a bundled runtime.
-- No user file can shadow bundled `agents/*.md` or `common/*.md` prompts.
-- Removed hook configuration fails loudly as an unknown manifest field.
-- `pandora-spawn preview` provenance for matched rules and selected policies.
-
-Manual smoke validation uses isolated `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR` as described in `AGENTS.md`.
-
-## 11. Open Questions
+## 9. Open Questions
 
 None.

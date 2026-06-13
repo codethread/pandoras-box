@@ -1,7 +1,7 @@
 # Control Plane Supervision
 
 **Status:** Implemented
-**Last Updated:** 2026-06-11
+**Last Updated:** 2026-06-12
 
 ## 1. Overview
 
@@ -178,7 +178,7 @@ If pdx creates a Run row but the launch cannot complete before the Agent claims 
 
 ## 8. Spawner Boundary
 
-pdx-launched Agents receive `PDX_USER_DATA_DIR` so Pithos and Spawner can read user-owned Artifact Contracts. Pithos owns parsing and completion enforcement; pdx does not validate artifact requirements, keep a bundled active contract, or retroactively revalidate Tasks when config changes. Spawner renders prompt guidance through the shared Pithos parser as described in `specs/artifact-contracts.md`.
+pdx-launched Agents receive `PDX_USER_DATA_DIR` so Pithos and Spawner can read user-owned Artifact Contracts. Pithos owns parsing and completion enforcement; pdx does not validate artifact requirements, keep a bundled active contract, or retroactively revalidate Tasks when config changes. Spawner renders prompt guidance through the shared Pithos parser as described in [artifact-contracts.md](./artifact-contracts.md).
 
 pdx renders before it launches:
 
@@ -192,7 +192,7 @@ pdx reconcile
 
 Spawner owns:
 
-- manifest, bundled prompt, and policy validation
+- manifest, bundled prompt, and policy validation (contract in [agent-configuration.md](./agent-configuration.md))
 - command-card rendering into prompts
 - Harness argv/env construction
 - expected Harness session log paths; Claude paths use the realpath-normalized launch CWD to match Claude Code's project bucket naming, and Pi launches use native `--session-id` with the Pithos Harness session id
@@ -221,18 +221,3 @@ The public `pdx` surface is the operator/Pandora control surface:
 All commands resolve data dir as `--data-dir`, then `PDX_DATA_DIR`, then `$HOME/.pdx`.
 
 `pdx daemon logs` reads structured Supervisor log JSONL even after the daemon stops. These are Supervisor logs, not Harness transcripts. `pdx run transcript` reads the Pithos Run transcript metadata and delegates Harness-log parsing to Spawner for both AFK and HITL runs; Pi timeline tool-call entries are rendered as in-flight tool summaries when present. System Runs fail loudly for transcript rendering and point to Supervisor logs. Harness logs with no parseable user/assistant messages also fail loudly instead of rendering empty output. `pdx run show` and `pdx task show` are interactive-session navigation commands; AFK/headless runs intentionally have no session to show and the operator should use transcript or daemon status instead.
-
-## 11. Code Locations and Tests
-
-- `packages/pdx/src/controller.ts` — lifecycle, reconcile, Kill, launch-precondition handling, intake socket startup
-- `packages/pdx/src/live.ts` — live service bindings, Pithos/Spawner integration, template and user `artifacts.toml` materialization
-- `packages/pdx/src/main.ts` — public CLI and IPC dispatch
-- `packages/pdx/src/services.ts` — injected services and Registry interface
-- `packages/pdx/src/log.ts` — Supervisor log JSONL
-- `packages/pithos/src/engine.ts` and `packages/pithos/src/engine/*` — Run/Task transitions, Repair Alert creation, Task/Scope read models, graph inspection, Engine output contracts, and text renderers
-- `packages/spawner/src/spawner.ts` — render/launch/transcript behavior
-- `specs/agent-configuration.md` — manifest policy-pack contract and user `agents.toml` semantics, including harness `tools` / `argv` merge rules
-- `resources/user-data-dir/PANDORA.md` — machine-local user configuration guide and edit-time contract
-- `resources/user-data-dir/artifacts.toml` — scaffold-once commented Artifact Contract examples
-
-Automated coverage lives primarily in `packages/pdx/test/`, `packages/pithos/test/`, and `packages/spawner/src/spawner.test.ts`.

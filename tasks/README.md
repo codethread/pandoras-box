@@ -9,7 +9,7 @@ Implement the Artifact Contracts MVP described by `specs/artifact-contracts.md`:
 - `specs/artifact-contracts.md` — implemented Artifact Contract semantics and centralized config/API contract.
 - `specs/task-graph.md` — implemented Task graph artifact lifecycle, completion, and inspection behavior.
 - `specs/control-plane-supervision.md` — implemented pdx scaffolding/environment and `clarify` capability behavior.
-- `specs/agent-command-reference.md` — implemented command-card and artifact prompt guidance behavior.
+- `specs/prompt-rendering.md` — implemented prompt assembly, command-card, and artifact prompt guidance behavior.
 - `specs/agent-configuration.md` — implemented prompt-composition boundary for generated Artifact Contract guidance.
 - `packages/pithos/README.md` — Pithos package boundaries and invariant patterns.
 - `packages/spawner/README.md` — Spawner prompt rendering and preview boundary.
