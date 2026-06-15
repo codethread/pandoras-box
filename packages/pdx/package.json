@@ -18,6 +18,7 @@
 		"@effect/cli": "catalog:",
 		"@effect/platform-node": "catalog:",
 		"@pdx/cli-help": "workspace:*",
+		"@pdx/graph-explorer": "workspace:*",
 		"@pdx/pithos": "workspace:*",
 		"@pdx/spawner": "workspace:*",
 		"better-sqlite3": "^12.9.0",

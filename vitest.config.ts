@@ -14,6 +14,7 @@ export default defineConfig({
 			"packages/pithos/vitest.config.ts",
 			"packages/spawner/vitest.config.ts",
 			"packages/pdx/vitest.config.ts",
+			"packages/graph-explorer/vitest.config.ts",
 		],
 	},
 });

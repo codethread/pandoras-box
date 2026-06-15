@@ -11,6 +11,7 @@ Usage:
 Commands:
   init      Initialize the pdx data dir and seeded bundle templates only.
   open      Open the box: start pdx supervision and the Pandora HITL singleton.
+  ui        Start the local graph explorer dashboard and keep it running.
   close     Close the box: stop pdx supervision and clean up supervised runs.
   daemon    Daemon supervisor commands.
   run       Inspect or stop supervised agent runs owned by pdx.

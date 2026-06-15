@@ -1,5 +1,7 @@
 import { Deferred, Effect, Fiber, Ref, Schedule, Either } from "effect";
+import { isIP } from "node:net";
 import { resolve } from "node:path";
+import { startGraphExplorer } from "@pdx/graph-explorer";
 import { BUILTIN_AGENT_CLAIMS, PDX_SYSTEM_RUN_ID, type Capability } from "@pdx/pithos";
 import { requestIpc, listenIpc } from "./ipc-socket.js";
 import { listenIntakeSocket } from "./intake-socket.js";
@@ -7,12 +9,15 @@ import type { IpcResponse } from "./ipc.js";
 import { PdxError } from "./errors.js";
 import type { PdxConfig } from "./config.js";
 import {
+	Browser,
 	Clock,
 	FileSystem,
+	Http,
 	Ids,
 	PithosClient,
 	Process,
 	Registry,
+	Signals,
 	Spawner,
 	SupervisorLog,
 	Tmux,
@@ -20,6 +25,8 @@ import {
 	type ProcessService,
 	type RegistryEntry,
 	type TmuxService,
+	type UiReadyInfo,
+	uiReadyInfoFromHandle,
 } from "./services.js";
 import { reportLifecycle } from "./lifecycle.js";
 
@@ -291,6 +298,99 @@ export const closePdx = (config: PdxConfig) =>
 				),
 			);
 	});
+
+const validateUiHost = (host: string | undefined): Effect.Effect<string | undefined, PdxError> => {
+	if (host === undefined) return Effect.succeed(undefined);
+	const trimmed = host.trim();
+	if (trimmed.length === 0) {
+		return Effect.fail(
+			new PdxError({ code: "VALIDATION_ERROR", message: "--host must be a non-empty string" }),
+		);
+	}
+	if (trimmed !== "localhost" && isIP(trimmed) === 0) {
+		return Effect.fail(
+			new PdxError({
+				code: "VALIDATION_ERROR",
+				message: "--host must be localhost or a valid IPv4/IPv6 address",
+			}),
+		);
+	}
+	return Effect.succeed(trimmed);
+};
+
+const validateUiPort = (port: number | undefined): Effect.Effect<number | undefined, PdxError> => {
+	if (port === undefined) return Effect.succeed(undefined);
+	if (!Number.isInteger(port) || port < 0 || port > 65535) {
+		return Effect.fail(
+			new PdxError({
+				code: "VALIDATION_ERROR",
+				message: "--port must be an integer between 0 and 65535",
+			}),
+		);
+	}
+	return Effect.succeed(port);
+};
+
+const graphExplorerStartError = (error: unknown): PdxError =>
+	new PdxError({
+		code: "PROCESS_ERROR",
+		message: `graph explorer start failed: ${error instanceof Error ? error.message : String(error)}`,
+	});
+
+const graphExplorerStopError = (error: unknown): PdxError =>
+	new PdxError({
+		code: "PROCESS_ERROR",
+		message: `graph explorer stop failed: ${error instanceof Error ? error.message : String(error)}`,
+	});
+
+export const uiPdx = (
+	config: PdxConfig,
+	input: {
+		readonly host: string | undefined;
+		readonly port: number | undefined;
+		readonly noOpen: boolean;
+		readonly onReady?: (info: UiReadyInfo) => Effect.Effect<void, PdxError>;
+	},
+) =>
+	Effect.scoped(
+		Effect.gen(function* () {
+			const browser = yield* Browser;
+			const http = yield* Http;
+			const signals = yield* Signals;
+			const host = yield* validateUiHost(input.host);
+			const port = yield* validateUiPort(input.port);
+			const onReady = input.onReady ?? (() => Effect.void);
+			yield* Effect.acquireRelease(
+				Effect.tryPromise({
+					try: () =>
+						startGraphExplorer({
+							pithosDbPath: config.pithosDbPath,
+							pdxDataDir: config.dataDir,
+							...(host === undefined ? {} : { host }),
+							...(port === undefined ? {} : { port }),
+						}),
+					catch: graphExplorerStartError,
+				}),
+				(handle) =>
+					Effect.tryPromise({
+						try: () => handle.stop(),
+						catch: graphExplorerStopError,
+					}).pipe(Effect.orDie),
+			).pipe(
+				Effect.flatMap((handle) =>
+					Effect.gen(function* () {
+						const readyInfo = uiReadyInfoFromHandle(handle);
+						yield* http.getJson(`${readyInfo.url}/api/graph`);
+						yield* onReady(readyInfo);
+						if (!input.noOpen) {
+							yield* browser.open(readyInfo.url);
+						}
+						yield* signals.waitForInterrupt();
+					}),
+				),
+			);
+		}),
+	);
 
 const queueCounts = (
 	ready: readonly { readonly scope_id: string; readonly capability: string }[],

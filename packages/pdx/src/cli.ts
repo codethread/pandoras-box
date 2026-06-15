@@ -18,6 +18,13 @@ export type CommandInput =
 			readonly clean: boolean;
 			readonly nuke: boolean;
 	  }
+	| {
+			readonly command: "ui";
+			readonly dataDir: string | undefined;
+			readonly host: string | undefined;
+			readonly port: number | undefined;
+			readonly noOpen: boolean;
+	  }
 	| { readonly command: "close"; readonly dataDir: string | undefined }
 	| { readonly command: "daemon.status"; readonly dataDir: string | undefined }
 	| {
@@ -343,6 +350,34 @@ export const makePdxCommand = (execute: (input: CommandInput) => Effect.Effect<v
 		Command.withDescription("Open the box: start pdx supervision and the Pandora HITL singleton."),
 	);
 
+	const ui = Command.make(
+		"ui",
+		{
+			dataDir: dataDirOption.pipe(Options.optional),
+			host: textOption(
+				"host",
+				"host",
+				"Host interface to bind for the graph explorer server. Defaults to loopback; use 0.0.0.0 to expose on the LAN.",
+			).pipe(Options.optional),
+			port: integerOption(
+				"port",
+				"port",
+				"Port to bind for the graph explorer server. Defaults to an available localhost port.",
+			).pipe(Options.optional),
+			noOpen: Options.boolean("no-open").pipe(
+				Options.withDescription("Start the graph explorer without opening the default browser."),
+			),
+		},
+		({ dataDir, host, port, noOpen }) =>
+			execute({
+				command: "ui",
+				dataDir: opt(dataDir),
+				host: opt(host),
+				port: opt(port),
+				noOpen,
+			}),
+	).pipe(Command.withDescription("Start the local graph explorer dashboard and keep it running."));
+
 	const close = Command.make(
 		"close",
 		{ dataDir: dataDirOption.pipe(Options.optional) },
@@ -482,6 +517,6 @@ export const makePdxCommand = (execute: (input: CommandInput) => Effect.Effect<v
 		Command.withDescription(
 			"Local supervisor for Pandora's Box agent runs, processes, tmux sessions, and Pandora.",
 		),
-		Command.withSubcommands([init, open, close, daemon, run, task]),
+		Command.withSubcommands([init, open, ui, close, daemon, run, task]),
 	);
 };

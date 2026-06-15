@@ -31,11 +31,14 @@ import { liveServices, makeEngine, pickThreeWords, PithosError } from "@pdx/pith
 import type { Config as PithosConfig } from "@pdx/pithos";
 import { PdxError } from "./errors.js";
 import {
+	Browser,
 	FileSystem,
 	Clock,
+	Http,
 	Ids,
 	PithosClient,
 	Process,
+	Signals,
 	Spawner,
 	type PithosClientService,
 	type ProcessResult,
@@ -187,6 +190,86 @@ export const FileSystemLive = FileSystem.of({
 		}).pipe(Effect.asVoid),
 });
 export const ClockLive = Clock.of({ nowIso: Effect.sync(() => new Date().toISOString()) });
+export const BrowserLive = Browser.of({
+	open: (url) =>
+		Effect.gen(function* () {
+			const opener =
+				process.platform === "darwin"
+					? "open"
+					: process.platform === "linux"
+						? "xdg-open"
+						: undefined;
+			if (opener === undefined) {
+				return yield* Effect.fail(
+					new PdxError({
+						code: "PROCESS_ERROR",
+						message: `pdx ui browser open is unsupported on platform '${process.platform}'`,
+					}),
+				);
+			}
+			const result = yield* execFileEffect(opener, [url]);
+			if (result.exitCode !== 0) {
+				return yield* Effect.fail(
+					new PdxError({
+						code: "PROCESS_ERROR",
+						message: `${opener} failed for ${url}: ${result.stderr.trim() || `exit ${result.exitCode.toString()}`}`,
+					}),
+				);
+			}
+		}),
+});
+export const HttpLive = Http.of({
+	getJson: (url) =>
+		Effect.tryPromise({
+			try: async () => {
+				const response = await fetch(url);
+				const body = await response.json();
+				if (!response.ok) {
+					const record =
+						typeof body === "object" && body !== null
+							? (body as Record<string, unknown>)
+							: undefined;
+					const code = typeof record?.code === "string" ? record.code : "PROCESS_ERROR";
+					const message =
+						typeof record?.message === "string"
+							? record.message
+							: `HTTP ${response.status.toString()} readiness probe failed`;
+					throw new PdxError({
+						code: code === "NOT_FOUND" ? "NOT_FOUND" : "PROCESS_ERROR",
+						message: `graph explorer readiness probe failed: ${message}`,
+					});
+				}
+				return body;
+			},
+			catch: (error) =>
+				error instanceof PdxError
+					? error
+					: new PdxError({
+							code: "PROCESS_ERROR",
+							message: `graph explorer readiness probe failed: ${error instanceof Error ? error.message : String(error)}`,
+						}),
+		}),
+});
+export const SignalsLive = Signals.of({
+	waitForInterrupt: () =>
+		Effect.async<"SIGINT" | "SIGTERM", PdxError>((resume) => {
+			const onSigint = () => {
+				cleanup();
+				resume(Effect.succeed("SIGINT"));
+			};
+			const onSigterm = () => {
+				cleanup();
+				resume(Effect.succeed("SIGTERM"));
+			};
+			const cleanup = () => {
+				process.off("SIGINT", onSigint);
+				process.off("SIGTERM", onSigterm);
+			};
+			process.once("SIGINT", onSigint);
+			process.once("SIGTERM", onSigterm);
+			return Effect.sync(cleanup);
+		}),
+});
 export const IdsLive = Ids.of({
 	nextRunId: Effect.sync(() => `run_${pickThreeWords()}`),
 	nextSessionId: Effect.sync(() => randomUUID()),

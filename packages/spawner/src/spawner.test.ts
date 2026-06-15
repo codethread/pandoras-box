@@ -285,6 +285,14 @@ const pdxHelpTree = {
 		},
 		{
 			tool: "pdx",
+			name: "ui",
+			path: "pdx ui",
+			usage: "pdx ui [--data-dir text] [--host text] [--port integer] [--no-open]",
+			description: "Start the local graph explorer dashboard and keep it running.",
+			subcommands: [],
+		},
+		{
+			tool: "pdx",
 			name: "run",
 			path: "pdx run",
 			usage: "pdx run",
@@ -1791,6 +1799,7 @@ body = "Ask."
 		expect(rendered.prompt).toContain("#### `pdx run show`");
 		expect(rendered.prompt).toContain("AFK runs are headless");
 		expect(rendered.prompt).toContain("#### `pdx task show`");
+		expect(rendered.prompt).not.toContain("#### `pdx ui`");
 
 		expect(rendered.prompt).not.toContain("### Pithos help JSON");
 		expect(rendered.prompt).not.toContain("### pdx inspection help JSON");

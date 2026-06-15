@@ -32,11 +32,42 @@ const searchFilterSql = (search: readonly string[]): string =>
 const searchFilterParams = (search: readonly string[]): readonly string[] =>
 	search.flatMap((term) => [term, term]);
 
-const sinceFilterSql = (since: GraphSinceCutoff | undefined): string =>
-	since === undefined ? "" : " AND (created_at >= ? OR updated_at >= ? OR completed_at >= ?)";
+const timeFilterSql = (
+	since: GraphSinceCutoff | undefined,
+	until: GraphSinceCutoff | undefined,
+): string => {
+	if (since === undefined) {
+		return "";
+	}
+	if (until === undefined) {
+		return " AND (created_at >= ? OR updated_at >= ? OR completed_at >= ?)";
+	}
+	return ` AND (
+		(created_at >= ? AND created_at <= ?)
+		OR (updated_at >= ? AND updated_at <= ?)
+		OR (completed_at >= ? AND completed_at <= ?)
+	)`;
+};
 
-const sinceFilterParams = (since: GraphSinceCutoff | undefined): readonly string[] =>
-	since === undefined ? [] : [since.dbTimestamp, since.dbTimestamp, since.dbTimestamp];
+const timeFilterParams = (
+	since: GraphSinceCutoff | undefined,
+	until: GraphSinceCutoff | undefined,
+): readonly string[] => {
+	if (since === undefined) {
+		return [];
+	}
+	if (until === undefined) {
+		return [since.dbTimestamp, since.dbTimestamp, since.dbTimestamp];
+	}
+	return [
+		since.dbTimestamp,
+		until.dbTimestamp,
+		since.dbTimestamp,
+		until.dbTimestamp,
+		since.dbTimestamp,
+		until.dbTimestamp,
+	];
+};
 
 const toDbTimestamp = (date: Date): string => {
 	if (Number.isNaN(date.getTime())) fail("VALIDATION_ERROR", "invalid --since cutoff");
@@ -56,14 +87,15 @@ export const parseGraphSinceCutoff = (raw: string, nowIso: string): GraphSinceCu
 		fail("INTERNAL_ERROR", `clock returned invalid ISO timestamp: ${nowIso}`);
 	}
 	if (value === "today") return { dbTimestamp: toDbTimestamp(startOfLocalDay(now)) };
-	const relative = /^(\d+)([hd])$/.exec(value);
+	const relative = /^(\d+)([mhd])$/.exec(value);
 	if (relative !== null) {
 		const amount = Number(relative[1]);
 		if (!Number.isSafeInteger(amount) || amount < 1) {
 			fail("VALIDATION_ERROR", "invalid --since cutoff");
 		}
 		const unit = relative[2];
-		const millis = amount * (unit === "h" ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000);
+		const millis =
+			amount * (unit === "m" ? 60 * 1000 : unit === "h" ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000);
 		return { dbTimestamp: toDbTimestamp(new Date(now.getTime() - millis)) };
 	}
 	const localDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -276,10 +308,21 @@ export const inspectGraph = (
 		readonly status?: readonly TaskStatus[];
 		readonly search?: readonly string[];
 		readonly sinceCutoff: GraphSinceCutoff | undefined;
+		readonly untilCutoff: GraphSinceCutoff | undefined;
 		readonly contract: ArtifactContract;
 	},
 ): GraphInspectOutput => {
-	const { taskId, scope, all, sinceCutoff } = input;
+	const { taskId, scope, all, sinceCutoff, untilCutoff } = input;
+	if (sinceCutoff === undefined && untilCutoff !== undefined) {
+		fail("VALIDATION_ERROR", "graph until cutoff requires a since cutoff");
+	}
+	if (
+		sinceCutoff !== undefined &&
+		untilCutoff !== undefined &&
+		sinceCutoff.dbTimestamp > untilCutoff.dbTimestamp
+	) {
+		fail("VALIDATION_ERROR", "graph until cutoff must be greater than or equal to since cutoff");
+	}
 	const status = input.status ?? [];
 	const searchTerms = requireNonEmptySearchTerms(input.search ?? []);
 	const selectorCount = [taskId, scope, all === true ? "all" : undefined].filter(
@@ -288,16 +331,19 @@ export const inspectGraph = (
 	if (selectorCount !== 1) fail("VALIDATION_ERROR", "provide exactly one graph selector");
 
 	const defaultVisibility =
-		status.length === 0 && searchTerms.length === 0 && sinceCutoff === undefined
+		status.length === 0 &&
+		searchTerms.length === 0 &&
+		sinceCutoff === undefined &&
+		untilCutoff === undefined
 			? " AND (status <> 'cancelled' OR completed_at > datetime('now', '-1 hour'))"
 			: "";
 	const statusClause = statusFilterSql(status);
 	const searchClause = searchFilterSql(searchTerms);
-	const sinceClause = sinceFilterSql(sinceCutoff);
+	const timeClause = timeFilterSql(sinceCutoff, untilCutoff);
 	const filterParams = [
 		...status,
 		...searchFilterParams(searchTerms),
-		...sinceFilterParams(sinceCutoff),
+		...timeFilterParams(sinceCutoff, untilCutoff),
 	];
 
 	if (taskId !== undefined) {
@@ -314,7 +360,7 @@ export const inspectGraph = (
 						WHERE id=?
 						  ${statusClause}
 						  ${searchClause}
-						  ${sinceClause}
+						  ${timeClause}
 					`)
 					.all(taskId, ...filterParams) as { id: string }[]
 			).map((r) => r.id),
@@ -337,7 +383,7 @@ export const inspectGraph = (
 						  ${defaultVisibility}
 						  ${statusClause}
 						  ${searchClause}
-						  ${sinceClause}
+						  ${timeClause}
 					`)
 					.all(scope, ...filterParams) as { id: string }[]
 			).map((r) => r.id),
@@ -357,7 +403,7 @@ export const inspectGraph = (
 					  ${defaultVisibility}
 					  ${statusClause}
 					  ${searchClause}
-					  ${sinceClause}
+					  ${timeClause}
 				`)
 				.all(...filterParams) as { id: string }[]
 		).map((r) => r.id),
