@@ -1,4 +1,5 @@
 import { Context, Effect, SynchronizedRef } from "effect";
+import type { GraphExplorerHandle } from "@pdx/graph-explorer";
 import type { Capability, RepairAlertKind, RunOutput as PithosRunOutput } from "@pdx/pithos";
 import type { RenderedAgent as SpawnerRenderedAgent } from "@pdx/spawner";
 import type { PdxError } from "./errors.js";
@@ -40,6 +41,21 @@ export interface ClockService {
 	readonly nowIso: Effect.Effect<string>;
 }
 export class Clock extends Context.Tag("pdx/Clock")<Clock, ClockService>() {}
+
+export interface BrowserService {
+	readonly open: (url: string) => Effect.Effect<void, PdxError>;
+}
+export class Browser extends Context.Tag("pdx/Browser")<Browser, BrowserService>() {}
+
+export interface HttpService {
+	readonly getJson: (url: string) => Effect.Effect<unknown, PdxError>;
+}
+export class Http extends Context.Tag("pdx/Http")<Http, HttpService>() {}
+
+export interface SignalService {
+	readonly waitForInterrupt: () => Effect.Effect<"SIGINT" | "SIGTERM", PdxError>;
+}
+export class Signals extends Context.Tag("pdx/Signals")<Signals, SignalService>() {}
 
 export interface IdsService {
 	readonly nextRunId: Effect.Effect<string, PdxError>;
@@ -346,3 +362,15 @@ export class LifecycleReporter extends Context.Tag("pdx/LifecycleReporter")<
 	LifecycleReporter,
 	LifecycleReporterService
 >() {}
+
+export interface UiReadyInfo {
+	readonly url: string;
+	readonly host: string;
+	readonly port: number;
+}
+
+export const uiReadyInfoFromHandle = (handle: GraphExplorerHandle): UiReadyInfo => ({
+	url: handle.url,
+	host: handle.host,
+	port: handle.port,
+});

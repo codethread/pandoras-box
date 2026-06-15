@@ -179,6 +179,7 @@ export interface Engine {
 		readonly status?: readonly TaskStatus[];
 		readonly search?: readonly string[];
 		readonly sinceCutoff?: GraphSinceCutoff | undefined;
+		readonly untilCutoff?: GraphSinceCutoff | undefined;
 	}) => GraphInspectOutput;
 	readonly briefing: (input: { readonly agent: string | undefined }) => BriefingOutput;
 	readonly supersede: (input: {

@@ -1,6 +1,6 @@
 # Pithos Graph Explorer
 
-**Status:** Planned
+**Status:** Implemented
 **Last Updated:** 2026-06-14
 
 ## 1. Overview
@@ -192,13 +192,13 @@ The exact TypeScript shape belongs in code; the durable contract is that `pdx` s
 
 The first server surface should include:
 
-| Interface              | Purpose                                                                                                                |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Static SPA routes      | Serve the bundled HTML, JavaScript, and CSS assets.                                                                    |
-| Graph read endpoint    | Return the current graph snapshot for a selector; also used by manual refresh.                                         |
-| Task read endpoint     | Return selected task detail using Pithos task inspection semantics.                                                    |
-| Daemon status endpoint | Return `running`, `not_running`, or `unreachable` status for the local pdx daemon without making the daemon mandatory. |
-| Websocket endpoint     | Push graph snapshots, freshness metadata, and error/stale notifications to connected clients.                          |
+| Interface              | Purpose                                                                                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Static SPA routes      | Serve the bundled HTML, JavaScript, and CSS assets.                                                                                                |
+| Graph read endpoint    | Return the current graph snapshot for a selector plus relative `since` or bounded absolute `since`/`until` filtering; also used by manual refresh. |
+| Task read endpoint     | Return selected task detail using Pithos task inspection semantics.                                                                                |
+| Daemon status endpoint | Return `running`, `not_running`, or `unreachable` status for the local pdx daemon without making the daemon mandatory.                             |
+| Websocket endpoint     | Push graph snapshots, freshness metadata, and error/stale notifications to connected clients.                                                      |
 
 API responses should use Pithos terms: Task, Scope, Capability, typed Task edge, Artifact, Supersession, Gate, and Branch. Errors should be structured enough for the UI to show stale state rather than clearing the graph.
 

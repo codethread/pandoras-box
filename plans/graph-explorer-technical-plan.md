@@ -202,7 +202,7 @@ Recommended endpoints:
 
 ```text
 GET /api/config
-GET /api/graph?selector=global|all|scope:<id>|task:<id>&since=<range>&status=...
+GET /api/graph?selector=global|all|scope:<id>|task:<id>&since=<relative-or-start>&until=<absolute-end>&status=...
 GET /api/task/:taskId
 GET /api/daemon/status
 WS  /ws/graph
@@ -230,7 +230,7 @@ Use read-only methods:
 - `engine.taskInspect({ taskId })`
 - `engine.briefing({ agent: undefined })` if dashboard counts need it
 
-Use `parseGraphSinceCutoff` for existing relative/absolute single-cutoff behavior. For Grafana-style absolute ranges, add an explorer-level range parser and only pass through what Pithos can support initially, or extend Pithos graph inspect intentionally if true between-range filtering is required. Do not pretend an unsupported time range was applied.
+Use `parseGraphSinceCutoff` for relative lower-bound windows. For bounded absolute ranges, extend the explorer/Pithos read path intentionally so `since` + `until` filtering is real; do not pretend an unsupported range was applied.
 
 ## Daemon status
 

@@ -11,7 +11,7 @@ Persistent domain specifications. Organized by holistic system area, not feature
 | [control-plane-supervision.md](./control-plane-supervision.md) | Implemented | The Control plane across Pithos, Spawner, and pdx: supervision, Registry, Agent lifecycle, Repair Alerts, Nudges, external intake, operator interfaces. | `packages/pdx`, `packages/spawner`, `packages/pithos`        |
 | [agent-configuration.md](./agent-configuration.md)             | Implemented | The user-facing configuration contract: policy packs, centralized `agents.toml` manifest, Harness settings, directories, and preview UX.                | `packages/spawner`, `packages/pdx`, `resources`              |
 | [prompt-rendering.md](./prompt-rendering.md)                   | Implemented | Spawner's internal prompt assembly: composition pipeline, template variables, role-filtered generated command cards, and the Artifact Contract block.   | `packages/spawner`                                           |
-| [graph-explorer.md](./graph-explorer.md)                       | Planned     | User-facing local web dashboard for read-only visual Pithos Task graph inspection, refresh, and drill-down.                                             | `packages/graph-explorer`, `packages/pdx`, `packages/pithos` |
+| [graph-explorer.md](./graph-explorer.md)                       | Implemented | User-facing local web dashboard for read-only visual Pithos Task graph inspection, refresh, and drill-down.                                             | `packages/graph-explorer`, `packages/pdx`, `packages/pithos` |
 
 ## Retired artifact-contract deltas
 

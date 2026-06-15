@@ -131,6 +131,7 @@ const enqueueTask = (
 	});
 
 const sinceCutoff = (dbTimestamp: string) => ({ dbTimestamp });
+const untilCutoff = sinceCutoff;
 const parseSinceCutoff = (value: string, nowIso = "2026-05-08T12:00:00.000Z") =>
 	parseGraphSinceCutoff(value, nowIso);
 
@@ -1472,6 +1473,88 @@ CREATE TABLE repair_alerts (
 		expect(graph.graph.nodes.map((node) => node.id)).not.toContain(oldNonMatch);
 	});
 
+	it("filters graph selections by bounded absolute time ranges", () => {
+		const { dbPath, engine, repo } = setup();
+		const seed = enqueueTask(engine, {
+			title: "seed",
+			capability: "triage",
+			scope: repo,
+			chain: "none",
+		}).task.id;
+		const matching = enqueueTask(engine, {
+			title: "matching",
+			capability: "execute",
+			scope: repo,
+			after: [seed],
+			chain: "none",
+		}).task.id;
+		const updatedOutOfRange = enqueueTask(engine, {
+			title: "updated outside range",
+			capability: "execute",
+			scope: repo,
+			chain: "none",
+		}).task.id;
+		const completedOutOfRange = enqueueTask(engine, {
+			title: "completed outside range",
+			capability: "execute",
+			scope: repo,
+			chain: "none",
+		}).task.id;
+		const db = new Database(dbPath);
+		db.prepare("UPDATE tasks SET created_at=?, updated_at=? WHERE id=?").run(
+			"2026-05-08 08:00:00",
+			"2026-05-08 08:00:00",
+			seed,
+		);
+		db.prepare("UPDATE tasks SET created_at=?, updated_at=? WHERE id=?").run(
+			"2026-05-08 09:00:00",
+			"2026-05-08 09:00:00",
+			matching,
+		);
+		db.prepare("UPDATE tasks SET created_at=?, updated_at=? WHERE id=?").run(
+			"2026-05-08 07:00:00",
+			"2026-05-08 10:30:00",
+			updatedOutOfRange,
+		);
+		db.prepare(
+			"UPDATE tasks SET status='done', created_at=?, updated_at=?, completed_at=? WHERE id=?",
+		).run("2026-05-08 07:00:00", "2026-05-08 07:00:00", "2026-05-08 10:45:00", completedOutOfRange);
+		db.close();
+
+		const graph = engine.graphInspect({
+			taskId: undefined,
+			scope: repo,
+			all: false,
+			sinceCutoff: sinceCutoff("2026-05-08 08:30:00"),
+			untilCutoff: untilCutoff("2026-05-08 09:30:00"),
+		});
+
+		expect(graph.graph.nodes.map((node) => node.id).sort()).toEqual([matching, seed].sort());
+		expect(graph.graph.nodes.map((node) => node.id)).not.toContain(updatedOutOfRange);
+		expect(graph.graph.nodes.map((node) => node.id)).not.toContain(completedOutOfRange);
+	});
+
+	it("rejects graph until cutoffs without a matching since cutoff or with inverted ranges", () => {
+		const { engine, repo } = setup();
+		expect(() =>
+			engine.graphInspect({
+				taskId: undefined,
+				scope: repo,
+				all: false,
+				untilCutoff: untilCutoff("2026-05-08 09:30:00"),
+			}),
+		).toThrow("graph until cutoff requires a since cutoff");
+		expect(() =>
+			engine.graphInspect({
+				taskId: undefined,
+				scope: repo,
+				all: false,
+				sinceCutoff: sinceCutoff("2026-05-08 09:30:00"),
+				untilCutoff: untilCutoff("2026-05-08 08:30:00"),
+			}),
+		).toThrow("graph until cutoff must be greater than or equal to since cutoff");
+	});
+
 	it("composes graph since with status and search filters", () => {
 		const { dbPath, engine, repo } = setup();
 		const matching = enqueueTask(engine, {
@@ -1531,6 +1614,7 @@ CREATE TABLE repair_alerts (
 		expect(parseSinceCutoff("today")).toEqual({
 			dbTimestamp: localDateAt(today.getFullYear(), today.getMonth() + 1, today.getDate()),
 		});
+		expect(parseSinceCutoff("30m")).toEqual({ dbTimestamp: "2026-05-08 11:30:00" });
 		expect(parseSinceCutoff("24h")).toEqual({ dbTimestamp: "2026-05-07 12:00:00" });
 		expect(parseSinceCutoff("1d")).toEqual({ dbTimestamp: "2026-05-07 12:00:00" });
 		expect(parseSinceCutoff("2026-05-07")).toEqual({

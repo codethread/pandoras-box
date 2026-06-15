@@ -39,6 +39,7 @@ describe("pdx cli and config", () => {
 		expect(help.description).toContain("Local supervisor");
 		expect(paths).toEqual(
 			expect.arrayContaining([
+				"pdx ui",
 				"pdx daemon status",
 				"pdx daemon logs",
 				"pdx run transcript",

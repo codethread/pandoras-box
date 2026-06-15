@@ -135,11 +135,12 @@ rm ~/.local/bin/{pithos,pdx,pandora-spawn}
 
 ## Usage
 
-Two commands:
+Core commands:
 
 ```sh
 pdx init    # create editable config without starting Pandora
 pdx open    # release the Evils
+pdx ui      # open the local graph explorer dashboard
 pdx close   # back in the jar
 ```
 

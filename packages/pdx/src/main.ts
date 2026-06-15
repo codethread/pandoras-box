@@ -1,6 +1,7 @@
 import { CliConfig, Command } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
+import { networkInterfaces } from "node:os";
 import process from "node:process";
 import { inspect } from "node:util";
 import {
@@ -16,6 +17,7 @@ import {
 	runTranscriptPdx,
 	statusPdx,
 	taskShowPdx,
+	uiPdx,
 } from "./controller.js";
 import {
 	defaultMaxAfk,
@@ -28,24 +30,30 @@ import {
 import { parsePdxConfig } from "./config.js";
 import { PdxError } from "./errors.js";
 import {
+	BrowserLive,
 	ClockLive,
 	FileSystemLive,
+	HttpLive,
 	IdsLive,
 	makePithosClientLive,
 	makeSpawnerLive,
 	ProcessLive,
+	SignalsLive,
 } from "./live.js";
 import { makeSupervisorLog } from "./log.js";
 import { makeNoopLifecycleReporter, makeStdoutLifecycleReporter } from "./lifecycle.js";
 import {
+	Browser,
 	Clock,
 	FileSystem,
+	Http,
 	Ids,
 	LifecycleReporter,
 	makeRegistry,
 	PithosClient,
 	Process,
 	Registry,
+	Signals,
 	Spawner,
 	SupervisorLog,
 	Tmux,
@@ -79,8 +87,31 @@ const baseLayer = Layer.mergeAll(
 	Layer.succeed(Process, ProcessLive),
 	Layer.succeed(FileSystem, FileSystemLive),
 	Layer.succeed(Clock, ClockLive),
+	Layer.succeed(Browser, BrowserLive),
+	Layer.succeed(Http, HttpLive),
+	Layer.succeed(Signals, SignalsLive),
 	Layer.succeed(Ids, IdsLive),
 );
+
+const firstLanAddress = (): string | undefined => {
+	for (const entries of Object.values(networkInterfaces())) {
+		for (const entry of entries ?? []) {
+			if (entry.internal || entry.family !== "IPv4") continue;
+			return entry.address;
+		}
+	}
+	return undefined;
+};
+
+const uiDisplayUrl = (info: {
+	readonly url: string;
+	readonly host: string;
+	readonly port: number;
+}): string => {
+	if (info.host !== "0.0.0.0") return info.url;
+	const lanAddress = firstLanAddress();
+	return lanAddress === undefined ? info.url : `http://${lanAddress}:${String(info.port)}`;
+};
 
 const latestSupervisorError = (raw: string): string | undefined => {
 	const lines = raw.trimEnd().split("\n").reverse();
@@ -176,6 +207,21 @@ const runCommand = (runtime: RuntimeInput, input: CommandInput) =>
 				}
 				return;
 			}
+			case "ui":
+				return yield* uiPdx(config, {
+					host: input.host,
+					port: input.port,
+					noOpen: input.noOpen,
+					onReady: (info) =>
+						Effect.sync(() => {
+							const displayUrl = uiDisplayUrl(info);
+							process.stdout.write(`Graph explorer running at ${displayUrl}\n`);
+							if (displayUrl !== info.url) {
+								process.stdout.write(`Bound address: ${info.url}\n`);
+							}
+							process.stdout.write("Press Ctrl+C to stop.\n");
+						}),
+				}).pipe(Effect.provide(provided));
 			case "close":
 				return yield* closePdx(config).pipe(Effect.provide(provided));
 			case "daemon.status": {
@@ -184,17 +230,19 @@ const runCommand = (runtime: RuntimeInput, input: CommandInput) =>
 				return;
 			}
 			case "run.kill":
-				return yield* killPdx(config, {
+				yield* killPdx(config, {
 					runId: input.runId,
 					taskId: undefined,
 					reason: input.reason,
 				}).pipe(Effect.provide(provided));
+				return;
 			case "task.kill":
-				return yield* killPdx(config, {
+				yield* killPdx(config, {
 					runId: undefined,
 					taskId: input.taskId,
 					reason: input.reason,
 				}).pipe(Effect.provide(provided));
+				return;
 			case "daemon.logs": {
 				const outputText = yield* logsShowPdx(config, {
 					limit: input.limit,

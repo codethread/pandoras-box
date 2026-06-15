@@ -81,7 +81,7 @@ export const makeInspectOps = (
 				),
 			};
 		}),
-	graphInspect: ({ taskId, scope, all, status = [], search = [], sinceCutoff }) =>
+	graphInspect: ({ taskId, scope, all, status = [], search = [], sinceCutoff, untilCutoff }) =>
 		withDb(ctx, (db) =>
 			inspectGraph(db, {
 				taskId,
@@ -90,6 +90,7 @@ export const makeInspectOps = (
 				status,
 				search,
 				sinceCutoff,
+				untilCutoff,
 				contract: loadConfiguredArtifactContractSync(ctx.config, ctx.services.fs),
 			}),
 		),

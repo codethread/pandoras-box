@@ -57,7 +57,7 @@ The composed behavior is specified in [`../../specs/control-plane-supervision.md
 Exported from `@pdx/pithos`:
 
 - CLI helpers: `makePithosCommand`, `runPithosCli`, `renderPithosHelpJson`.
-- Engine boundary: `makeEngine`, `Engine`, graph `--since` cutoff parsing, render helpers for briefing/graph/task inspect text, and library-only event pruning used by `pdx` maintenance.
+- Engine boundary: `makeEngine`, `Engine`, graph time-filter parsing/plumbing, render helpers for briefing/graph/task inspect text, and library-only event pruning used by `pdx` maintenance.
 - Schema/DB helpers: `migrate`, `openDb`, row schemas, decoded row helpers.
 - Chain helpers: chain-policy resolution and typed-edge graph utilities.
 - Config/services/errors: `loadConfig`, `liveServices`, `PithosError`.
@@ -137,7 +137,7 @@ Important details:
 - `src/engine/claim-loop.ts` — Claim-loop transitions for claim, heartbeat, completion, failure, cancellation, and artifact attachment.
 - `src/engine/task-read-model.ts` — DB row parsing and reusable Task/typed-edge read-model queries used by transitions and inspections.
 - `src/engine/late-growth.ts` — released-gate late-growth detection and marker recording for post-release graph mutations.
-- `src/engine/graph-inspect.ts` — graph selector filtering, `--since` cutoff parsing, and typed-edge/Supersession closure assembly.
+- `src/engine/graph-inspect.ts` — graph selector filtering, time-cutoff parsing, and typed-edge/Supersession closure assembly.
 - `src/engine/inspect-ops.ts` — read-only inspection ops: task inspect, graph inspect, briefing, and artifact list/show.
 - `src/engine/repair-alerts.ts` — Repair Alert task creation, `repair` edge provenance, launch-precondition repair, and claimable Repair Alert kind queries.
 

@@ -4,11 +4,12 @@ Developer documentation for the `pdx` package: the local supervisor component of
 
 ## Package role
 
-`@pdx/pdx` exposes the `pdx` binary. In the user flow this is mostly opening and closing the box:
+`@pdx/pdx` exposes the `pdx` binary. In the user flow this is mostly opening the box, checking the graph explorer, and closing everything back down:
 
 ```sh
 pdx init
 pdx open
+pdx ui --help
 pdx close
 ```
 
@@ -16,6 +17,7 @@ For the full command surface, print the generated CLI help instead of copying it
 
 ```sh
 pdx --help
+pdx ui --help
 pdx daemon --help
 pdx run --help
 pdx task --help
@@ -50,6 +52,7 @@ pdx --help-json
 | ----------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `@pdx/pithos`                 | imported as a library through `makeEngine` in `src/live.ts`     | typed in-process state transitions; pdx does **not** shell out to the `pithos` CLI |
 | `@pdx/spawner`                | imported as a library in `src/live.ts`                          | render Agent run plans, launch rendered plans, render Harness session transcripts  |
+| `@pdx/graph-explorer`         | imported through its public `startGraphExplorer(...)` boundary  | `pdx ui` owns foreground lifecycle and browser opening; explorer owns HTTP/WS/API  |
 | `tmux`                        | invoked through the injected `Process` service by `src/tmux.ts` | current Control-plane backend for HITL mode                                        |
 | Harness CLIs (`claude`, `pi`) | launched by Spawner live services                               | pdx only receives launch metadata and Harness session log paths                    |
 
@@ -70,6 +73,7 @@ Important details:
 - human `--help` / `help <command>` output is rendered by `@pdx/cli-help` from the Effect command descriptor; command/flag text is authored on `Command.withDescription`, `Args.withDescription`, and `Options.withDescription`
 - `--help-json` walks the command descriptor tree and prints stable JSON for prompt generation
 - `daemon run` is parsed as an internal startup path before normal CLI dispatch and is intentionally omitted from public help
+- `ui` is user-facing help/CLI surface, but remains excluded from Agent-facing generated prompt command cards because Spawner only selects specific pdx inspection paths for Pandora
 
 ### `src/config.ts` — runtime config parsing
 
@@ -106,6 +110,7 @@ Binds services to real implementations:
 - Node `fs`, `child_process`, `crypto`, and `process` are confined here for pdx runtime IO.
 - `PithosClient` wraps `@pdx/pithos` `makeEngine(...)`; this is the library boundary to durable state.
 - `Spawner` wraps `@pdx/spawner` render/launch/Harness session transcript APIs; pdx persists render metadata before launch.
+- Browser launch, localhost readiness probing, and signal waiting for `pdx ui` are provided here as injected live services; controller code owns the UI lifecycle policy.
 - `pdx init` materializes repo-root `resources/data-dir/` into bundle-owned `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`, and seeds user-config docs under `<user-data-dir>/`, without starting tmux, the daemon, or Pandora.
 - `pdx open` also re-materializes `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md` before startup; `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml` are preserved while `<user-data-dir>/PANDORA.md` is re-seeded.
 - `--clean` wipes runtime state only (DB, runs, logs, socket); `--nuke` preserves `<user-data-dir>` while clearing pdx-owned state before init/startup.
@@ -122,6 +127,7 @@ Owns pdx behavior:
 - The intake socket accepts one JSON `{ title, body }` event per connection at `<data-dir>/intake.sock` and enqueues one global `intake` Task per valid event.
 - When a ready repo/worktree task's cwd is missing before run creation, pdx uses Pithos' atomic launch-precondition transition to cancel the still-queued task, create a global Repair Alert (kind=`launch_precondition`) with a `repair` edge for Pandora, and avoid creating a Run. If the cwd disappears after run creation but before launch succeeds, pdx first calls Pithos' launch-abort transition so the no-claim Run becomes `cancelled` with reason `launch_precondition_failed`, then applies the same atomic task transition.
 - `handleKillRequest` performs Interrupt in Pithos before killing the live resource and enqueues a Repair Alert (kind=`interrupt`) when a Held task was interrupted.
+- `uiPdx` starts `@pdx/graph-explorer` through its public `startGraphExplorer(...)` boundary, preflights `/api/graph` before announcing readiness, optionally opens the default browser, and stops the foreground explorer cleanly on `SIGINT`/`SIGTERM`. It defaults to loopback binding; passing `--host 0.0.0.0 --no-open` intentionally exposes the read-only dashboard to the local network for review from another machine.
 - `statusPdx`, `logsShowPdx`, `runTranscriptPdx`, `runShowPdx`, and `taskShowPdx` implement operator/Pandora inspection helpers. Transcript is the cross-harness inspection surface; show commands are interactive-session navigation and report AFK runs as intentionally headless.
 
 The Registry is intentionally in-memory. Startup does not adopt old sessions; it kills deterministic `pdx--*` leftovers and cleans active built-in Runs through Pithos.
