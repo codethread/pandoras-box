@@ -797,7 +797,7 @@ export const renderAgent = (
 	);
 	const appendTexts = appendAssets.map((appendAsset) => appendAsset.content);
 	const policyTexts = manifest.policies.map((policy) => policy.content);
-	const extraTexts = [...appendTexts, ...policyTexts];
+	const extraTexts = [...appendTexts, ...policyTexts].filter((text) => text.length > 0);
 	const prompt =
 		extraTexts.length > 0
 			? `${renderedTemplate}\n\n---\n\n${extraTexts.join("\n\n---\n\n")}`

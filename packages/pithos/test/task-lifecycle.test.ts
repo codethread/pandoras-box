@@ -663,7 +663,7 @@ body = "Optional notes."
 		);
 	});
 
-	it("enforces clarify capability authorization: envy enqueues and claims, others rejected", () => {
+	it("enforces clarify capability authorization: pandora/toil/envy enqueue and envy claims", () => {
 		const { engine } = setup();
 		engine.runUpsert({
 			agent: "envy",
@@ -674,6 +674,16 @@ body = "Optional notes."
 			harnessKind: "pi",
 			sessionLogPath: "/tmp/s_envy.jsonl",
 			runId: "run_envy",
+		});
+		engine.runUpsert({
+			agent: "pandora",
+			mode: "hitl",
+			scope: "global",
+			cwd: "/tmp",
+			sessionId: "s_pandora",
+			harnessKind: "claude",
+			sessionLogPath: "/tmp/s_pandora.jsonl",
+			runId: "run_pandora",
 		});
 		engine.enqueue({
 			scope: "global",
@@ -688,18 +698,20 @@ body = "Optional notes."
 		expect(
 			engine.claim({ runId: "run_envy", scope: "global", capability: "clarify" }).task.capability,
 		).toBe("clarify");
-		expect(() =>
-			engine.enqueue({
-				scope: "global",
-				capability: "clarify",
-				title: "bad clarify",
-				body: "body",
-				bodyFile: undefined,
-				runId: "run_toil",
-				after: [],
-				chain: "none",
-			}),
-		).toThrow(PithosError);
+		for (const runId of ["run_pandora", "run_toil"] as const) {
+			expect(
+				engine.enqueue({
+					scope: "global",
+					capability: "clarify",
+					title: `${runId} clarify`,
+					body: "body",
+					bodyFile: undefined,
+					runId,
+					after: [],
+					chain: "none",
+				}),
+			).toMatchObject({ task: { status: "queued" } });
+		}
 		expect(() =>
 			engine.claim({ runId: "run_toil", scope: "global", capability: "clarify" }),
 		).toThrow(PithosError);

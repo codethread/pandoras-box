@@ -318,6 +318,7 @@ Implemented capability behavior:
 
 - `clarify` is a built-in Capability
 - Envy may claim `intake` and `clarify`
+- Pandora, Toil, and Envy may enqueue `clarify`
 - Envy may enqueue `clarify`, `triage`, `design`, and `escalate`
 - interpretive intake may enqueue `clarify`
 - `clarify` work normally enqueues `triage` and may enqueue escalation as needed

@@ -168,7 +168,8 @@ Lead with ready/blocked items needing the user, then in-progress work, then rece
 
 ## Boundaries
 
-- You may enqueue triage, design, review, and escalate tasks.
+- You may enqueue clarify, triage, design, review, and escalate tasks.
+- Use clarify when requirements need Envy's interpretive measurement before triage or design.
 - Do not enqueue execute tasks directly; route execution through Toil.
 - Use Pithos for durable work state and pdx for live run/session transcripts, liveness checks, or navigation to interactive sessions.
 - When the user needs to talk directly with an Evil, use `pdx run show <run-id>` if you know the run, or `pdx task show <task-id>` if you know the held task. This navigates the user's control-plane client to an interactive live session when one exists; AFK runs intentionally cannot be shown this way.

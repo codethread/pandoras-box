@@ -36,7 +36,8 @@ Claim command:
 
 ## Boundaries
 
-- You may enqueue triage, design, execute, review, and escalate tasks.
+- You may enqueue clarify, triage, design, execute, review, and escalate tasks.
+- Use clarify when requirements need Envy's interpretive measurement before triage/design/execution routing.
 - Delegate substantial implementation to War via execute tasks.
 - Delegate substantial design/architecture choices to Greed via design tasks.
 - Escalate uncertainty, blocked decisions, or operator attention to Pandora.

@@ -64,14 +64,14 @@ Agents claim work themselves through Pithos. pdx never injects Task content into
 
 Pithos seeds and enforces the built-in Agent kinds, Capabilities, claim authorization, and enqueue authorization.
 
-| Agent kind | Mode today   | Claims              | Enqueues                                            |
-| ---------- | ------------ | ------------------- | --------------------------------------------------- |
-| `pdx`      | system actor | —                   | `escalate`, `intake`                                |
-| `pandora`  | HITL         | `escalate`          | `triage`, `design`, `review`, `escalate`            |
-| `envy`     | AFK          | `intake`, `clarify` | `clarify`, `triage`, `design`, `escalate`           |
-| `toil`     | AFK          | `triage`            | `triage`, `design`, `execute`, `review`, `escalate` |
-| `greed`    | HITL         | `design`, `review`  | `triage`, `design`, `escalate`                      |
-| `war`      | AFK          | `execute`           | `escalate`                                          |
+| Agent kind | Mode today   | Claims              | Enqueues                                                       |
+| ---------- | ------------ | ------------------- | -------------------------------------------------------------- |
+| `pdx`      | system actor | —                   | `escalate`, `intake`                                           |
+| `pandora`  | HITL         | `escalate`          | `clarify`, `triage`, `design`, `review`, `escalate`            |
+| `envy`     | AFK          | `intake`, `clarify` | `clarify`, `triage`, `design`, `escalate`                      |
+| `toil`     | AFK          | `triage`            | `clarify`, `triage`, `design`, `execute`, `review`, `escalate` |
+| `greed`    | HITL         | `design`, `review`  | `triage`, `design`, `escalate`                                 |
+| `war`      | AFK          | `execute`           | `escalate`                                                     |
 
 Capabilities are `intake`, `clarify`, `triage`, `design`, `execute`, `review`, and `escalate`. `clarify` is Envy-owned requirements-measurement work between interpretive intake and triage; deterministic external intake remains unchanged unless Envy routes interpretive work into clarify by policy. `execute` work must be in repo/worktree Scope. `intake` and `escalate` work lives in global Scope. `review` work may be global, repo, or worktree scoped and is ordinary non-escalation work claimed by Greed. Pithos enforces the durable authorization contract; bundled prompts and user policy packs guide workflow but are not authorization truth.
 

@@ -192,7 +192,7 @@ Policy ids use lowercase kebab-case. `files` is a non-empty ordered array. Entri
 - absolute paths read exactly that path
 - `~/...` expands to the current user's home directory
 
-Missing policy files fail render loudly. Policy Markdown is appended verbatim in `files` order; Spawner does not render variables inside policy files.
+Missing policy files fail render loudly by default. A declaration may set `allow_empty = true` for intentionally optional policy packs: if every declared file is missing the policy contributes no prompt content, if every file is present the content is loaded normally, and mixed present/missing files still fail loudly to catch typos or drift. Non-missing read errors always fail. Policy Markdown is appended verbatim in `files` order; Spawner does not render variables inside policy files.
 
 ### Policy selection
 

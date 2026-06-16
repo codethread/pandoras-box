@@ -85,12 +85,14 @@ describe("pithos foundation", () => {
 			"greed:design",
 			"greed:escalate",
 			"greed:triage",
+			"pandora:clarify",
 			"pandora:design",
 			"pandora:escalate",
 			"pandora:review",
 			"pandora:triage",
 			"pdx:escalate",
 			"pdx:intake",
+			"toil:clarify",
 			"toil:design",
 			"toil:escalate",
 			"toil:execute",
@@ -158,7 +160,7 @@ describe("pithos foundation", () => {
 		initEngine(dbPath).close();
 		const db = new Database(dbPath);
 		expect(db.prepare("SELECT COUNT(*) FROM agent_kinds").pluck().get()).toBe(6);
-		expect(db.prepare("SELECT COUNT(*) FROM agent_enqueues").pluck().get()).toBe(19);
+		expect(db.prepare("SELECT COUNT(*) FROM agent_enqueues").pluck().get()).toBe(21);
 	});
 
 	it("exported built-in contract matches seeded rows", () => {

@@ -107,7 +107,10 @@ files = ["policies/projects/docs-release.md"]
 
 `files` is a non-empty ordered array. Use multiple entries when one policy pack is
 split across shared and project-specific Markdown files; they are appended in
-array order.
+array order. Missing files fail preview/launch rendering by default. Add
+`allow_empty = true` only for intentionally optional packs: all missing files
+contribute no content, all present files load normally, and mixed present/missing
+files still fail loudly.
 
 Select policies with `add` and `remove`:
 

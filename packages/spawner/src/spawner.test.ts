@@ -1523,7 +1523,7 @@ body = "Ask."
 		).toThrow("must resolve under");
 	});
 
-	it("fails loudly when a selected policy file is missing", () => {
+	it("fails loudly when a selected policy file is missing by default", () => {
 		const dataDir = "/tmp/pdx-policy-missing-file-data";
 		const userDir = "/tmp/pdx-policy-missing-file-user";
 		expect(() =>
@@ -1536,6 +1536,141 @@ body = "Ask."
 							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
 						if (path === `${userDir}/agents.toml`)
 							return '[policies.git-flow]\nfiles = ["missing.md"]\n[policy]\nadd = ["git-flow"]\n';
+						if (path === `${dataDir}/templates/war.md`)
+							return "{{claim_command}}\n{{command_cards}}";
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					env: (key: string) =>
+						key === "PDX_DATA_DIR"
+							? dataDir
+							: key === "PDX_USER_DATA_DIR"
+								? userDir
+								: key === "PITHOS_DB"
+									? `${dataDir}/pithos.sqlite`
+									: undefined,
+				},
+			),
+		).toThrow(`${userDir}/missing.md`);
+	});
+
+	it("lets allow_empty policy packs contribute no content when all files are missing", () => {
+		const dataDir = "/tmp/pdx-policy-empty-data";
+		const userDir = "/tmp/pdx-policy-empty-user";
+		const rendered = renderAgent(
+			{ ...base, agent: "war", mode: "afk" },
+			{
+				...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+				readText: (path: string) => {
+					if (path === `${dataDir}/agents.toml`)
+						return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+					if (path === `${userDir}/agents.toml`)
+						return '[policies.git-flow]\nfiles = ["missing.md", "also-missing.md"]\nallow_empty = true\n[policy]\nadd = ["git-flow"]\n';
+					if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+					if (path === `${dataDir}/templates/war.md`) return "PROMPT\n{{command_cards}}";
+					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+						code: "ENOENT",
+					});
+				},
+				env: (key: string) =>
+					key === "PDX_DATA_DIR"
+						? dataDir
+						: key === "PDX_USER_DATA_DIR"
+							? userDir
+							: key === "PITHOS_DB"
+								? `${dataDir}/pithos.sqlite`
+								: undefined,
+			},
+		);
+		expect(rendered.prompt).toContain("PROMPT");
+		expect(rendered.provenance?.policies).toEqual([
+			{ id: "git-flow", paths: [`${userDir}/missing.md`, `${userDir}/also-missing.md`] },
+		]);
+	});
+
+	it("loads allow_empty policy packs when all files are present", () => {
+		const dataDir = "/tmp/pdx-policy-empty-present-data";
+		const userDir = "/tmp/pdx-policy-empty-present-user";
+		const rendered = renderAgent(
+			{ ...base, agent: "war", mode: "afk" },
+			{
+				...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+				readText: (path: string) => {
+					if (path === `${dataDir}/agents.toml`)
+						return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+					if (path === `${userDir}/agents.toml`)
+						return '[policies.git-flow]\nfiles = ["one.md", "two.md"]\nallow_empty = true\n[policy]\nadd = ["git-flow"]\n';
+					if (path === `${userDir}/one.md`) return "ONE";
+					if (path === `${userDir}/two.md`) return "TWO";
+					if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+					if (path === `${dataDir}/templates/war.md`) return "PROMPT\n{{command_cards}}";
+					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+						code: "ENOENT",
+					});
+				},
+				env: (key: string) =>
+					key === "PDX_DATA_DIR"
+						? dataDir
+						: key === "PDX_USER_DATA_DIR"
+							? userDir
+							: key === "PITHOS_DB"
+								? `${dataDir}/pithos.sqlite`
+								: undefined,
+			},
+		);
+		expect(rendered.prompt).toContain("ONE\n\n---\n\nTWO");
+	});
+
+	it("omits empty policy file content from policy separators", () => {
+		const dataDir = "/tmp/pdx-policy-empty-content-data";
+		const userDir = "/tmp/pdx-policy-empty-content-user";
+		const rendered = renderAgent(
+			{ ...base, agent: "war", mode: "afk" },
+			{
+				...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+				readText: (path: string) => {
+					if (path === `${dataDir}/agents.toml`)
+						return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+					if (path === `${userDir}/agents.toml`)
+						return '[policies.git-flow]\nfiles = ["empty.md", "one.md", "also-empty.md"]\nallow_empty = true\n[policy]\nadd = ["git-flow"]\n';
+					if (path === `${userDir}/empty.md`) return "\n";
+					if (path === `${userDir}/one.md`) return "ONE";
+					if (path === `${userDir}/also-empty.md`) return "  \n";
+					if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+					if (path === `${dataDir}/templates/war.md`) return "PROMPT\n{{command_cards}}";
+					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+						code: "ENOENT",
+					});
+				},
+				env: (key: string) =>
+					key === "PDX_DATA_DIR"
+						? dataDir
+						: key === "PDX_USER_DATA_DIR"
+							? userDir
+							: key === "PITHOS_DB"
+								? `${dataDir}/pithos.sqlite`
+								: undefined,
+			},
+		);
+		expect(rendered.prompt).toContain("ONE");
+		expect(rendered.prompt).not.toContain("ONE\n\n---");
+	});
+
+	it("fails loudly when allow_empty policy packs have partial missing files", () => {
+		const dataDir = "/tmp/pdx-policy-empty-partial-data";
+		const userDir = "/tmp/pdx-policy-empty-partial-user";
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				{
+					...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+					readText: (path: string) => {
+						if (path === `${dataDir}/agents.toml`)
+							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+						if (path === `${userDir}/agents.toml`)
+							return '[policies.git-flow]\nfiles = ["one.md", "missing.md"]\nallow_empty = true\n[policy]\nadd = ["git-flow"]\n';
+						if (path === `${userDir}/one.md`) return "ONE";
 						if (path === `${dataDir}/templates/war.md`)
 							return "{{claim_command}}\n{{command_cards}}";
 						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
