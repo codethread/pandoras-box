@@ -9,6 +9,7 @@ import {
 	gateStateForTarget,
 	isClaimable,
 	taskArtifactReferences,
+	taskAssociatedRunIds,
 	taskDetail,
 	taskEdges,
 	taskGateLateGrowthMarkers,
@@ -168,6 +169,7 @@ const graphForIds = (
 			}
 		}
 	}
+	const associatedRunIds = taskAssociatedRunIds(db, [...ids]);
 	const nodes = [...ids]
 		.map((id) => taskDetail(db, id))
 		.sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
@@ -177,6 +179,7 @@ const graphForIds = (
 				requiredRules.length > 0 && (task.status === "claimed" || task.status === "running")
 					? { missing_required: missingRequiredKinds(db, task.id, requiredRules) }
 					: undefined;
+			const associatedRunId = associatedRunIds.get(task.id);
 			return {
 				id: task.id,
 				scope_id: task.scope_id,
@@ -203,6 +206,7 @@ const graphForIds = (
 						.get(task.id) as string | undefined) ?? null,
 				preview: task.title,
 				artifact_refs: taskArtifactReferences(db, task.id),
+				...(associatedRunId === undefined ? {} : { associated_run_id: associatedRunId }),
 				...(requirementStatus === undefined ? {} : { requirement_status: requirementStatus }),
 			};
 		});

@@ -755,6 +755,64 @@ describe("pithos cli", () => {
 		`);
 	});
 
+	it("surfaces active holder run ids in task and graph inspect", async () => {
+		const dbPath = tempDb();
+		await runCli(["init", "--fresh"], dbPath);
+		await upsertRun(dbPath, "run_toil");
+		const taskId = await enqueueGlobalTriage(dbPath, "run_toil", "Claimed task", "body");
+		const claim = await claimGlobal(dbPath, "run_toil", "triage");
+		expect(claim.task.id).toBe(taskId);
+
+		const inspectText = (await runCli(["task", "inspect", taskId], dbPath)).stdout[0] ?? "";
+		expect(inspectText).toContain("\nrun: run_toil\n");
+		const inspectJson = JSON.parse(
+			(await runCli(["task", "inspect", taskId, "--json"], dbPath)).stdout[0] ?? "",
+		) as { task: { associated_run_id?: string } };
+		expect(inspectJson.task.associated_run_id).toBe("run_toil");
+
+		const graphText =
+			(await runCli(["graph", "inspect", "--task", taskId], dbPath)).stdout[0] ?? "";
+		expect(graphText).toContain("\n  run: run_toil\n");
+		const graphJson = JSON.parse(
+			(await runCli(["graph", "inspect", "--task", taskId, "--json"], dbPath)).stdout[0] ?? "",
+		) as { graph: { nodes: { id: string; associated_run_id?: string }[] } };
+		expect(graphJson.graph.nodes.find((node) => node.id === taskId)?.associated_run_id).toBe(
+			"run_toil",
+		);
+	});
+
+	it("surfaces historic lifecycle run ids in task and graph inspect", async () => {
+		const dbPath = tempDb();
+		await runCli(["init", "--fresh"], dbPath);
+		await upsertRun(dbPath, "run_toil");
+		const taskId = await enqueueGlobalTriage(dbPath, "run_toil", "Completed task", "body");
+		const claim = await claimGlobal(dbPath, "run_toil", "triage");
+		expect(claim.task.id).toBe(taskId);
+		await runCli(
+			["task", "complete", "--run", "run_toil", "--token", String(claim.task.token), taskId],
+			dbPath,
+		);
+
+		const inspectText = (await runCli(["task", "inspect", taskId], dbPath)).stdout[0] ?? "";
+		expect(inspectText).toContain("\nrun: run_toil\n");
+		const graphText =
+			(await runCli(["graph", "inspect", "--task", taskId], dbPath)).stdout[0] ?? "";
+		expect(graphText).toContain("\n  run: run_toil\n");
+	});
+
+	it("omits unknown run ids from readable inspect output", async () => {
+		const dbPath = tempDb();
+		await runCli(["init", "--fresh"], dbPath);
+		await upsertRun(dbPath, "run_toil");
+		const taskId = await enqueueGlobalTriage(dbPath, "run_toil", "Queued task", "body");
+
+		const inspectText = (await runCli(["task", "inspect", taskId], dbPath)).stdout[0] ?? "";
+		expect(inspectText).not.toContain("\nrun: ");
+		const graphText =
+			(await runCli(["graph", "inspect", "--task", taskId], dbPath)).stdout[0] ?? "";
+		expect(graphText).not.toContain("\n  run: ");
+	});
+
 	it("snapshots task inspect markdown for single-task drill-down", async () => {
 		const dbPath = tempDb();
 		await runCli(["init", "--fresh"], dbPath);

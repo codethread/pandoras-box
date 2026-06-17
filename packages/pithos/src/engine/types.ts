@@ -265,6 +265,7 @@ export interface TaskInspectTaskOutput extends TaskDetailOutput {
 	readonly claimable: boolean;
 	readonly unresolved_dependency_ids: readonly string[];
 	readonly gates: readonly GateInspectOutput[];
+	readonly associated_run_id?: string;
 }
 
 export type LateGrowthMarkerOutput = TaskGateLateGrowthMarkerRow;
@@ -339,6 +340,7 @@ export interface GraphNodeOutput extends TaskSummaryOutput {
 	readonly superseded_by_task_id: string | null;
 	readonly preview: string | null;
 	readonly artifact_refs: readonly ArtifactReferenceOutput[];
+	readonly associated_run_id?: string;
 	readonly requirement_status?: {
 		readonly missing_required: readonly string[];
 	};

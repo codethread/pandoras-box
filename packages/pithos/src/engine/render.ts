@@ -219,6 +219,9 @@ export const renderTaskInspectMarkdown = (
 	if (inspect.supersedes !== null) {
 		sections.push(`> This task supersedes ${inspect.supersedes}`);
 	}
+	if (inspect.task.associated_run_id !== undefined) {
+		sections.push(`run: ${inspect.task.associated_run_id}`);
+	}
 	sections.push(`Body:\n\n${fencedMarkdown(inspect.task.body)}`);
 	if (inspect.artifacts.length > 0) {
 		sections.push(
@@ -347,6 +350,9 @@ export const renderGraphInspectText = (
 		}
 		lines.push(`${"  ".repeat(depth)}${prefix}${graphTaskTitleLineColored(node, colorEnabled)}`);
 		lines.push(`${"  ".repeat(depth + 1)}scope: ${graphScopeLabel(node)}`);
+		if (node.associated_run_id !== undefined) {
+			lines.push(`${"  ".repeat(depth + 1)}run: ${node.associated_run_id}`);
+		}
 		lines.push(`${"  ".repeat(depth + 1)}preview: ${node.preview ?? "none"}`);
 		if ((node.requirement_status?.missing_required.length ?? 0) > 0) {
 			lines.push(`${"  ".repeat(depth + 1)}missing required artifacts:`);

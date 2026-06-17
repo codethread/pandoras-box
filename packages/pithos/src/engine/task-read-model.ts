@@ -74,6 +74,25 @@ export const taskGateLateGrowthMarkers = (db: Db): readonly TaskGateLateGrowthMa
 
 const TaskEdgeTargetRowSchema = Schema.Struct({ id: Schema.String });
 
+const ActiveTaskRunRowSchema = Schema.Struct({
+	task_id: Schema.String,
+	run_id: Schema.String,
+});
+
+const LifecycleTaskRunRowSchema = Schema.Struct({
+	task_id: Schema.String,
+	associated_run_id: Schema.String,
+});
+
+const TASK_LIFECYCLE_RUN_EVENT_TYPES = [
+	"task.claimed",
+	"task.heartbeat",
+	"task.completed",
+	"task.failed",
+	"task.reclaimed",
+	"task.dead_lettered",
+] as const;
+
 export const canonicalTaskId = (db: Db, taskId: string): string => {
 	let current = taskId;
 	const seen = new Set<string>();
@@ -284,6 +303,51 @@ export const taskArtifacts = (db: Db, taskId: string): readonly ArtifactOutput[]
 		.all(taskId)
 		.map(parseArtifact);
 
+export const taskAssociatedRunIds = (
+	db: Db,
+	taskIds: readonly string[],
+): ReadonlyMap<string, string> => {
+	const uniqueTaskIds = [...new Set(taskIds)];
+	if (uniqueTaskIds.length === 0) return new Map();
+	const taskIdPlaceholders = uniqueTaskIds.map(() => "?").join(",");
+	const activeRows = db
+		.prepare(`
+			SELECT task_id, id AS run_id
+			FROM runs
+			WHERE task_id IN (${taskIdPlaceholders})
+			ORDER BY task_id ASC, updated_at DESC, id DESC
+		`)
+		.all(...uniqueTaskIds)
+		.map((row) => decodeRow(ActiveTaskRunRowSchema, row, "malformed active task run row"));
+	const associatedRunIds = new Map<string, string>();
+	for (const row of activeRows) {
+		if (!associatedRunIds.has(row.task_id)) {
+			associatedRunIds.set(row.task_id, row.run_id);
+		}
+	}
+	const lifecycleTypePlaceholders = TASK_LIFECYCLE_RUN_EVENT_TYPES.map(() => "?").join(",");
+	const lifecycleRows = db
+		.prepare(`
+			SELECT task_id, COALESCE(run_id, actor_run_id) AS associated_run_id
+			FROM events
+			WHERE task_id IN (${taskIdPlaceholders})
+			  AND type IN (${lifecycleTypePlaceholders})
+			  AND COALESCE(run_id, actor_run_id) IS NOT NULL
+			ORDER BY task_id ASC, created_at DESC, id DESC
+		`)
+		.all(...uniqueTaskIds, ...TASK_LIFECYCLE_RUN_EVENT_TYPES)
+		.map((row) => decodeRow(LifecycleTaskRunRowSchema, row, "malformed lifecycle task run row"));
+	for (const row of lifecycleRows) {
+		if (!associatedRunIds.has(row.task_id)) {
+			associatedRunIds.set(row.task_id, row.associated_run_id);
+		}
+	}
+	return associatedRunIds;
+};
+
+export const taskAssociatedRunId = (db: Db, taskId: string): string | undefined =>
+	taskAssociatedRunIds(db, [taskId]).get(taskId);
+
 export const taskArtifactReferences = (
 	db: Db,
 	taskId: string,
@@ -461,11 +525,13 @@ export const isClaimable = (
 
 export const taskInspectTask = (db: Db, taskId: string): TaskInspectTaskOutput => {
 	const task = taskDetail(db, taskId);
+	const associatedRunId = taskAssociatedRunId(db, taskId);
 	return {
 		...task,
 		claimable: isClaimable(db, task),
 		unresolved_dependency_ids: unresolvedDependencies(db, taskId),
 		gates: taskGates(db, taskId),
+		...(associatedRunId === undefined ? {} : { associated_run_id: associatedRunId }),
 	};
 };
 
