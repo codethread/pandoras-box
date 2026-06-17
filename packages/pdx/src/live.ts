@@ -420,8 +420,10 @@ export const makeSpawnerLive = (config: {
 	readonly pithosDbPath: string;
 }) => {
 	const existsDirectory = liveSpawnerServices.existsDirectory ?? (() => false);
+	const readDir = liveSpawnerServices.readDir;
 	const renderServices = {
 		readText: liveSpawnerServices.readText,
+		...(readDir === undefined ? {} : { readDir }),
 		existsDirectory,
 		env: (key: string) => {
 			if (key === "PDX_DATA_DIR") return config.dataDir;

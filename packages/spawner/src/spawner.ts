@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import {
 	loadConfiguredArtifactContractSync,
 	PithosError,
@@ -621,6 +622,44 @@ const sessionLogPathFor = (
 		? `${homedir()}/.claude/projects/${claudeProjectSlug(input.cwd, services)}/${input.sessionId}.jsonl`
 		: `${homedir()}/.pi/agent/sessions/${piSessionBucket(input.cwd)}/${input.sessionId}.jsonl`;
 
+const isMissingPathError = (error: unknown): boolean =>
+	typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+
+const sessionIdFromTranscriptPath = (path: string): string | undefined => {
+	const filename = basename(path);
+	if (!filename.endsWith(".jsonl")) return undefined;
+	const sessionId = filename.slice(0, -".jsonl".length);
+	const decoded = Schema.decodeUnknownEither(UuidSchema)(sessionId);
+	return Either.isRight(decoded) ? sessionId : undefined;
+};
+
+const resolvePiTranscriptPath = (
+	sessionLogPath: string,
+	services: RenderServices,
+): string | undefined => {
+	const sessionId = sessionIdFromTranscriptPath(sessionLogPath);
+	if (sessionId === undefined || services.readDir === undefined) return undefined;
+	const bucketPath = dirname(sessionLogPath);
+	let entries: readonly string[];
+	try {
+		entries = services.readDir(bucketPath);
+	} catch (error) {
+		throw new SpawnerError({
+			code: "HARNESS_ERROR",
+			message: `${sessionLogPath}: failed to inspect Pi session log directory ${bucketPath}: ${String(error)}`,
+		});
+	}
+	const matches = entries.filter((entry) => entry.endsWith(`_${sessionId}.jsonl`)).sort();
+	if (matches.length === 0) return undefined;
+	if (matches.length > 1) {
+		throw new SpawnerError({
+			code: "HARNESS_ERROR",
+			message: `${sessionLogPath}: transcript lookup ambiguous for Pi session ${sessionId}; matching files: ${matches.map((entry) => join(bucketPath, entry)).join(", ")}`,
+		});
+	}
+	return join(bucketPath, matches[0]!);
+};
+
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
 
 const promptArgIndex = (rendered: RenderedAgent): number => {
@@ -1134,23 +1173,39 @@ export const renderSessionTranscript = (
 		input,
 		"renderSessionTranscript",
 	);
+	let transcriptPath = manifest.sessionLogPath;
 	let raw: string;
 	try {
-		raw = services.readText(manifest.sessionLogPath);
+		raw = services.readText(transcriptPath);
 	} catch (error) {
-		throw new SpawnerError({
-			code: "HARNESS_ERROR",
-			message: `${manifest.sessionLogPath}: failed to read session log: ${String(error)}`,
-		});
+		const fallbackPath =
+			manifest.harnessKind === "pi" && isMissingPathError(error)
+				? resolvePiTranscriptPath(manifest.sessionLogPath, services)
+				: undefined;
+		if (fallbackPath === undefined) {
+			throw new SpawnerError({
+				code: "HARNESS_ERROR",
+				message: `${manifest.sessionLogPath}: failed to read session log: ${String(error)}`,
+			});
+		}
+		transcriptPath = fallbackPath;
+		try {
+			raw = services.readText(transcriptPath);
+		} catch (fallbackError) {
+			throw new SpawnerError({
+				code: "HARNESS_ERROR",
+				message: `${transcriptPath}: failed to read session log: ${String(fallbackError)}`,
+			});
+		}
 	}
 	const messages =
 		manifest.harnessKind === "claude"
-			? parseClaudeTranscript(manifest.sessionLogPath, raw)
-			: parsePiTranscript(manifest.sessionLogPath, raw);
+			? parseClaudeTranscript(transcriptPath, raw)
+			: parsePiTranscript(transcriptPath, raw);
 	if (messages.length === 0) {
 		throw new SpawnerError({
 			code: "HARNESS_ERROR",
-			message: `${manifest.sessionLogPath}: no ${manifest.harnessKind} transcript messages found`,
+			message: `${transcriptPath}: no ${manifest.harnessKind} transcript messages found`,
 		});
 	}
 	return `${formatTranscript(messages, manifest.limit ?? 20)}\n`;

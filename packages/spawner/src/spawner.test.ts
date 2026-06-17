@@ -2827,6 +2827,54 @@ describe("renderSessionTranscript", () => {
 		).toThrow("session.jsonl: no claude transcript messages found");
 	});
 
+	it("resolves timestamp-prefixed Pi session logs when the stored legacy path is missing", () => {
+		const sessionLogPath = piSessionPath(base.cwd, base.sessionId);
+		const prefixedName = `2026-06-17T14-20-13-511Z_${base.sessionId}.jsonl`;
+		const prefixedPath = `${homedir()}/.pi/agent/sessions/${piBucket(base.cwd)}/${prefixedName}`;
+		const output = renderSessionTranscript(
+			{ harnessKind: "pi", sessionLogPath },
+			{
+				readText: (path: string) => {
+					if (path === prefixedPath) {
+						return `${JSON.stringify({ type: "message", timestamp: "2026-05-10T12:00:00Z", message: { role: "assistant", content: [{ type: "thinking", thinking: "Recovered prefixed log" }] } })}\n`;
+					}
+					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+						code: "ENOENT",
+					});
+				},
+				readDir: () => [prefixedName],
+				realPath: (path: string) => path,
+				env: () => undefined,
+				execFile: noopExec,
+			},
+		);
+
+		expect(output).toContain("[2026-05-10 12:00:00] ASSISTANT: Recovered prefixed log");
+	});
+
+	it("fails loudly when timestamp-prefixed Pi transcript lookup is ambiguous", () => {
+		const sessionLogPath = piSessionPath(base.cwd, base.sessionId);
+		expect(() =>
+			renderSessionTranscript(
+				{ harnessKind: "pi", sessionLogPath },
+				{
+					readText: (path: string) => {
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					readDir: () => [
+						`2026-06-17T14-20-13-511Z_${base.sessionId}.jsonl`,
+						`2026-06-17T14-21-13-511Z_${base.sessionId}.jsonl`,
+					],
+					realPath: (path: string) => path,
+					env: () => undefined,
+					execFile: noopExec,
+				},
+			),
+		).toThrow(/transcript lookup ambiguous for Pi session/);
+	});
+
 	it("renders Pi assistant thinking blocks", () => {
 		const output = renderSessionTranscript(
 			{ harnessKind: "pi", sessionLogPath: "session.jsonl" },

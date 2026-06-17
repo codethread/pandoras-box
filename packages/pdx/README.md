@@ -177,7 +177,7 @@ For a data dir `<data-dir>` (`~/.pdx` by default):
 <user-data-dir>/policies/*.md     # user-owned policy packs declared from agents.toml
 ```
 
-HITL mode runtime state lives in tmux targets. AFK mode runtime state lives in pid/stdout/stderr files plus the daemon Registry while live. Harness session transcripts live at harness-native session log paths returned by Spawner and stored on Pithos Runs.
+HITL mode runtime state lives in tmux targets. AFK mode runtime state lives in pid/stdout/stderr files plus the daemon Registry while live. Harness session transcripts live at harness-native session log paths or lookup anchors returned by Spawner and stored on Pithos Runs. For Pi, Spawner may store the legacy `<sessionId>.jsonl` anchor and resolve a newer timestamp-prefixed sibling transcript at render time.
 
 ## User config and Artifact Contracts
 

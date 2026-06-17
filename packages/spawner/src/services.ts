@@ -1,6 +1,13 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	readFileSync,
+	readdirSync,
+	realpathSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -17,6 +24,7 @@ export interface CommandResult {
 
 export interface RenderServices {
 	readonly readText: (path: string) => string;
+	readonly readDir?: (path: string) => readonly string[];
 	readonly existsDirectory?: (path: string) => boolean;
 	readonly env: (key: string) => string | undefined;
 	readonly execFile: (file: string, args: readonly string[]) => CommandResult;
@@ -58,6 +66,17 @@ export const makeFakeSpawnerServices = (input: FakeSpawnerServicesInput): Launch
 		}
 		return value;
 	},
+	readDir: (path) => {
+		const prefix = path.endsWith("/") ? path : `${path}/`;
+		const entries = new Set(
+			Array.from(isReadonlyMap(input.files) ? input.files.keys() : Object.keys(input.files))
+				.filter((filePath) => filePath.startsWith(prefix))
+				.map((filePath) => filePath.slice(prefix.length))
+				.filter((relativePath) => relativePath.length > 0)
+				.map((relativePath) => relativePath.split("/")[0]!),
+		);
+		return Array.from(entries).sort();
+	},
 	existsDirectory: (path) =>
 		Array.from(isReadonlyMap(input.files) ? input.files.keys() : Object.keys(input.files)).some(
 			(filePath) => filePath === path || filePath.startsWith(`${path}/`),
@@ -74,6 +93,7 @@ const formatSpawnSyncError = (error: unknown): string =>
 
 export const LiveSpawnerServices: LaunchServices = {
 	readText: (path) => readFileSync(path, "utf8"),
+	readDir: (path) => readdirSync(path),
 	existsDirectory: (path) => existsSync(path) && statSync(path).isDirectory(),
 	env: (key) => process.env[key],
 	spawnProcess: (file, args, options) => {

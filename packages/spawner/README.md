@@ -26,7 +26,7 @@ Spawner owns:
 - ordered `[[rules]]` policy and Harness selection by normalized launch path, path glob, scope kind, and Agent kind
 - prompt rendering from bundled templates, including generated Markdown command references, generated Artifact Contract guidance, and verbatim selected policy Markdown
 - Harness argv/env construction
-- expected Harness session log paths
+- expected Harness session transcript lookup metadata
 - AFK mode process launch mechanics
 - HITL mode tmux launch mechanics
 - Claude/Pi transcript parsing for `pdx run transcript`; malformed or message-less logs fail loudly instead of rendering empty output, Pi timeline tool-call entries render as in-flight tool summaries, and Pi harness `errorMessage` stops render as explicit error lines
@@ -77,7 +77,7 @@ Exported from `@pdx/spawner`:
 - `renderAgent(input)` — pure render/validation. No launch.
 - `launchRenderedAgent(rendered)` — launch an already-rendered plan.
 - `launchAgent(input)` — convenience render-then-launch wrapper. `pdx` should prefer the two-step flow.
-- `renderSessionTranscript(input)` — parse a stored Claude/Pi Harness session log, including Pi timeline tool-call previews when present and Pi harness `errorMessage` stops as explicit transcript lines.
+- `renderSessionTranscript(input)` — parse a stored Claude/Pi Harness session log, including Pi timeline tool-call previews when present and Pi harness `errorMessage` stops as explicit transcript lines. Pi transcript lookup also resolves timestamp-prefixed sibling logs (`<timestamp>_<sessionId>.jsonl`) when the stored legacy `<sessionId>.jsonl` path is missing, and still fails loudly on missing or ambiguous matches.
 - `LiveSpawnerServices` — live filesystem/process/env implementation.
 - `makeFakeSpawnerServices(input)` — deterministic service implementation for tests.
 - `bundledTemplatesDir` — repo-root bundled default template directory used when `PDX_DATA_DIR` is unset and by `pdx` when seeding a fresh data dir.
@@ -106,7 +106,7 @@ Read `src/spawner.ts` for exact argv construction. Stable behavior worth knowing
 - AFK mode uses Harness print mode with the message `Claim and process one task, then exit.`
 - HITL mode launches under tmux.
 - HITL prompt delivery uses a temp-file shell wrapper for every Harness to keep rendered prompts out of the `tmux new-session` argv.
-- Session log paths are computed before launch and stored by `pdx` on the Pithos Run. For Claude, Spawner matches Claude Code's project bucket by resolving the launch CWD through `realpath` before slugging every non-alphanumeric/non-hyphen character to `-`. For Pi, Spawner passes the Pithos Harness session id through Pi's native `--session-id` flag and keeps the expected project-local JSONL path for transcript lookup.
+- Session log paths are computed before launch and stored by `pdx` on the Pithos Run. For Claude, Spawner matches Claude Code's project bucket by resolving the launch CWD through `realpath` before slugging every non-alphanumeric/non-hyphen character to `-`. For Pi, Spawner passes the Pithos Harness session id through Pi's native `--session-id` flag and stores the legacy project-local `<sessionId>.jsonl` lookup anchor; transcript rendering also resolves newer timestamp-prefixed sibling files when that exact path is absent.
 - Launch failures are surfaced as tagged Spawner failures. Spawner does not cancel tasks or enqueue escalations; pdx classifies launch-precondition failures such as missing cwd before/around launch and owns the Pithos repair workflow.
 
 ## Development
