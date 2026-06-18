@@ -258,6 +258,7 @@ const baseProcessImpl: ProcessService = {
 const baseFsImpl: FileSystemService = {
 	appendFile: () => Effect.void,
 	readFile: () => Effect.succeed(""),
+	readFileIfExists: () => Effect.succeed(undefined),
 	readDirectory: () => Effect.succeed([]),
 	existsDirectory: () => Effect.succeed(true),
 	mkdir: () => Effect.void,

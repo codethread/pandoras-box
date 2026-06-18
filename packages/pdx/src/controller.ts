@@ -5,7 +5,8 @@ import { requestIpc, listenIpc } from "./ipc-socket.js";
 import { listenIntakeSocket } from "./intake-socket.js";
 import type { IpcResponse } from "./ipc.js";
 import { PdxError } from "./errors.js";
-import type { PdxConfig } from "./config.js";
+import { parseSupervisorLaunchPolicyToml } from "./config.js";
+import type { PdxConfig, SupervisorLaunchPolicy } from "./config.js";
 import {
 	Clock,
 	FileSystem,
@@ -31,6 +32,15 @@ const MAX_CONSECUTIVE_RECONCILE_FAILURES = 3;
 const MAX_KILL_ATTEMPTS_BEFORE_ESCALATION = 3;
 const EVENT_PRUNE_INTERVAL_MILLIS = 60 * 60 * 1000;
 const NATURAL_DEATH_TRANSCRIPT_LIMIT = 8;
+
+export const loadSupervisorLaunchPolicy = (
+	userDataDir: string,
+): Effect.Effect<SupervisorLaunchPolicy, PdxError, FileSystem> =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem;
+		const content = yield* fs.readFileIfExists(`${userDataDir}/supervisor.toml`);
+		return yield* parseSupervisorLaunchPolicyToml(content);
+	});
 
 const pidfilePath = (config: PdxConfig, runId: string): string => `${config.runsDir}/${runId}.pid`;
 const afkStdoutPath = (config: PdxConfig, runId: string): string =>
@@ -214,6 +224,7 @@ export const openPdx = (
 			);
 		}
 		yield* initPdx(config, input);
+		yield* loadSupervisorLaunchPolicy(config.userDataDir);
 		yield* tmux.newSession({
 			target: DAEMON_TARGET,
 			cwd: config.dataDir,
@@ -1629,6 +1640,7 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 		const pithos = yield* PithosClient;
 		const log = yield* SupervisorLog;
 		yield* fs.mkdir(config.runsDir);
+		yield* loadSupervisorLaunchPolicy(config.userDataDir);
 		yield* log.write({ level: "info", span: "pdx.daemon", msg: "daemon starting" });
 		yield* settleHitlOrphans();
 		yield* settleAfkOrphans(config);

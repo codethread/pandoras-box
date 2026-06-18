@@ -1,3 +1,4 @@
+import TOML from "@iarna/toml";
 import { Effect, ParseResult, Schema } from "effect";
 import { relative, resolve, sep } from "node:path";
 import { PdxError } from "./errors.js";
@@ -9,6 +10,16 @@ export const RawPdxConfigSchema = Schema.Struct({
 	envHome: Schema.optional(Schema.NonEmptyString),
 	daemonEntrypoint: Schema.NonEmptyString,
 });
+
+export interface SupervisorLaunchPolicy {
+	readonly launch_preconditions: {
+		readonly enforce_repo_root_trunk: boolean;
+	};
+}
+
+export const defaultSupervisorLaunchPolicy: SupervisorLaunchPolicy = {
+	launch_preconditions: { enforce_repo_root_trunk: true },
+};
 
 export interface PdxConfig {
 	readonly dataDir: string;
@@ -79,6 +90,79 @@ const validateUserDataDir = (
 		);
 	}
 	return Effect.succeed(userDataDir);
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
+const unknownKeys = (
+	value: Record<string, unknown>,
+	allowed: readonly string[],
+): readonly string[] => Object.keys(value).filter((key) => !allowed.includes(key));
+
+export const parseSupervisorLaunchPolicyToml = (
+	content: string | undefined,
+): Effect.Effect<SupervisorLaunchPolicy, PdxError> => {
+	if (content === undefined) return Effect.succeed(defaultSupervisorLaunchPolicy);
+	return Effect.try({
+		try: () => TOML.parse(content),
+		catch: (error) =>
+			new PdxError({
+				code: "CONFIG_ERROR",
+				message: `Invalid supervisor.toml: ${String(error)}`,
+			}),
+	}).pipe(
+		Effect.flatMap((parsed) => {
+			if (!isRecord(parsed)) {
+				return Effect.fail(
+					new PdxError({
+						code: "CONFIG_ERROR",
+						message: "Invalid supervisor.toml: root must be a TOML table",
+					}),
+				);
+			}
+			const rootUnknown = unknownKeys(parsed, ["launch_preconditions"]);
+			if (rootUnknown.length > 0) {
+				return Effect.fail(
+					new PdxError({
+						code: "CONFIG_ERROR",
+						message: `Invalid supervisor.toml: unknown root field(s): ${rootUnknown.join(", ")}`,
+					}),
+				);
+			}
+			const launchPreconditions = parsed.launch_preconditions;
+			if (!isRecord(launchPreconditions)) {
+				return Effect.fail(
+					new PdxError({
+						code: "CONFIG_ERROR",
+						message: "Invalid supervisor.toml: launch_preconditions table is required",
+					}),
+				);
+			}
+			const preconditionUnknown = unknownKeys(launchPreconditions, ["enforce_repo_root_trunk"]);
+			if (preconditionUnknown.length > 0) {
+				return Effect.fail(
+					new PdxError({
+						code: "CONFIG_ERROR",
+						message: `Invalid supervisor.toml: unknown launch_preconditions field(s): ${preconditionUnknown.join(", ")}`,
+					}),
+				);
+			}
+			const enforceRepoRootTrunk = launchPreconditions.enforce_repo_root_trunk;
+			if (typeof enforceRepoRootTrunk !== "boolean") {
+				return Effect.fail(
+					new PdxError({
+						code: "CONFIG_ERROR",
+						message:
+							"Invalid supervisor.toml: launch_preconditions.enforce_repo_root_trunk must be a boolean",
+					}),
+				);
+			}
+			return Effect.succeed({
+				launch_preconditions: { enforce_repo_root_trunk: enforceRepoRootTrunk },
+			});
+		}),
+	);
 };
 
 export const parsePdxConfig = (input: unknown): Effect.Effect<PdxConfig, PdxError> =>

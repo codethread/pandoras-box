@@ -221,10 +221,14 @@ describe("pdx init and template materialization", () => {
 		expect(await readFile(join(userDataDir, "artifacts.toml"), "utf8")).toContain(
 			"Artifact Contracts are user-owned",
 		);
+		expect(await readFile(join(userDataDir, "supervisor.toml"), "utf8")).toBe(
+			"[launch_preconditions]\nenforce_repo_root_trunk = true\n",
+		);
 		await writeFile(join(userDataDir, "AGENTS.md"), "custom agent note\n", "utf8");
 		await writeFile(join(userDataDir, "CLAUDE.md"), "custom claude note\n", "utf8");
 		await writeFile(join(userDataDir, "agents.toml"), "# custom manifest\n", "utf8");
 		await writeFile(join(userDataDir, "artifacts.toml"), "# custom artifact contract\n", "utf8");
+		await writeFile(join(userDataDir, "supervisor.toml"), "# custom supervisor policy\n", "utf8");
 		await writeFile(join(userDataDir, "PANDORA.md"), "stale pandora ref\n", "utf8");
 		await chmod(join(dataDir, "AGENTS.md"), 0o644);
 		await writeFile(join(dataDir, "AGENTS.md"), "stale runtime note\n", "utf8");
@@ -234,6 +238,9 @@ describe("pdx init and template materialization", () => {
 		expect(await readFile(join(userDataDir, "agents.toml"), "utf8")).toBe("# custom manifest\n");
 		expect(await readFile(join(userDataDir, "artifacts.toml"), "utf8")).toBe(
 			"# custom artifact contract\n",
+		);
+		expect(await readFile(join(userDataDir, "supervisor.toml"), "utf8")).toBe(
+			"# custom supervisor policy\n",
 		);
 		expect(await readFile(join(userDataDir, "PANDORA.md"), "utf8")).toContain(
 			"Pandora's Box config reference",

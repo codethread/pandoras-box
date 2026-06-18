@@ -3,8 +3,42 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parsePdxConfig } from "../src/config.js";
+import { parsePdxConfig, parseSupervisorLaunchPolicyToml } from "../src/config.js";
 import { runPdxCli, makeFakeTmux, run, configInput, parseConfig } from "./support.js";
+
+describe("pdx supervisor launch policy config", () => {
+	it("defaults missing supervisor.toml to enforcing repo-root trunk", async () => {
+		const policy = await run(parseSupervisorLaunchPolicyToml(undefined));
+		expect(policy.launch_preconditions.enforce_repo_root_trunk).toBe(true);
+	});
+
+	it("parses the scaffolded boolean setting", async () => {
+		const policy = await run(
+			parseSupervisorLaunchPolicyToml("[launch_preconditions]\nenforce_repo_root_trunk = false\n"),
+		);
+		expect(policy.launch_preconditions.enforce_repo_root_trunk).toBe(false);
+	});
+
+	it("fails loudly for invalid, unknown, or mistyped supervisor.toml fields", async () => {
+		await expect(run(parseSupervisorLaunchPolicyToml("not toml"))).rejects.toThrow(
+			"Invalid supervisor.toml",
+		);
+		await expect(
+			run(
+				parseSupervisorLaunchPolicyToml(
+					"[launch_preconditions]\nenforce_repo_root_trunk = true\nextra = true\n",
+				),
+			),
+		).rejects.toThrow("Invalid supervisor.toml");
+		await expect(
+			run(
+				parseSupervisorLaunchPolicyToml(
+					'[launch_preconditions]\nenforce_repo_root_trunk = "yes"\n',
+				),
+			),
+		).rejects.toThrow("Invalid supervisor.toml");
+	});
+});
 
 describe("pdx cli and config", () => {
 	it("prints machine-readable JSON help with nested pdx command paths", async () => {

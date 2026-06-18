@@ -159,6 +159,41 @@ describe("pdx open and daemon lifecycle", () => {
 		]);
 	});
 
+	it("daemon startup fails invalid present supervisor.toml before launching agents", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-daemon-config-"));
+		const config = await parseConfig(dataDir);
+		const registry = await run(makeRegistry);
+		const spawner = makeSpawner({ launchAgent: () => Effect.die("unexpected launch") });
+		await expect(
+			run(
+				runDaemon(config, 1, 5).pipe(
+					Effect.provideService(
+						FileSystem,
+						fakeFs({
+							readFileIfExists: () =>
+								Effect.succeed("[launch_preconditions]\nenforce_repo_root_trunk = 1\n"),
+						}),
+					),
+					Effect.provideService(Clock, testClock),
+					Effect.provideService(PithosClient, makePithos()),
+					Effect.provideService(SupervisorLog, testLog),
+					Effect.provideService(LifecycleReporter, testLifecycle),
+					Effect.provideService(Registry, registry),
+					Effect.provideService(
+						Ids,
+						Ids.of({
+							nextRunId: Effect.succeed("run_pandora"),
+							nextSessionId: Effect.succeed("session_pandora"),
+						}),
+					),
+					Effect.provideService(Spawner, spawner),
+					Effect.provideService(Tmux, fakeTmux()),
+					Effect.provideService(Process, fakeProcess()),
+				),
+			),
+		).rejects.toThrow("Invalid supervisor.toml");
+	});
+
 	it("daemon startup creates runs dir, system run, Pandora singleton, and excludes pdx from caps", async () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
 		const mkdirs: string[] = [];

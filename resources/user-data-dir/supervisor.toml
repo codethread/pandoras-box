@@ -1,0 +1,2 @@
+[launch_preconditions]
+enforce_repo_root_trunk = true

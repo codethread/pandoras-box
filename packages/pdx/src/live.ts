@@ -141,6 +141,18 @@ export const FileSystemLive = FileSystem.of({
 			try: () => readFile(path, "utf8"),
 			catch: (error) => fsError("readFile", error),
 		}),
+	readFileIfExists: (path) =>
+		Effect.tryPromise({
+			try: async () => {
+				try {
+					return await readFile(path, "utf8");
+				} catch (error) {
+					if (isNodeErrorCode(error, "ENOENT")) return undefined;
+					throw error;
+				}
+			},
+			catch: (error) => fsError("readFileIfExists", error),
+		}),
 	readDirectory: (path) =>
 		Effect.tryPromise({
 			try: () => readdir(path),
@@ -372,6 +384,10 @@ const ensureUserScaffold = async (userDataDir: string): Promise<void> => {
 	await writeIfMissing(
 		join(userDataDir, "artifacts.toml"),
 		await readFile(join(bundledUserDataDirResourcesDir, "artifacts.toml"), "utf8"),
+	);
+	await writeIfMissing(
+		join(userDataDir, "supervisor.toml"),
+		await readFile(join(bundledUserDataDirResourcesDir, "supervisor.toml"), "utf8"),
 	);
 	await writeFile(
 		join(userDataDir, "PANDORA.md"),

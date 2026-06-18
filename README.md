@@ -80,7 +80,7 @@ defaults.
 
 User customisation lives in `<user-data-dir>/`, where `<user-data-dir>` is
 `$PDX_USER_DATA_DIR` or defaults to `<data-dir>/config`. That directory keeps a
-scaffold-once `AGENTS.md`, `CLAUDE.md`, `artifacts.toml`, and `agents.toml`
+scaffold-once `AGENTS.md`, `CLAUDE.md`, `artifacts.toml`, `supervisor.toml`, and `agents.toml`
 plus a re-seeded `PANDORA.md` reference so you can `cd` into it and ask a
 direct harness session to edit config safely.
 
@@ -90,6 +90,7 @@ Typical files:
 - `<user-data-dir>/CLAUDE.md` — same pointer for Claude direct sessions
 - `<user-data-dir>/agents.toml` — scaffolded user-wide policy registry and Harness partial
 - `<user-data-dir>/artifacts.toml` — user-owned Artifact Contracts scaffold (commented guidance only)
+- `<user-data-dir>/supervisor.toml` — user-owned pdx launch policy scaffold
 - `<user-data-dir>/PANDORA.md` — installed config reference, overwritten on `pdx init` / `pdx open`
 
 Customize behavior with named policy packs declared in
@@ -116,7 +117,7 @@ Useful reset modes:
 
 Artifact status/rejection is an alpha schema break. If an existing DB fails with an incompatible `artifacts` schema error, reset runtime state with `pdx init --clean` / `pdx open --clean`; standalone Pithos users can run `pithos init --fresh`.
 
-- `pdx init` or `pdx open` — re-seed `<data-dir>/agents.toml`, `<data-dir>/templates/`, `<data-dir>/AGENTS.md`, and `<user-data-dir>/PANDORA.md`; scaffold missing `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml`; keep user config, DB, runs, and logs
+- `pdx init` or `pdx open` — re-seed `<data-dir>/agents.toml`, `<data-dir>/templates/`, `<data-dir>/AGENTS.md`, and `<user-data-dir>/PANDORA.md`; scaffold missing `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, `<user-data-dir>/artifacts.toml`, and `<user-data-dir>/supervisor.toml`; keep user config, DB, runs, and logs
 - `pdx init --clean` or `pdx open --clean` — wipe runtime state only (DB, runs, logs); keep bundle-owned config and user config
 - `pdx init --nuke` or `pdx open --nuke` — wipe pdx-owned runtime/bundled state, preserve `<user-data-dir>`, then reseed fresh canonical config
 
