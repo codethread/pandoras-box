@@ -15,6 +15,7 @@ import {
 	PithosClient,
 	Process,
 	Registry,
+	RepoLaunchChecks,
 	Spawner,
 	SupervisorLog,
 	Tmux,
@@ -29,6 +30,7 @@ import {
 } from "../src/services.js";
 import { type Capability, type Services as PithosServices } from "@pdx/pithos";
 import { PANDORA_TARGET, reconcileTick } from "../src/controller.js";
+import type { RepoLaunchChecksService } from "../src/repo-launch-checks.js";
 
 export const execFileAsync = promisify(execFile);
 export const repoRoot = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
@@ -255,6 +257,17 @@ const baseProcessImpl: ProcessService = {
 	kill: () => Effect.void,
 };
 
+const baseRepoLaunchChecksImpl: RepoLaunchChecksService = {
+	probeDefaultBranch: () =>
+		Effect.succeed({
+			_tag: "OnDefaultBranch" as const,
+			path: "/repo",
+			gitRoot: "/repo",
+			currentBranch: "main",
+			defaultBranch: "main",
+		}),
+};
+
 const baseFsImpl: FileSystemService = {
 	appendFile: () => Effect.void,
 	readFile: () => Effect.succeed(""),
@@ -272,6 +285,11 @@ export const fakeTmux = (overrides: Partial<TmuxService> = {}): ReturnType<typeo
 export const fakeProcess = (
 	overrides: Partial<ProcessService> = {},
 ): ReturnType<typeof Process.of> => Process.of({ ...baseProcessImpl, ...overrides });
+
+export const fakeRepoLaunchChecks = (
+	overrides: Partial<RepoLaunchChecksService> = {},
+): ReturnType<typeof RepoLaunchChecks.of> =>
+	RepoLaunchChecks.of({ ...baseRepoLaunchChecksImpl, ...overrides });
 
 export const fakeFs = (
 	overrides: Partial<FileSystemService> = {},
@@ -369,6 +387,7 @@ interface TickInput {
 	readonly pithos?: PithosClientService;
 	readonly tmux?: ReturnType<typeof Tmux.of>;
 	readonly process?: ReturnType<typeof Process.of>;
+	readonly repoLaunchChecks?: ReturnType<typeof RepoLaunchChecks.of>;
 	readonly log?: ReturnType<typeof SupervisorLog.of>;
 	readonly lifecycle?: ReturnType<typeof LifecycleReporter.of>;
 	readonly clock?: ReturnType<typeof Clock.of>;
@@ -409,6 +428,7 @@ export const runTick = (input: TickInput) => {
 			),
 			Effect.provideService(Tmux, input.tmux ?? alwaysLiveTmux),
 			Effect.provideService(Process, input.process ?? alwaysLiveProcess),
+			Effect.provideService(RepoLaunchChecks, input.repoLaunchChecks ?? fakeRepoLaunchChecks()),
 			Effect.provideService(SupervisorLog, input.log ?? testLog),
 			Effect.provideService(LifecycleReporter, input.lifecycle ?? testLifecycle),
 			Effect.provideService(FileSystem, input.fs ?? noopFs),
@@ -426,6 +446,7 @@ export const runSpawnTick = async (input: {
 	readonly runId?: string;
 	readonly sessionId?: string;
 	readonly fs?: FileSystemService;
+	readonly repoLaunchChecks?: ReturnType<typeof RepoLaunchChecks.of>;
 	readonly launchAgent?: (
 		launch: LaunchAgentInput,
 	) => Effect.Effect<
@@ -463,5 +484,6 @@ export const runSpawnTick = async (input: {
 					})),
 		}),
 		...(input.fs !== undefined ? { fs: input.fs } : {}),
+		...(input.repoLaunchChecks !== undefined ? { repoLaunchChecks: input.repoLaunchChecks } : {}),
 	});
 };

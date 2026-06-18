@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { PdxError } from "../src/errors.js";
+import { defaultSupervisorLaunchPolicy } from "../src/config.js";
 import {
 	Clock,
 	FileSystem,
@@ -13,6 +14,7 @@ import {
 	PithosClient,
 	Process,
 	Registry,
+	RepoLaunchChecks,
 	Spawner,
 	SupervisorLog,
 	Tmux,
@@ -32,6 +34,8 @@ import {
 	fakeTmux,
 	fakeProcess,
 	fakeFs,
+	fakeRepoLaunchChecks,
+	runTick,
 } from "./support.js";
 
 describe("pdx reconcile spawning and capacity", () => {
@@ -81,6 +85,7 @@ describe("pdx reconcile spawning and capacity", () => {
 				Effect.provideService(Ids, ids),
 				Effect.provideService(Spawner, spawner),
 				Effect.provideService(Tmux, tmux),
+				Effect.provideService(RepoLaunchChecks, fakeRepoLaunchChecks()),
 				Effect.provideService(SupervisorLog, log),
 				Effect.provideService(LifecycleReporter, testLifecycle),
 				Effect.provideService(FileSystem, noopFs),
@@ -193,6 +198,215 @@ describe("pdx reconcile spawning and capacity", () => {
 		expect(calls).not.toContain("runUpsert:war:run_war");
 		expect(calls).toContain("escalateLaunchPrecondition:task_execute:scope_repo:/missing-repo");
 		expect(await run(registry.list)).toEqual([expect.objectContaining({ runId: "run_pandora" })]);
+	});
+
+	it.each([
+		{
+			name: "non-Git path",
+			probe: { _tag: "NotGitWorkTree" as const, path: "/repo" },
+			reason: "not_git_repository",
+			evidence: ["Reason: not_git_repository", "Scope path: /repo"],
+		},
+		{
+			name: "unknown default branch",
+			probe: {
+				_tag: "UnknownDefaultBranch" as const,
+				path: "/repo",
+				gitRoot: "/repo",
+				currentBranch: "main",
+			},
+			reason: "unknown_remote_default_branch",
+			evidence: [
+				"Reason: unknown_remote_default_branch",
+				"Git root: /repo",
+				"Current branch: main",
+			],
+		},
+		{
+			name: "detached HEAD",
+			probe: { _tag: "DetachedHead" as const, path: "/repo", gitRoot: "/repo" },
+			reason: "detached_head",
+			evidence: ["Reason: detached_head", "Git root: /repo"],
+		},
+		{
+			name: "branch mismatch",
+			probe: {
+				_tag: "NonDefaultBranch" as const,
+				path: "/repo",
+				gitRoot: "/repo",
+				currentBranch: "feature",
+				defaultBranch: "main",
+			},
+			reason: "branch_mismatch",
+			evidence: [
+				"Reason: branch_mismatch",
+				"Git root: /repo",
+				"Current branch: feature",
+				"Expected default branch: main",
+			],
+		},
+	])(
+		"repo trunk guard repairs launch precondition without rendering or spawning for $name",
+		async ({ probe, reason, evidence }) => {
+			const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
+			const registry = await run(makeRegistry);
+			await run(upsertPandora(registry));
+			const calls: string[] = [];
+			const bodies: string[] = [];
+			const launches: unknown[] = [];
+			const probePaths: string[] = [];
+			let renderCalls = 0;
+			await runTick({
+				config: await parseConfig(dataDir),
+				registry,
+				pithos: makePithos(
+					calls,
+					[
+						{
+							id: "task_execute",
+							scope_id: "scope_repo",
+							capability: "execute",
+							scope_kind: "repo",
+							canonical_path: "/repo",
+						},
+					],
+					{
+						escalateLaunchPrecondition: (input) =>
+							Effect.sync(() => {
+								calls.push(
+									`escalateLaunchPrecondition:${input.expectedTaskId}:${input.expectedScopeId}:${input.canonicalPath}:${input.reason}`,
+								);
+								bodies.push(input.escalationBody);
+							}),
+					},
+				),
+				spawner: Spawner.of({
+					materializeTemplates: () => Effect.void,
+					renderAgent: () =>
+						Effect.sync(() => {
+							renderCalls += 1;
+							throw new PdxError({ code: "PROCESS_ERROR", message: "unexpected render" });
+						}),
+					launchRenderedAgent: () =>
+						Effect.sync(() => {
+							launches.push("unexpected");
+							throw new PdxError({ code: "PROCESS_ERROR", message: "unexpected launch" });
+						}),
+					renderSessionTranscript: () => Effect.succeed(""),
+				}),
+				repoLaunchChecks: fakeRepoLaunchChecks({
+					probeDefaultBranch: (path) =>
+						Effect.sync(() => {
+							probePaths.push(path);
+							return probe;
+						}),
+				}),
+			});
+			expect(probePaths).toEqual(["/repo"]);
+			expect(renderCalls).toBe(0);
+			expect(launches).toEqual([]);
+			expect(calls).toContain(`escalateLaunchPrecondition:task_execute:scope_repo:/repo:${reason}`);
+			expect(calls).not.toContain("runUpsert:war:run_war");
+			expect(bodies).toHaveLength(1);
+			expect(bodies[0]).toContain("Task Replay is the preferred repair");
+			for (const expected of evidence) expect(bodies[0]).toContain(expected);
+		},
+	);
+
+	it("disabled repo trunk guard does not probe repo launches", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
+		const registry = await run(makeRegistry);
+		await run(upsertPandora(registry));
+		const calls: string[] = [];
+		const launches: unknown[] = [];
+		let probeCalls = 0;
+		const disabledPolicy = {
+			launch_preconditions: {
+				...defaultSupervisorLaunchPolicy.launch_preconditions,
+				enforce_repo_root_trunk: false,
+			},
+		};
+		await runTick({
+			config: await parseConfig(dataDir),
+			registry,
+			pithos: makePithos(calls, [
+				{
+					id: "task_execute",
+					scope_id: "scope_repo",
+					capability: "execute",
+					scope_kind: "repo",
+					canonical_path: "/repo",
+				},
+			]),
+			spawner: makeSpawner({
+				launchAgent: (launch) =>
+					Effect.sync(() => {
+						launches.push(launch);
+						return {
+							...launch,
+							logicalName: "pdx--war",
+							afk: { pid: 456, processStartTime: "now" },
+						};
+					}),
+			}),
+			repoLaunchChecks: fakeRepoLaunchChecks({
+				probeDefaultBranch: () =>
+					Effect.sync(() => {
+						probeCalls += 1;
+						return {
+							_tag: "NonDefaultBranch" as const,
+							path: "/repo",
+							gitRoot: "/repo",
+							currentBranch: "feature",
+							defaultBranch: "main",
+						};
+					}),
+			}),
+			tickEffect: (config) => reconcileTick(config, 4, disabledPolicy),
+		});
+		expect(probeCalls).toBe(0);
+		expect(launches).toEqual([expect.objectContaining({ agent: "war", cwd: "/repo" })]);
+		expect(calls).toContain("runUpsert:war:run_war");
+	});
+
+	it("worktree-scoped ready tasks are exempt from the repo trunk guard", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
+		const registry = await run(makeRegistry);
+		await run(upsertPandora(registry));
+		const launches: unknown[] = [];
+		let probeCalls = 0;
+		await runSpawnTick({
+			dataDir,
+			registry,
+			pithos: makePithos(
+				[],
+				[
+					{
+						id: "task_review",
+						scope_id: "scope_worktree",
+						capability: "review",
+						scope_kind: "worktree",
+						canonical_path: "/worktree",
+					},
+				],
+			),
+			launches,
+			repoLaunchChecks: fakeRepoLaunchChecks({
+				probeDefaultBranch: () =>
+					Effect.sync(() => {
+						probeCalls += 1;
+						return {
+							_tag: "NonDefaultBranch" as const,
+							path: "/worktree",
+							gitRoot: "/repo",
+							currentBranch: "feature",
+							defaultBranch: "main",
+						};
+					}),
+			}),
+		});
+		expect(probeCalls).toBe(0);
+		expect(launches).toEqual([expect.objectContaining({ agent: "greed", cwd: "/worktree" })]);
 	});
 
 	it("aborts no-claim run and repairs launch precondition when cwd disappears during launch", async () => {
@@ -430,6 +644,7 @@ describe("pdx reconcile spawning and capacity", () => {
 				Effect.provideService(Ids, ids),
 				Effect.provideService(Spawner, spawner),
 				Effect.provideService(Tmux, tmux),
+				Effect.provideService(RepoLaunchChecks, fakeRepoLaunchChecks()),
 				Effect.provideService(SupervisorLog, log),
 				Effect.provideService(LifecycleReporter, testLifecycle),
 				Effect.provideService(FileSystem, noopFs),
@@ -496,6 +711,7 @@ describe("pdx reconcile spawning and capacity", () => {
 				Effect.provideService(Ids, ids),
 				Effect.provideService(Spawner, spawner),
 				Effect.provideService(Tmux, tmux),
+				Effect.provideService(RepoLaunchChecks, fakeRepoLaunchChecks()),
 				Effect.provideService(SupervisorLog, log),
 				Effect.provideService(LifecycleReporter, testLifecycle),
 				Effect.provideService(FileSystem, noopFs),
@@ -543,6 +759,7 @@ describe("pdx reconcile spawning and capacity", () => {
 			nextSessionId: Effect.succeed("session_war"),
 		});
 		const launches: unknown[] = [];
+		const probePaths: string[] = [];
 		const spawner = makeSpawner({
 			launchAgent: (input) =>
 				Effect.sync(() => {
@@ -559,12 +776,29 @@ describe("pdx reconcile spawning and capacity", () => {
 				Effect.provideService(Ids, ids),
 				Effect.provideService(Spawner, spawner),
 				Effect.provideService(Tmux, tmux),
+				Effect.provideService(
+					RepoLaunchChecks,
+					fakeRepoLaunchChecks({
+						probeDefaultBranch: (path) =>
+							Effect.sync(() => {
+								probePaths.push(path);
+								return {
+									_tag: "OnDefaultBranch" as const,
+									path,
+									gitRoot: "/repo",
+									currentBranch: "main",
+									defaultBranch: "main",
+								};
+							}),
+					}),
+				),
 				Effect.provideService(SupervisorLog, log),
 				Effect.provideService(LifecycleReporter, testLifecycle),
 				Effect.provideService(FileSystem, noopFs),
 				Effect.provideService(Clock, testClock),
 			),
 		);
+		expect(probePaths).toEqual(["/repo"]);
 		expect(launches).toEqual([
 			expect.objectContaining({
 				agent: "war",
@@ -621,6 +855,7 @@ describe("pdx reconcile spawning and capacity", () => {
 				Effect.provideService(Spawner, spawner),
 				Effect.provideService(Tmux, tmux),
 				Effect.provideService(Process, process),
+				Effect.provideService(RepoLaunchChecks, fakeRepoLaunchChecks()),
 				Effect.provideService(SupervisorLog, testLog),
 				Effect.provideService(LifecycleReporter, testLifecycle),
 				Effect.provideService(FileSystem, fs),
@@ -636,6 +871,7 @@ describe("pdx reconcile spawning and capacity", () => {
 				Effect.provideService(Spawner, spawner),
 				Effect.provideService(Tmux, tmux),
 				Effect.provideService(Process, fakeProcess({ isAlive: () => Effect.succeed(false) })),
+				Effect.provideService(RepoLaunchChecks, fakeRepoLaunchChecks()),
 				Effect.provideService(SupervisorLog, testLog),
 				Effect.provideService(LifecycleReporter, testLifecycle),
 				Effect.provideService(FileSystem, fs),

@@ -60,6 +60,7 @@ Append notes here. Do not rewrite earlier notes.
 - Task 10: Updated package/resource docs for the implemented Artifact Contract parser boundary, fenced add/reject APIs, compact/full inspect behavior, user `artifacts.toml` ownership, prompt rendering, and pdx launch/scaffold environment. Verified with `pnpm verify`.
 - Task 11: Added scaffold-once `<user-data-dir>/supervisor.toml`, typed pdx supervisor launch-policy parsing, daemon startup validation for invalid present config, and missing-file default behavior matching the scaffold. Verified with `pnpm verify`.
 - Task 12: Added `RepoLaunchChecks` as a pdx service boundary with a local-only Git probe for repo root, current branch, `origin/HEAD` default branch metadata, detached HEAD, non-Git paths, and unknown default branch. Focused pdx tests and full `pnpm verify` passed.
+- Task 13: Wired parsed supervisor launch policy into daemon reconcile, applied the repo-root trunk guard before render/run creation for repo scopes only, and routed all negative probe outcomes through launch-precondition Repair Alerts with branch evidence and Task Replay guidance. Focused pdx reconcile/spawn coverage passed before full verification. Full user-facing installed docs/spec status updates remain in Task 14; this slice only updated the touched pdx package README.
 
 ### Task 11-14: Supervisor repo-root trunk guard plan — 2026-06-18
 

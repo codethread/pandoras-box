@@ -5,7 +5,7 @@ import { requestIpc, listenIpc } from "./ipc-socket.js";
 import { listenIntakeSocket } from "./intake-socket.js";
 import type { IpcResponse } from "./ipc.js";
 import { PdxError } from "./errors.js";
-import { parseSupervisorLaunchPolicyToml } from "./config.js";
+import { defaultSupervisorLaunchPolicy, parseSupervisorLaunchPolicyToml } from "./config.js";
 import type { PdxConfig, SupervisorLaunchPolicy } from "./config.js";
 import {
 	Clock,
@@ -14,6 +14,7 @@ import {
 	PithosClient,
 	Process,
 	Registry,
+	RepoLaunchChecks,
 	Spawner,
 	SupervisorLog,
 	Tmux,
@@ -779,23 +780,58 @@ const selectedCapabilityForLaunch = (
 
 const launchPreconditionTitle = (taskId: string): string => `Repair unlaunchable task ${taskId}`;
 
+interface LaunchPreconditionTask {
+	readonly id: string;
+	readonly scope_id: string;
+	readonly scope_kind: "global" | "repo" | "worktree";
+	readonly capability: Capability;
+	readonly canonical_path: string | null;
+}
+
 const launchPreconditionBody = (input: {
 	readonly agent: LaunchableAgent;
 	readonly taskId: string;
 	readonly scopeId: string;
+	readonly scopeKind: "global" | "repo" | "worktree";
 	readonly canonicalPath: string;
 	readonly reason: string;
 }) =>
-	`pdx could not launch a queued task because its scope runtime path is not an existing directory.\n\nAgent: ${input.agent}\nTask: ${input.taskId}\nScope: ${input.scopeId}\nPath: ${input.canonicalPath}\nReason: ${input.reason}\n\nSuggested next steps: inspect the cancelled task and repair the broken chain by upserting a valid scope and superseding the task, or replan the work.`;
+	`pdx could not launch a queued task because its scope runtime path is not an existing directory.\n\nAgent: ${input.agent}\nTask: ${input.taskId}\nScope: ${input.scopeId}\nScope kind: ${input.scopeKind}\nScope path: ${input.canonicalPath}\nReason: ${input.reason}\n\nSuggested next steps: inspect the cancelled task and repair the broken chain by upserting a valid scope and superseding the task, or replan the work.`;
+
+const repoBranchGuardPreconditionBody = (input: {
+	readonly agent: LaunchableAgent;
+	readonly taskId: string;
+	readonly scopeId: string;
+	readonly scopePath: string;
+	readonly reason: string;
+	readonly gitRoot?: string | undefined;
+	readonly currentBranch?: string | undefined;
+	readonly defaultBranch?: string | undefined;
+}) => {
+	const lines = [
+		"pdx could not launch a queued repo-scoped task because the repo root trunk launch guard failed.",
+		"",
+		`Agent: ${input.agent}`,
+		`Task: ${input.taskId}`,
+		`Scope: ${input.scopeId}`,
+		"Scope kind: repo",
+		`Scope path: ${input.scopePath}`,
+	];
+	if (input.gitRoot !== undefined) lines.push(`Git root: ${input.gitRoot}`);
+	if (input.currentBranch !== undefined) lines.push(`Current branch: ${input.currentBranch}`);
+	if (input.defaultBranch !== undefined)
+		lines.push(`Expected default branch: ${input.defaultBranch}`);
+	lines.push(
+		`Reason: ${input.reason}`,
+		"",
+		"After the repo is switched back to the default branch, Task Replay is the preferred repair when the original Task remains valid. Supersession, replanning, or intentional abandon remain alternatives when the work definition should change or should not continue.",
+	);
+	return lines.join("\n");
+};
 
 const escalateLaunchPrecondition = (input: {
 	readonly agent: LaunchableAgent;
-	readonly task: {
-		readonly id: string;
-		readonly scope_id: string;
-		readonly capability: Capability;
-		readonly canonical_path: string | null;
-	};
+	readonly task: LaunchPreconditionTask;
 	readonly cwd: string;
 	readonly reason: string;
 }) =>
@@ -814,6 +850,7 @@ const escalateLaunchPrecondition = (input: {
 					agent: input.agent,
 					taskId: input.task.id,
 					scopeId: input.task.scope_id,
+					scopeKind: input.task.scope_kind,
 					canonicalPath: input.cwd,
 					reason: input.reason,
 				}),
@@ -823,12 +860,7 @@ const escalateLaunchPrecondition = (input: {
 
 const escalateLaunchPreconditionIfStillMatching = (input: {
 	readonly agent: LaunchableAgent;
-	readonly task: {
-		readonly id: string;
-		readonly scope_id: string;
-		readonly capability: Capability;
-		readonly canonical_path: string | null;
-	};
+	readonly task: LaunchPreconditionTask;
 	readonly cwd: string;
 	readonly reason: string;
 }) =>
@@ -845,6 +877,40 @@ const escalateLaunchPreconditionIfStillMatching = (input: {
 		}
 		yield* escalateLaunchPrecondition(input);
 	});
+
+const escalateRepoBranchGuardPrecondition = (input: {
+	readonly agent: LaunchableAgent;
+	readonly task: LaunchPreconditionTask;
+	readonly cwd: string;
+	readonly reason: string;
+	readonly gitRoot?: string | undefined;
+	readonly currentBranch?: string | undefined;
+	readonly defaultBranch?: string | undefined;
+}) =>
+	PithosClient.pipe(
+		Effect.flatMap((pithos) =>
+			pithos.escalateLaunchPrecondition({
+				runId: PDX_SYSTEM_RUN_ID,
+				expectedTaskId: input.task.id,
+				expectedScopeId: input.task.scope_id,
+				expectedCapability: input.task.capability,
+				canonicalPath: input.cwd,
+				agentKind: input.agent,
+				reason: input.reason,
+				escalationTitle: launchPreconditionTitle(input.task.id),
+				escalationBody: repoBranchGuardPreconditionBody({
+					agent: input.agent,
+					taskId: input.task.id,
+					scopeId: input.task.scope_id,
+					scopePath: input.cwd,
+					reason: input.reason,
+					gitRoot: input.gitRoot,
+					currentBranch: input.currentBranch,
+					defaultBranch: input.defaultBranch,
+				}),
+			}),
+		),
+	);
 
 const hasAgentScopeCap = (
 	entries: readonly RegistryEntry[],
@@ -996,7 +1062,61 @@ const sendEscalateNudgeIfNeeded = () =>
 		}
 	});
 
-const spawnReadyAgent = (config: PdxConfig, maxAfk: number) =>
+const applyRepoTrunkLaunchGuard = (input: {
+	readonly policy: SupervisorLaunchPolicy;
+	readonly agent: LaunchableAgent;
+	readonly task: LaunchPreconditionTask;
+	readonly cwd: string;
+}) =>
+	Effect.gen(function* () {
+		if (!input.policy.launch_preconditions.enforce_repo_root_trunk) return false;
+		if (input.task.scope_kind !== "repo") return false;
+		const checks = yield* RepoLaunchChecks;
+		const probe = yield* checks.probeDefaultBranch(input.cwd);
+		if (probe._tag === "OnDefaultBranch") return false;
+		if (probe._tag === "NotGitWorkTree") {
+			yield* escalateRepoBranchGuardPrecondition({
+				agent: input.agent,
+				task: input.task,
+				cwd: input.cwd,
+				reason: "not_git_repository",
+			});
+			return true;
+		}
+		if (probe._tag === "UnknownDefaultBranch") {
+			yield* escalateRepoBranchGuardPrecondition({
+				agent: input.agent,
+				task: input.task,
+				cwd: input.cwd,
+				reason: "unknown_remote_default_branch",
+				gitRoot: probe.gitRoot,
+				currentBranch: probe.currentBranch,
+			});
+			return true;
+		}
+		if (probe._tag === "DetachedHead") {
+			yield* escalateRepoBranchGuardPrecondition({
+				agent: input.agent,
+				task: input.task,
+				cwd: input.cwd,
+				reason: "detached_head",
+				gitRoot: probe.gitRoot,
+			});
+			return true;
+		}
+		yield* escalateRepoBranchGuardPrecondition({
+			agent: input.agent,
+			task: input.task,
+			cwd: input.cwd,
+			reason: "branch_mismatch",
+			gitRoot: probe.gitRoot,
+			currentBranch: probe.currentBranch,
+			defaultBranch: probe.defaultBranch,
+		});
+		return true;
+	});
+
+const spawnReadyAgent = (config: PdxConfig, maxAfk: number, policy: SupervisorLaunchPolicy) =>
 	Effect.gen(function* () {
 		const registry = yield* Registry;
 		const pithos = yield* PithosClient;
@@ -1041,6 +1161,8 @@ const spawnReadyAgent = (config: PdxConfig, maxAfk: number) =>
 				});
 				return;
 			}
+			const guardBlockedLaunch = yield* applyRepoTrunkLaunchGuard({ policy, agent, task, cwd });
+			if (guardBlockedLaunch) return;
 			const runId = yield* ids.nextRunId;
 			const sessionId = yield* ids.nextSessionId;
 			const launchedAt = yield* Clock.pipe(Effect.flatMap((clock) => clock.nowIso));
@@ -1221,7 +1343,11 @@ const spawnReadyAgent = (config: PdxConfig, maxAfk: number) =>
 		}
 	});
 
-export const reconcileTick = (config: PdxConfig, maxAfk = 4) =>
+export const reconcileTick = (
+	config: PdxConfig,
+	maxAfk = 4,
+	policy: SupervisorLaunchPolicy = defaultSupervisorLaunchPolicy,
+) =>
 	Effect.gen(function* () {
 		const registry = yield* Registry;
 		const pithos = yield* PithosClient;
@@ -1439,7 +1565,7 @@ export const reconcileTick = (config: PdxConfig, maxAfk = 4) =>
 			});
 		}
 		yield* sendEscalateNudgeIfNeeded();
-		yield* spawnReadyAgent(config, maxAfk);
+		yield* spawnReadyAgent(config, maxAfk, policy);
 	});
 
 const killFailureEscalationTitle = (runId: string): string => `Investigate stuck kill: ${runId}`;
@@ -1562,8 +1688,9 @@ export const loggedReconcileTick = (
 	config: PdxConfig,
 	maxAfk: number,
 	consecutiveFailures: Ref.Ref<number>,
+	policy: SupervisorLaunchPolicy = defaultSupervisorLaunchPolicy,
 ) =>
-	reconcileTick(config, maxAfk).pipe(
+	reconcileTick(config, maxAfk, policy).pipe(
 		Effect.tap(() => Ref.set(consecutiveFailures, 0)),
 		Effect.catchAll((error) =>
 			Effect.gen(function* () {
@@ -1640,7 +1767,7 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 		const pithos = yield* PithosClient;
 		const log = yield* SupervisorLog;
 		yield* fs.mkdir(config.runsDir);
-		yield* loadSupervisorLaunchPolicy(config.userDataDir);
+		const supervisorLaunchPolicy = yield* loadSupervisorLaunchPolicy(config.userDataDir);
 		yield* log.write({ level: "info", span: "pdx.daemon", msg: "daemon starting" });
 		yield* settleHitlOrphans();
 		yield* settleAfkOrphans(config);
@@ -1659,11 +1786,18 @@ export const runDaemon = (config: PdxConfig, maxAfk: number, intervalSeconds: nu
 		const tmux = yield* Tmux;
 		const processService = yield* Process;
 		const consecutiveReconcileFailures = yield* Ref.make(0);
-		yield* loggedReconcileTick(config, maxAfk, consecutiveReconcileFailures);
-		const loop = yield* loggedReconcileTick(config, maxAfk, consecutiveReconcileFailures).pipe(
-			Effect.repeat(Schedule.spaced(`${intervalSeconds} seconds`)),
-			Effect.fork,
+		yield* loggedReconcileTick(
+			config,
+			maxAfk,
+			consecutiveReconcileFailures,
+			supervisorLaunchPolicy,
 		);
+		const loop = yield* loggedReconcileTick(
+			config,
+			maxAfk,
+			consecutiveReconcileFailures,
+			supervisorLaunchPolicy,
+		).pipe(Effect.repeat(Schedule.spaced(`${intervalSeconds} seconds`)), Effect.fork);
 
 		const intakeHandle = yield* listenIntakeSocket(config.intakeSocketPath, pithos);
 		const intakeClosedRef = yield* Ref.make(false);

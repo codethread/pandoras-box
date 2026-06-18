@@ -12,6 +12,7 @@ import {
 	PithosClient,
 	Process,
 	Registry,
+	RepoLaunchChecks,
 	Spawner,
 	SupervisorLog,
 	Tmux,
@@ -37,6 +38,7 @@ import {
 	pithosTestServices,
 	makeSpawner,
 	fakeProcess,
+	fakeRepoLaunchChecks,
 } from "./support.js";
 
 describe("pdx pithos integration and registry", () => {
@@ -116,6 +118,7 @@ describe("pdx pithos integration and registry", () => {
 				Effect.provideService(Ids, ids),
 				Effect.provideService(Tmux, alwaysLiveTmux),
 				Effect.provideService(Process, alwaysLiveProcess),
+				Effect.provideService(RepoLaunchChecks, fakeRepoLaunchChecks()),
 				Effect.provideService(SupervisorLog, testLog),
 				Effect.provideService(LifecycleReporter, testLifecycle),
 				Effect.provideService(FileSystem, noopFs),

@@ -62,7 +62,7 @@ tasks:
   - id: 13
     description: Enforce repo trunk launch guard
     task_file: tasks/013-enforce-repo-trunk-launch-guard.md
-    status: pending
+    status: complete
     blocked_by: [11, 12]
   - id: 14
     description: Document supervisor launch guard
