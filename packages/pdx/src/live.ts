@@ -30,12 +30,14 @@ import {
 import { liveServices, makeEngine, pickThreeWords, PithosError } from "@pdx/pithos";
 import type { Config as PithosConfig } from "@pdx/pithos";
 import { PdxError } from "./errors.js";
+import { makeGitRepoLaunchChecks } from "./repo-launch-checks.js";
 import {
 	FileSystem,
 	Clock,
 	Ids,
 	PithosClient,
 	Process,
+	RepoLaunchChecks,
 	Spawner,
 	type PithosClientService,
 	type ProcessResult,
@@ -127,6 +129,7 @@ export const ProcessLive = Process.of({
 				}),
 		}),
 });
+export const RepoLaunchChecksLive = RepoLaunchChecks.of(makeGitRepoLaunchChecks(ProcessLive));
 const fsError = (operation: string, error: unknown) =>
 	new PdxError({ code: "FS_ERROR", message: `${operation} failed: ${String(error)}` });
 

@@ -57,7 +57,7 @@ tasks:
   - id: 12
     description: Probe repo default branch state
     task_file: tasks/012-probe-repo-default-branch-state.md
-    status: pending
+    status: complete
     blocked_by: [11]
   - id: 13
     description: Enforce repo trunk launch guard

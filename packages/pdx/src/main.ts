@@ -34,6 +34,7 @@ import {
 	makePithosClientLive,
 	makeSpawnerLive,
 	ProcessLive,
+	RepoLaunchChecksLive,
 } from "./live.js";
 import { makeSupervisorLog } from "./log.js";
 import { makeNoopLifecycleReporter, makeStdoutLifecycleReporter } from "./lifecycle.js";
@@ -46,6 +47,7 @@ import {
 	PithosClient,
 	Process,
 	Registry,
+	RepoLaunchChecks,
 	Spawner,
 	SupervisorLog,
 	Tmux,
@@ -77,6 +79,7 @@ const captureRuntimeInput = Effect.sync<RuntimeInput>(() => ({
 
 const baseLayer = Layer.mergeAll(
 	Layer.succeed(Process, ProcessLive),
+	Layer.succeed(RepoLaunchChecks, RepoLaunchChecksLive),
 	Layer.succeed(FileSystem, FileSystemLive),
 	Layer.succeed(Clock, ClockLive),
 	Layer.succeed(Ids, IdsLive),

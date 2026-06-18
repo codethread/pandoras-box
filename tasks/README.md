@@ -59,6 +59,7 @@ Append notes here. Do not rewrite earlier notes.
 - Task 9: Merged artifact-contract deltas into living implemented specs, centralized detailed Artifact Contract semantics in `specs/artifact-contracts.md`, cross-linked related specs, removed active delta files, updated this plan’s reference list away from retired deltas, and verified with `pnpm verify`.
 - Task 10: Updated package/resource docs for the implemented Artifact Contract parser boundary, fenced add/reject APIs, compact/full inspect behavior, user `artifacts.toml` ownership, prompt rendering, and pdx launch/scaffold environment. Verified with `pnpm verify`.
 - Task 11: Added scaffold-once `<user-data-dir>/supervisor.toml`, typed pdx supervisor launch-policy parsing, daemon startup validation for invalid present config, and missing-file default behavior matching the scaffold. Verified with `pnpm verify`.
+- Task 12: Added `RepoLaunchChecks` as a pdx service boundary with a local-only Git probe for repo root, current branch, `origin/HEAD` default branch metadata, detached HEAD, non-Git paths, and unknown default branch. Focused pdx tests and full `pnpm verify` passed.
 
 ### Task 11-14: Supervisor repo-root trunk guard plan — 2026-06-18
 

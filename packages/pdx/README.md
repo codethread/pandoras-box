@@ -89,6 +89,7 @@ Default data dir is `$HOME/.pdx`. `PDX_DATA_DIR` overrides that default, and exp
 Central service boundary for domain code. Controller logic depends on these interfaces, not raw Node APIs:
 
 - `Process` — exec, liveness probes, kill
+- `RepoLaunchChecks` — Git-backed, local-only repo launch probes for supervisor preconditions
 - `FileSystem` — read/write/mkdir/remove
 - `Clock` — current ISO timestamp
 - `Ids` — run/session IDs; run IDs use the word-based format (`run_fish-butter-clam`)
@@ -104,6 +105,7 @@ Central service boundary for domain code. Controller logic depends on these inte
 Binds services to real implementations:
 
 - Node `fs`, `child_process`, `crypto`, and `process` are confined here for pdx runtime IO.
+- `RepoLaunchChecksLive` shells out only through the injected `Process` service and uses local Git metadata for repo default-branch evidence.
 - `PithosClient` wraps `@pdx/pithos` `makeEngine(...)`; this is the library boundary to durable state.
 - `Spawner` wraps `@pdx/spawner` render/launch/Harness session transcript APIs; pdx persists render metadata before launch.
 - `pdx init` materializes repo-root `resources/data-dir/` into bundle-owned `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`, and seeds user-config docs under `<user-data-dir>/`, without starting tmux, the daemon, or Pandora.

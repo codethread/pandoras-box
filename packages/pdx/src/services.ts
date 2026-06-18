@@ -2,6 +2,7 @@ import { Context, Effect, SynchronizedRef } from "effect";
 import type { Capability, RepairAlertKind, RunOutput as PithosRunOutput } from "@pdx/pithos";
 import type { RenderedAgent as SpawnerRenderedAgent } from "@pdx/spawner";
 import type { PdxError } from "./errors.js";
+import type { RepoLaunchChecksService } from "./repo-launch-checks.js";
 
 export interface ProcessResult {
 	readonly exitCode: number;
@@ -24,6 +25,11 @@ export interface ProcessService {
 	readonly kill: (pid: number, signal: "SIGTERM" | "SIGKILL") => Effect.Effect<void, PdxError>;
 }
 export class Process extends Context.Tag("pdx/Process")<Process, ProcessService>() {}
+
+export class RepoLaunchChecks extends Context.Tag("pdx/RepoLaunchChecks")<
+	RepoLaunchChecks,
+	RepoLaunchChecksService
+>() {}
 
 export interface FileSystemService {
 	readonly appendFile: (path: string, content: string) => Effect.Effect<void, PdxError>;
