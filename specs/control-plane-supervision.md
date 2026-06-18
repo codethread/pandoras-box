@@ -1,6 +1,6 @@
 # Control Plane Supervision
 
-**Status:** Partial
+**Status:** Implemented
 **Last Updated:** 2026-06-18
 
 ## 1. Overview
@@ -25,7 +25,7 @@ Agents claim work themselves through Pithos. pdx never injects Task content into
 - Finalize Runs only from pdx after observing or confirming live resource death.
 - Route broken chains to Pandora with durable Repair Alerts instead of hidden retries.
 - Expose operator/Pandora inspection through pdx commands and Supervisor logs.
-- **Planned:** Let users enable supervisor-owned repo launch guards from scaffold-once user config without putting executable guard scripts in Agent prompts.
+- Let users control supervisor-owned repo launch guards from scaffold-once user config without putting executable guard scripts in Agent prompts.
 
 ### Non-Goals
 
@@ -56,7 +56,7 @@ Agents claim work themselves through Pithos. pdx never injects Task content into
 - **Decision:** Launch-precondition failures cancel queued work and create a Repair Alert atomically.
   - **Rationale:** A missing repo/worktree cwd means the queued Task cannot launch as written. Marking it failed would imply an Agent attempted it; retrying it would loop.
 
-- **Decision:** Repo default-branch enforcement is planned as pdx supervisor policy, not rendered Agent policy.
+- **Decision:** Repo default-branch enforcement is pdx supervisor policy, not rendered Agent policy.
   - **Rationale:** Branch safety is knowable before launch. Enforcing it in pdx prevents an Agent from starting in the wrong repository state, keeps the failure on the existing Repair Alert path, and avoids relying on prompt obedience or shell snippets.
 
 - **Decision:** Supervisor launch policy uses a separate scaffold-once user config file instead of `agents.toml`.
@@ -87,7 +87,7 @@ Capabilities are `intake`, `clarify`, `triage`, `design`, `execute`, `review`, a
 
 ### `pdx init`
 
-`pdx init` prepares the data dir, initializes Pithos, creates runtime directories, materializes bundle-owned `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`, preserves scaffold-once `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml`, and re-seeds installed `<user-data-dir>/PANDORA.md`. The `artifacts.toml` scaffold contains commented recommended examples only and existing user files are never overwritten. **Planned:** `pdx init` and `pdx open` also scaffold `<user-data-dir>/supervisor.toml` once for pdx-owned launch policy; existing files are never overwritten. It does not touch tmux or Harness CLIs.
+`pdx init` prepares the data dir, initializes Pithos, creates runtime directories, materializes bundle-owned `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`, preserves scaffold-once `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, `<user-data-dir>/artifacts.toml`, and `<user-data-dir>/supervisor.toml`, and re-seeds installed `<user-data-dir>/PANDORA.md`. The `artifacts.toml` scaffold contains commented recommended examples only. The `supervisor.toml` scaffold enables repo-root trunk enforcement by default. Existing user files are never overwritten. It does not touch tmux or Harness CLIs.
 
 - normal init reuses existing state
 - `--clean` removes DB, runs, and logs while preserving bundled config and user config
@@ -132,7 +132,7 @@ Implemented kinds include:
 - `interrupt` — pdx deliberately interrupted a live Held task during Kill
 - `task_failed` — an Agent failed a Held task
 - `dead_letter` — Cleanup exhausted Attempts for a Held task
-- `launch_precondition` — queued work could not launch because its repo/worktree cwd was missing or invalid; planned repo default-branch guard failures use the same kind
+- `launch_precondition` — queued work could not launch because its repo/worktree cwd was missing or invalid, or because the enabled repo default-branch guard rejected a repo Scope launch
 - `reconciler_stuck` — repeated reconcile failures need Pandora/operator attention
 - `kill_failure` — pdx could not kill a live resource after repeated attempts
 
@@ -148,16 +148,16 @@ Repair Alerts that reference one affected Task carry a `repair` edge. They do no
 
 Task-failure, dead-letter, and interrupt Repair Alerts are created by Pithos in the relevant Task/Run transition. pdx owns invoking Interrupt before killing the live resource, but Pithos owns the durable Alert side effect transactionally. Launch-precondition Repair Alerts are created by a Pithos atomic transition that cancels the still-queued Task, records `repair` provenance, creates the Escalation task, and emits Events in one transaction.
 
-### Planned repo default-branch launch guard
+### Repo default-branch launch guard
 
-`<user-data-dir>/supervisor.toml` is planned as pdx-owned scaffold-once configuration. Its first launch-policy field is:
+`<user-data-dir>/supervisor.toml` is user-owned scaffold-once pdx supervisor configuration. `pdx init` and `pdx open` create it when missing and preserve user edits thereafter; if the file is absent outside materialization, pdx uses the same enabled default as the scaffold. Its launch-policy field is:
 
 ```toml
 [launch_preconditions]
 enforce_repo_root_trunk = true
 ```
 
-When enabled, pdx checks repo Scope launches before Run creation. The guard applies only to `repo` Scopes, not `global` or `worktree` Scopes. pdx resolves the actual Git repository root from the Scope path, detects the remote default branch from `origin`, and compares it with the current checked-out branch. A missing Git repository, unknown default branch, detached HEAD, or non-default current branch means the queued Task is unlaunchable as written.
+When enabled, pdx checks repo Scope launches before Run creation. The guard applies only to `repo` Scopes, not `global` or `worktree` Scopes. Users disable it by editing `<user-data-dir>/supervisor.toml` to set `enforce_repo_root_trunk = false`. pdx resolves the actual Git repository root from the Scope path, detects the remote default branch from local `origin/HEAD` metadata without contacting the network, and compares it with the current checked-out branch. A missing Git repository, unknown default branch, detached HEAD, or non-default current branch means the queued Task is unlaunchable as written.
 
 The failure path is the same as other launch-precondition failures: pdx does not create a Run, Pithos atomically cancels the queued Task, and a global `launch_precondition` Repair Alert is created for Pandora. The Repair Alert body must include enough evidence for Pandora and the user to decide whether to switch branches and replay, supersede the work, or intentionally abandon it: Scope, Task, path, resolved Git root when available, current branch, expected default branch, and reason.
 

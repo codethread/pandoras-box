@@ -19,7 +19,7 @@ If you version-control your config directory, add `PANDORA.md` to `.gitignore` u
 - `<data-dir>/` is pdx-owned runtime state plus bundled canonical config reference.
   `pdx init` and `pdx open` overwrite `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`.
 - `<user-data-dir>/` is user-owned config.
-  `pdx` scaffolds `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml` once and re-seeds this `PANDORA.md` reference on `init` / `open`.
+  `pdx` scaffolds `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, `<user-data-dir>/artifacts.toml`, and `<user-data-dir>/supervisor.toml` once and re-seeds this `PANDORA.md` reference on `init` / `open`.
 
 Defaults and related env vars:
 
@@ -76,6 +76,30 @@ pithos task inspect <task-id> [--full]
 ```
 
 Primary task and graph views show active artifacts only. Rejected artifacts remain available through `task artifact list/show`. Spawner renders applicable rules into Agent prompts; invalid present `artifacts.toml` fails preview/launch rendering loudly.
+
+## Supervisor launch preconditions
+
+`supervisor.toml` is user-owned pdx launch policy. `pdx init` and `pdx open` scaffold it once and do not overwrite your edits. This `PANDORA.md` file is reference material and is re-seeded; edit `supervisor.toml` for durable changes.
+
+The current supervisor setting is:
+
+```toml
+[launch_preconditions]
+enforce_repo_root_trunk = true
+```
+
+When `true`, pdx checks ready **repo Scope** Agent launches before creating a Run. The guard does not apply to `global` or `worktree` Scopes. pdx uses local Git metadata only: the Scope path must resolve to a Git repository, the repository must have usable `origin/HEAD` default-branch metadata, HEAD must be attached, and the current branch must match the remote default branch.
+
+To disable the guard, edit `<user-data-dir>/supervisor.toml`:
+
+```toml
+[launch_preconditions]
+enforce_repo_root_trunk = false
+```
+
+Guard failures become `launch_precondition` Repair Alerts for Pandora. pdx cancels the queued Task without creating an Agent Run, records branch evidence in the alert, and expects Pandora to help fix the repo state. After switching the repo back to its default branch, Task Replay is the preferred repair when the original Task remains valid; supersession, replanning, or intentional cancellation remain alternatives.
+
+Do not put this default-branch check in Agent prompt policy packs or shell snippets. Branch launch safety is enforced by pdx before launch; policy packs should describe workflow preferences, not duplicate supervisor preconditions.
 
 ## Policy packs
 
@@ -397,8 +421,8 @@ Preview shows the final Harness config, matched rules, selected policy ids, poli
 ## Reset behavior
 
 - `pdx init` / `pdx open` re-seed bundle-owned canonical config and this reference file
-- `pdx init` / `pdx open` scaffold missing user-owned `agents.toml`, `artifacts.toml`, and pointer files once
+- `pdx init` / `pdx open` scaffold missing user-owned `agents.toml`, `artifacts.toml`, `supervisor.toml`, and pointer files once
 - `--clean` wipes runtime state only: DB, runs, logs, socket
 - `--nuke` wipes pdx-owned runtime/bundled state while preserving `<user-data-dir>`, then re-seeds canonicals
 
-Prefer editing user-owned `agents.toml`, `artifacts.toml`, and user-owned `policies/` files instead of editing bundle-owned reference material.
+Prefer editing user-owned `agents.toml`, `artifacts.toml`, `supervisor.toml`, and user-owned `policies/` files instead of editing bundle-owned reference material.

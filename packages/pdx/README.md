@@ -182,9 +182,11 @@ For a data dir `<data-dir>` (`~/.pdx` by default):
 
 HITL mode runtime state lives in tmux targets. AFK mode runtime state lives in pid/stdout/stderr files plus the daemon Registry while live. Harness session transcripts live at harness-native session log paths or lookup anchors returned by Spawner and stored on Pithos Runs. For Pi, Spawner may store the legacy `<sessionId>.jsonl` anchor and resolve a newer timestamp-prefixed sibling transcript at render time.
 
-## User config and Artifact Contracts
+## User config, Artifact Contracts, and supervisor launch policy
 
-`pdx init` and `pdx open` scaffold `<user-data-dir>/artifacts.toml` once with commented examples only. They also scaffold `<user-data-dir>/supervisor.toml` once with `launch_preconditions.enforce_repo_root_trunk = true`. Existing `artifacts.toml` and `supervisor.toml` survive `init`, `open`, `--clean`, and `--nuke` because they are user config, not pdx-owned runtime state.
+`pdx init` and `pdx open` scaffold `<user-data-dir>/artifacts.toml` once with commented examples only. They also scaffold `<user-data-dir>/supervisor.toml` once with `launch_preconditions.enforce_repo_root_trunk = true`. Existing `artifacts.toml` and `supervisor.toml` survive `init`, `open`, `--clean`, and `--nuke` because they are user config, not pdx-owned runtime state; `<user-data-dir>/PANDORA.md` remains re-seeded reference material.
+
+The supervisor launch guard is edited in `<user-data-dir>/supervisor.toml`, not in Agent prompt policy packs or shell snippets. Set `enforce_repo_root_trunk = false` under `[launch_preconditions]` to disable the repo Scope default-branch check. When enabled, only repo-scoped ready tasks are checked; global and worktree scopes are exempt. Guard failures cancel the queued Task through Pithos' atomic `launch_precondition` Repair Alert path with Git evidence so Pandora can switch the repo back to its default branch and replay the Task when still valid, or supersede/replan/cancel when it is not.
 
 pdx-launched Agents receive `PITHOS_DB`, `PDX_USER_DATA_DIR`, and their `PITHOS_RUN_ID`, so prompt rendering and Pithos completion checks use the same user Artifact Contract file. Direct Pithos invocations without `PDX_USER_DATA_DIR` run with Artifact Contracts disabled.
 

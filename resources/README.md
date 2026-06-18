@@ -40,8 +40,9 @@ user-facing machine-local configuration guide is
 [`resources/user-data-dir/PANDORA.md`](./user-data-dir/PANDORA.md).
 
 Keep this file to resource ownership. Artifact rules live in
-`<user-data-dir>/artifacts.toml`, not `agents.toml`; detailed behavior belongs in
-the Artifact Contract spec and `PANDORA.md`.
+`<user-data-dir>/artifacts.toml`, not `agents.toml`; supervisor launch preconditions
+live in `<user-data-dir>/supervisor.toml`, not Agent prompt policy packs or shell
+snippets. Detailed behavior belongs in the relevant specs and `PANDORA.md`.
 
 ## Lifecycle flags
 

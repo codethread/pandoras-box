@@ -67,5 +67,5 @@ tasks:
   - id: 14
     description: Document supervisor launch guard
     task_file: tasks/014-document-supervisor-launch-guard.md
-    status: pending
+    status: complete
     blocked_by: [13]

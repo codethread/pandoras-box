@@ -28,12 +28,12 @@ No HITL tasks are required: the product decisions are captured in the specs and 
 
 ### Problem statement / MVP goal
 
-Implement the planned supervisor-owned repo launch guard from `specs/control-plane-supervision.md`: `pdx init` / `pdx open` scaffold a user-owned `<user-data-dir>/supervisor.toml` once, pdx parses `launch_preconditions.enforce_repo_root_trunk`, and when enabled pdx prevents repo-scoped Agent launches from a repository root that is not on its remote default branch. The scaffold and missing-file runtime default both enable the guard with `enforce_repo_root_trunk = true`; users can disable it by editing the scaffolded file. The Git default-branch probe is local-only: missing `origin/HEAD` metadata is an unknown-default launch precondition, not a reason to contact the network. The failure should use the existing launch-precondition Repair Alert path so Pandora can resolve with the user and replay/supersede as appropriate.
+Implemented the supervisor-owned repo launch guard from `specs/control-plane-supervision.md`: `pdx init` / `pdx open` scaffold a user-owned `<user-data-dir>/supervisor.toml` once, pdx parses `launch_preconditions.enforce_repo_root_trunk`, and when enabled pdx prevents repo-scoped Agent launches from a repository root that is not on its remote default branch. The scaffold and missing-file runtime default both enable the guard with `enforce_repo_root_trunk = true`; users can disable it by editing the scaffolded file. The Git default-branch probe is local-only: missing `origin/HEAD` metadata is an unknown-default launch precondition, not a reason to contact the network. The failure uses the existing launch-precondition Repair Alert path so Pandora can resolve with the user and replay/supersede as appropriate.
 
 ### Important references
 
-- `specs/control-plane-supervision.md` — planned supervisor launch config and repo default-branch guard contract.
-- `specs/README.md` — spec status index, currently marking control-plane supervision as partial while this work is planned.
+- `specs/control-plane-supervision.md` — implemented supervisor launch config and repo default-branch guard contract.
+- `specs/README.md` — spec status index, now marking control-plane supervision as implemented.
 - `packages/pdx/README.md` — pdx supervisor, init/open materialization, launch precondition, and service-boundary guidance.
 - `packages/pithos/README.md` — existing launch-precondition Repair Alert transition and repair semantics.
 - `resources/README.md` — resource ownership and scaffold/re-seed lifecycle.
@@ -61,7 +61,8 @@ Append notes here. Do not rewrite earlier notes.
 - Task 11: Added scaffold-once `<user-data-dir>/supervisor.toml`, typed pdx supervisor launch-policy parsing, daemon startup validation for invalid present config, and missing-file default behavior matching the scaffold. Verified with `pnpm verify`.
 - Task 12: Added `RepoLaunchChecks` as a pdx service boundary with a local-only Git probe for repo root, current branch, `origin/HEAD` default branch metadata, detached HEAD, non-Git paths, and unknown default branch. Focused pdx tests and full `pnpm verify` passed.
 - Task 13: Wired parsed supervisor launch policy into daemon reconcile, applied the repo-root trunk guard before render/run creation for repo scopes only, and routed all negative probe outcomes through launch-precondition Repair Alerts with branch evidence and Task Replay guidance. Focused pdx reconcile/spawn coverage passed before full verification. Full user-facing installed docs/spec status updates remain in Task 14; this slice only updated the touched pdx package README.
+- Task 14: Updated control-plane and user-facing docs for implemented `supervisor.toml` ownership, scaffold-once behavior, repo Scope default-branch guard semantics, disable instructions, and `launch_precondition` Repair Alert recovery. Marked the control-plane spec implemented and verified with `pnpm verify`.
 
 ### Task 11-14: Supervisor repo-root trunk guard plan — 2026-06-18
 
-- Added follow-up tasks for the planned pdx-owned `supervisor.toml` launch policy and repo default-branch guard. These tasks deliberately reuse launch-precondition Repair Alerts and keep enforcement out of Agent prompt policy packs.
+- Added follow-up tasks for the pdx-owned `supervisor.toml` launch policy and repo default-branch guard. These tasks deliberately reuse launch-precondition Repair Alerts and keep enforcement out of Agent prompt policy packs.

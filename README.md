@@ -90,15 +90,19 @@ Typical files:
 - `<user-data-dir>/CLAUDE.md` — same pointer for Claude direct sessions
 - `<user-data-dir>/agents.toml` — scaffolded user-wide policy registry and Harness partial
 - `<user-data-dir>/artifacts.toml` — user-owned Artifact Contracts scaffold (commented guidance only)
-- `<user-data-dir>/supervisor.toml` — user-owned pdx launch policy scaffold
+- `<user-data-dir>/supervisor.toml` — user-owned pdx launch policy scaffold; set `enforce_repo_root_trunk = false` under `[launch_preconditions]` here to disable the repo Scope default-branch guard
 - `<user-data-dir>/PANDORA.md` — installed config reference, overwritten on `pdx init` / `pdx open`
 
 Customize behavior with named policy packs declared in
 `<user-data-dir>/agents.toml` and stored in user-owned `policies/*.md` files.
 Use `policy.add` / `policy.remove`, Agent-specific policy selection, and ordered
 match rules for project-specific behavior. User config must choose Harness launch
-settings for Agents before they can launch. External producers can feed Envy by
-writing intake events to `<data-dir>/intake.sock` while `pdx open` is running.
+settings for Agents before they can launch. Supervisor launch preconditions live
+in `<user-data-dir>/supervisor.toml`, not Agent prompt policy packs: by default,
+pdx blocks repo Scope launches when the repository root is not on its remote
+default branch and creates a `launch_precondition` Repair Alert for Pandora to
+resolve/replay. External producers can feed Envy by writing intake events to
+`<data-dir>/intake.sock` while `pdx open` is running.
 
 You can also ask an agent to reconfigure Pandora's Box for you:
 

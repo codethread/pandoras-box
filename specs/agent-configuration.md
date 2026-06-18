@@ -86,6 +86,7 @@ $PDX_USER_DATA_DIR/
   agents.toml        # user policy registry and Harness partials, scaffolded once
   PANDORA.md         # installed config reference, re-seeded on init/open
   artifacts.toml     # user-owned Artifact Contract guidance/completion rules
+  supervisor.toml    # user-owned pdx supervisor launch policy
   policies/          # user-owned policy pack Markdown files
 ```
 
@@ -287,7 +288,7 @@ The rendering pipeline, template variables, and generated sections are owned by 
 
 ## 7. Lifecycle Ownership
 
-`$PDX_USER_DATA_DIR` is user-owned. pdx may scaffold files when the directory is missing, but it must not overwrite existing user files except for the installed `PANDORA.md` reference.
+`$PDX_USER_DATA_DIR` is user-owned. pdx may scaffold files when the directory is missing, including `agents.toml`, `artifacts.toml`, and user-owned `supervisor.toml` for pdx launch policy, but it must not overwrite existing user files except for the installed `PANDORA.md` reference.
 
 `pdx init` and `pdx open` re-seed bundled canonical config/templates and scaffold missing user config files. `--clean` removes runtime state only. `--nuke` removes pdx-owned runtime/bundled state while preserving `$PDX_USER_DATA_DIR`.
 
@@ -301,7 +302,7 @@ The rendering pipeline, template variables, and generated sections are owned by 
 - policy declaration file paths
 - rendered prompt
 
-A direct config-editing Agent can run from `$PDX_USER_DATA_DIR`, read `PANDORA.md`, edit `agents.toml` and policy files, then validate with `pandora-spawn preview`.
+A direct config-editing Agent can run from `$PDX_USER_DATA_DIR`, read `PANDORA.md`, edit `agents.toml`, `supervisor.toml`, and policy files, then validate prompt/Harness configuration with `pandora-spawn preview`.
 
 ## 9. Open Questions
 
