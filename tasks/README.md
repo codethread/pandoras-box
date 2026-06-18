@@ -1,4 +1,4 @@
-# Artifact Contracts AFK Plan
+# Pandora's Box AFK Plans
 
 ## Problem statement / MVP goal
 
@@ -24,6 +24,26 @@ The plan is sliced so Pithos foundations land before cross-package prompt/scaffo
 
 No HITL tasks are required: the product decisions are captured in the specs and prior discussion. If an agent finds a contradiction between task scope and `specs/artifact-contracts.md`, treat the spec as the source of intent and append a Developer Note before narrowing implementation; do not invent new product policy.
 
+## Supervisor repo-root trunk guard amendment
+
+### Problem statement / MVP goal
+
+Implement the planned supervisor-owned repo launch guard from `specs/control-plane-supervision.md`: `pdx init` / `pdx open` scaffold a user-owned `<user-data-dir>/supervisor.toml` once, pdx parses `launch_preconditions.enforce_repo_root_trunk`, and when enabled pdx prevents repo-scoped Agent launches from a repository root that is not on its remote default branch. The scaffold and missing-file runtime default both enable the guard with `enforce_repo_root_trunk = true`; users can disable it by editing the scaffolded file. The Git default-branch probe is local-only: missing `origin/HEAD` metadata is an unknown-default launch precondition, not a reason to contact the network. The failure should use the existing launch-precondition Repair Alert path so Pandora can resolve with the user and replay/supersede as appropriate.
+
+### Important references
+
+- `specs/control-plane-supervision.md` — planned supervisor launch config and repo default-branch guard contract.
+- `specs/README.md` — spec status index, currently marking control-plane supervision as partial while this work is planned.
+- `packages/pdx/README.md` — pdx supervisor, init/open materialization, launch precondition, and service-boundary guidance.
+- `packages/pithos/README.md` — existing launch-precondition Repair Alert transition and repair semantics.
+- `resources/README.md` — resource ownership and scaffold/re-seed lifecycle.
+- `resources/user-data-dir/PANDORA.md` — installed user config reference that must document `supervisor.toml` after implementation.
+- `packages/spawner/README.md` — boundary reference showing enforcement should not live in Spawner/prompt rendering.
+
+### Task strategy
+
+Tasks 11-14 are added as a follow-up plan after the completed Artifact Contract tasks. The slices first establish the user-owned supervisor config surface, then add the Git repo-state probe behind pdx service boundaries, then wire the configured guard into the existing launch-precondition Repair Alert path, and finally update docs/specs from planned to implemented. No HITL task is required because the architectural decision has already been captured: this belongs in pdx supervisor policy, not `agents.toml`, Spawner, or Agent prompt shell snippets.
+
 ## Developer Notes
 
 Append notes here. Do not rewrite earlier notes.
@@ -38,3 +58,7 @@ Append notes here. Do not rewrite earlier notes.
 - Task 8: Rendered applicable Artifact Contract rules next to generated command cards through the public Pithos parser/normalizer. Existing pdx spawn/open coverage exercises the same `renderAgent` boundary that now fails on invalid present `artifacts.toml`; focused `pnpm --filter @pdx/pdx test` passed.
 - Task 9: Merged artifact-contract deltas into living implemented specs, centralized detailed Artifact Contract semantics in `specs/artifact-contracts.md`, cross-linked related specs, removed active delta files, updated this plan’s reference list away from retired deltas, and verified with `pnpm verify`.
 - Task 10: Updated package/resource docs for the implemented Artifact Contract parser boundary, fenced add/reject APIs, compact/full inspect behavior, user `artifacts.toml` ownership, prompt rendering, and pdx launch/scaffold environment. Verified with `pnpm verify`.
+
+### Task 11-14: Supervisor repo-root trunk guard plan — 2026-06-18
+
+- Added follow-up tasks for the planned pdx-owned `supervisor.toml` launch policy and repo default-branch guard. These tasks deliberately reuse launch-precondition Repair Alerts and keep enforcement out of Agent prompt policy packs.

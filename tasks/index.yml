@@ -49,3 +49,23 @@ tasks:
     task_file: tasks/010-update-artifact-package-docs.md
     status: complete
     blocked_by: [9]
+  - id: 11
+    description: Scaffold supervisor launch config
+    task_file: tasks/011-scaffold-supervisor-launch-config.md
+    status: pending
+    blocked_by: []
+  - id: 12
+    description: Probe repo default branch state
+    task_file: tasks/012-probe-repo-default-branch-state.md
+    status: pending
+    blocked_by: [11]
+  - id: 13
+    description: Enforce repo trunk launch guard
+    task_file: tasks/013-enforce-repo-trunk-launch-guard.md
+    status: pending
+    blocked_by: [11, 12]
+  - id: 14
+    description: Document supervisor launch guard
+    task_file: tasks/014-document-supervisor-launch-guard.md
+    status: pending
+    blocked_by: [13]

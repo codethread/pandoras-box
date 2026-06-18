@@ -1,7 +1,7 @@
 # Control Plane Supervision
 
-**Status:** Implemented
-**Last Updated:** 2026-06-12
+**Status:** Partial
+**Last Updated:** 2026-06-18
 
 ## 1. Overview
 
@@ -25,6 +25,7 @@ Agents claim work themselves through Pithos. pdx never injects Task content into
 - Finalize Runs only from pdx after observing or confirming live resource death.
 - Route broken chains to Pandora with durable Repair Alerts instead of hidden retries.
 - Expose operator/Pandora inspection through pdx commands and Supervisor logs.
+- **Planned:** Let users enable supervisor-owned repo launch guards from scaffold-once user config without putting executable guard scripts in Agent prompts.
 
 ### Non-Goals
 
@@ -33,6 +34,7 @@ Agents claim work themselves through Pithos. pdx never injects Task content into
 - No Same-run resurrection. Dead Agents are cleaned up; later reconcile may create a Fresh run.
 - No automatic repair of failed/cancelled/dead-lettered branch work.
 - No generic message injection into Harness sessions; Nudges are content-free signals paired with durable Pithos state.
+- No Agent prompt or policy-pack enforcement for launch safety checks that pdx can verify before creating a Run.
 
 ## 2. Design Decisions
 
@@ -53,6 +55,12 @@ Agents claim work themselves through Pithos. pdx never injects Task content into
 
 - **Decision:** Launch-precondition failures cancel queued work and create a Repair Alert atomically.
   - **Rationale:** A missing repo/worktree cwd means the queued Task cannot launch as written. Marking it failed would imply an Agent attempted it; retrying it would loop.
+
+- **Decision:** Repo default-branch enforcement is planned as pdx supervisor policy, not rendered Agent policy.
+  - **Rationale:** Branch safety is knowable before launch. Enforcing it in pdx prevents an Agent from starting in the wrong repository state, keeps the failure on the existing Repair Alert path, and avoids relying on prompt obedience or shell snippets.
+
+- **Decision:** Supervisor launch policy uses a separate scaffold-once user config file instead of `agents.toml`.
+  - **Rationale:** `agents.toml` is Spawner render/Harness/policy-pack configuration. Repo branch preconditions are pdx supervision behavior, so they need a pdx-owned config surface that can be seeded by `pdx init`/`pdx open` without broadening Spawner's manifest contract.
 
 - **Decision:** Harness/config/process failures are supervisor errors, not Task cancellation.
   - **Rationale:** A missing Harness binary or malformed manifest is operator/configuration failure. User work must not be silently cancelled.
@@ -79,7 +87,7 @@ Capabilities are `intake`, `clarify`, `triage`, `design`, `execute`, `review`, a
 
 ### `pdx init`
 
-`pdx init` prepares the data dir, initializes Pithos, creates runtime directories, materializes bundle-owned `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`, preserves scaffold-once `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml`, and re-seeds installed `<user-data-dir>/PANDORA.md`. The `artifacts.toml` scaffold contains commented recommended examples only and existing user files are never overwritten. It does not touch tmux or Harness CLIs.
+`pdx init` prepares the data dir, initializes Pithos, creates runtime directories, materializes bundle-owned `<data-dir>/agents.toml`, `<data-dir>/templates/`, and `<data-dir>/AGENTS.md`, preserves scaffold-once `<user-data-dir>/AGENTS.md`, `<user-data-dir>/CLAUDE.md`, `<user-data-dir>/agents.toml`, and `<user-data-dir>/artifacts.toml`, and re-seeds installed `<user-data-dir>/PANDORA.md`. The `artifacts.toml` scaffold contains commented recommended examples only and existing user files are never overwritten. **Planned:** `pdx init` and `pdx open` also scaffold `<user-data-dir>/supervisor.toml` once for pdx-owned launch policy; existing files are never overwritten. It does not touch tmux or Harness CLIs.
 
 - normal init reuses existing state
 - `--clean` removes DB, runs, and logs while preserving bundled config and user config
@@ -102,7 +110,7 @@ Each tick settles lifecycle before spawning:
 6. run event-pruning maintenance once on startup and then at hourly cadence
 7. maintain the Pandora singleton
 8. send a content-free Nudge when claimable Escalation work appears
-9. validate launch cwd for one selected claimable non-Pandora Task
+9. validate launch preconditions for one selected claimable non-Pandora Task
 10. spawn at most one Agent through Spawner, in built-in order with Envy before Toil/Greed/War; claimable `design` and `review` work both launch Greed with the selected claim Capability passed to Spawner for deterministic claim-command rendering
 
 Registry entries in `launching`, `live`, and `terminating` states count against caps. The MVP cap is one live entry per `(Agent kind, Scope)` plus the global AFK cap.
@@ -124,7 +132,7 @@ Implemented kinds include:
 - `interrupt` — pdx deliberately interrupted a live Held task during Kill
 - `task_failed` — an Agent failed a Held task
 - `dead_letter` — Cleanup exhausted Attempts for a Held task
-- `launch_precondition` — queued work could not launch because its repo/worktree cwd was missing or invalid
+- `launch_precondition` — queued work could not launch because its repo/worktree cwd was missing or invalid; planned repo default-branch guard failures use the same kind
 - `reconciler_stuck` — repeated reconcile failures need Pandora/operator attention
 - `kill_failure` — pdx could not kill a live resource after repeated attempts
 
@@ -139,6 +147,19 @@ Escalation routing uses typed Task edges:
 Repair Alerts that reference one affected Task carry a `repair` edge. They do not use `after`, because failed, cancelled, and dead-lettered Tasks do not unblock downstream work. `repair` is not ordinary context: a held `repair` escalation cannot ordinary-auto-continue. Pandora repairs the Broken chain with Task Replay when the original Task definition is still valid and the failure was execution context/precondition related; otherwise she uses Supersession, explicit replanning, or intentional Cancel.
 
 Task-failure, dead-letter, and interrupt Repair Alerts are created by Pithos in the relevant Task/Run transition. pdx owns invoking Interrupt before killing the live resource, but Pithos owns the durable Alert side effect transactionally. Launch-precondition Repair Alerts are created by a Pithos atomic transition that cancels the still-queued Task, records `repair` provenance, creates the Escalation task, and emits Events in one transaction.
+
+### Planned repo default-branch launch guard
+
+`<user-data-dir>/supervisor.toml` is planned as pdx-owned scaffold-once configuration. Its first launch-policy field is:
+
+```toml
+[launch_preconditions]
+enforce_repo_root_trunk = true
+```
+
+When enabled, pdx checks repo Scope launches before Run creation. The guard applies only to `repo` Scopes, not `global` or `worktree` Scopes. pdx resolves the actual Git repository root from the Scope path, detects the remote default branch from `origin`, and compares it with the current checked-out branch. A missing Git repository, unknown default branch, detached HEAD, or non-default current branch means the queued Task is unlaunchable as written.
+
+The failure path is the same as other launch-precondition failures: pdx does not create a Run, Pithos atomically cancels the queued Task, and a global `launch_precondition` Repair Alert is created for Pandora. The Repair Alert body must include enough evidence for Pandora and the user to decide whether to switch branches and replay, supersede the work, or intentionally abandon it: Scope, Task, path, resolved Git root when available, current branch, expected default branch, and reason.
 
 ## 7. Kill, Cleanup, Timeout, and Launch Abort
 
