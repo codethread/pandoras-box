@@ -878,7 +878,7 @@ const escalateLaunchPreconditionIfStillMatching = (input: {
 		yield* escalateLaunchPrecondition(input);
 	});
 
-const escalateRepoBranchGuardPrecondition = (input: {
+interface RepoBranchGuardPreconditionInput {
 	readonly agent: LaunchableAgent;
 	readonly task: LaunchPreconditionTask;
 	readonly cwd: string;
@@ -886,7 +886,9 @@ const escalateRepoBranchGuardPrecondition = (input: {
 	readonly gitRoot?: string | undefined;
 	readonly currentBranch?: string | undefined;
 	readonly defaultBranch?: string | undefined;
-}) =>
+}
+
+const escalateRepoBranchGuardPrecondition = (input: RepoBranchGuardPreconditionInput) =>
 	PithosClient.pipe(
 		Effect.flatMap((pithos) =>
 			pithos.escalateLaunchPrecondition({
@@ -911,6 +913,23 @@ const escalateRepoBranchGuardPrecondition = (input: {
 			}),
 		),
 	);
+
+const escalateRepoBranchGuardPreconditionIfStillMatching = (
+	input: RepoBranchGuardPreconditionInput,
+) =>
+	Effect.gen(function* () {
+		const pithos = yield* PithosClient;
+		const current = yield* pithos.taskInspect({ taskId: input.task.id });
+		if (
+			current.task.status !== "queued" ||
+			current.task.scope_id !== input.task.scope_id ||
+			current.task.capability !== input.task.capability ||
+			current.task.canonical_path !== input.cwd
+		) {
+			return;
+		}
+		yield* escalateRepoBranchGuardPrecondition(input);
+	});
 
 const hasAgentScopeCap = (
 	entries: readonly RegistryEntry[],
@@ -1062,58 +1081,73 @@ const sendEscalateNudgeIfNeeded = () =>
 		}
 	});
 
+type RepoTrunkLaunchGuardResult = "proceed" | "blocked" | "stale";
+
 const applyRepoTrunkLaunchGuard = (input: {
 	readonly policy: SupervisorLaunchPolicy;
 	readonly agent: LaunchableAgent;
 	readonly task: LaunchPreconditionTask;
 	readonly cwd: string;
-}) =>
+	readonly ifStillMatching?: boolean;
+}): Effect.Effect<RepoTrunkLaunchGuardResult, PdxError, RepoLaunchChecks | PithosClient> =>
 	Effect.gen(function* () {
-		if (!input.policy.launch_preconditions.enforce_repo_root_trunk) return false;
-		if (input.task.scope_kind !== "repo") return false;
+		if (!input.policy.launch_preconditions.enforce_repo_root_trunk) return "proceed";
+		if (input.task.scope_kind !== "repo") return "proceed";
+		if (input.ifStillMatching === true) {
+			const pithos = yield* PithosClient;
+			const current = yield* pithos.taskInspect({ taskId: input.task.id });
+			if (
+				current.task.status !== "queued" ||
+				current.task.scope_id !== input.task.scope_id ||
+				current.task.capability !== input.task.capability ||
+				current.task.canonical_path !== input.cwd
+			) {
+				return "stale";
+			}
+		}
 		const checks = yield* RepoLaunchChecks;
 		const probe = yield* checks.probeDefaultBranch(input.cwd);
-		if (probe._tag === "OnDefaultBranch") return false;
+		if (probe._tag === "OnDefaultBranch") return "proceed";
+		const escalate = (details: Omit<RepoBranchGuardPreconditionInput, "agent" | "task" | "cwd">) =>
+			input.ifStillMatching === true
+				? escalateRepoBranchGuardPreconditionIfStillMatching({
+						agent: input.agent,
+						task: input.task,
+						cwd: input.cwd,
+						...details,
+					})
+				: escalateRepoBranchGuardPrecondition({
+						agent: input.agent,
+						task: input.task,
+						cwd: input.cwd,
+						...details,
+					});
 		if (probe._tag === "NotGitWorkTree") {
-			yield* escalateRepoBranchGuardPrecondition({
-				agent: input.agent,
-				task: input.task,
-				cwd: input.cwd,
-				reason: "not_git_repository",
-			});
-			return true;
+			yield* escalate({ reason: "not_git_repository" });
+			return "blocked";
 		}
 		if (probe._tag === "UnknownDefaultBranch") {
-			yield* escalateRepoBranchGuardPrecondition({
-				agent: input.agent,
-				task: input.task,
-				cwd: input.cwd,
+			yield* escalate({
 				reason: "unknown_remote_default_branch",
 				gitRoot: probe.gitRoot,
 				currentBranch: probe.currentBranch,
 			});
-			return true;
+			return "blocked";
 		}
 		if (probe._tag === "DetachedHead") {
-			yield* escalateRepoBranchGuardPrecondition({
-				agent: input.agent,
-				task: input.task,
-				cwd: input.cwd,
+			yield* escalate({
 				reason: "detached_head",
 				gitRoot: probe.gitRoot,
 			});
-			return true;
+			return "blocked";
 		}
-		yield* escalateRepoBranchGuardPrecondition({
-			agent: input.agent,
-			task: input.task,
-			cwd: input.cwd,
+		yield* escalate({
 			reason: "branch_mismatch",
 			gitRoot: probe.gitRoot,
 			currentBranch: probe.currentBranch,
 			defaultBranch: probe.defaultBranch,
 		});
-		return true;
+		return "blocked";
 	});
 
 const spawnReadyAgent = (config: PdxConfig, maxAfk: number, policy: SupervisorLaunchPolicy) =>
@@ -1161,8 +1195,8 @@ const spawnReadyAgent = (config: PdxConfig, maxAfk: number, policy: SupervisorLa
 				});
 				return;
 			}
-			const guardBlockedLaunch = yield* applyRepoTrunkLaunchGuard({ policy, agent, task, cwd });
-			if (guardBlockedLaunch) return;
+			const guardLaunchResult = yield* applyRepoTrunkLaunchGuard({ policy, agent, task, cwd });
+			if (guardLaunchResult !== "proceed") return;
 			const runId = yield* ids.nextRunId;
 			const sessionId = yield* ids.nextSessionId;
 			const launchedAt = yield* Clock.pipe(Effect.flatMap((clock) => clock.nowIso));
@@ -1200,6 +1234,15 @@ const spawnReadyAgent = (config: PdxConfig, maxAfk: number, policy: SupervisorLa
 				});
 				return;
 			}
+			const guardRunCreationResult = yield* applyRepoTrunkLaunchGuard({
+				policy,
+				agent,
+				task,
+				cwd,
+				ifStillMatching: true,
+			});
+			if (guardRunCreationResult === "blocked") return;
+			if (guardRunCreationResult === "stale") continue;
 			yield* pithos.runUpsert({
 				agent,
 				mode,

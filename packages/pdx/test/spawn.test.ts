@@ -313,6 +313,191 @@ describe("pdx reconcile spawning and capacity", () => {
 		},
 	);
 
+	it("rechecks the repo trunk guard after render before creating a run", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
+		const registry = await run(makeRegistry);
+		await run(upsertPandora(registry));
+		const calls: string[] = [];
+		const bodies: string[] = [];
+		let renderCalls = 0;
+		let launchCalls = 0;
+		const probeResults = [
+			{
+				_tag: "OnDefaultBranch" as const,
+				path: "/repo",
+				gitRoot: "/repo",
+				currentBranch: "main",
+				defaultBranch: "main",
+			},
+			{
+				_tag: "NonDefaultBranch" as const,
+				path: "/repo",
+				gitRoot: "/repo",
+				currentBranch: "feature",
+				defaultBranch: "main",
+			},
+		];
+		await runTick({
+			config: await parseConfig(dataDir),
+			registry,
+			pithos: makePithos(
+				calls,
+				[
+					{
+						id: "task_execute",
+						scope_id: "scope_repo",
+						capability: "execute",
+						scope_kind: "repo",
+						canonical_path: "/repo",
+					},
+				],
+				{
+					escalateLaunchPrecondition: (input) =>
+						Effect.sync(() => {
+							calls.push(
+								`escalateLaunchPrecondition:${input.expectedTaskId}:${input.expectedScopeId}:${input.canonicalPath}:${input.reason}`,
+							);
+							bodies.push(input.escalationBody);
+						}),
+				},
+			),
+			spawner: Spawner.of({
+				materializeTemplates: () => Effect.void,
+				renderAgent: (launch) =>
+					Effect.sync(() => {
+						renderCalls += 1;
+						return {
+							...launch,
+							logicalName: "pdx--war",
+							harness: { kind: "pi" as const, argv: ["pi", launch.runId], env: {} },
+							sessionLogPath: `/tmp/${launch.runId}.jsonl`,
+							prompt: "test prompt",
+						};
+					}),
+				launchRenderedAgent: () =>
+					Effect.sync(() => {
+						launchCalls += 1;
+						throw new PdxError({ code: "PROCESS_ERROR", message: "unexpected launch" });
+					}),
+				renderSessionTranscript: () => Effect.succeed(""),
+			}),
+			repoLaunchChecks: fakeRepoLaunchChecks({
+				probeDefaultBranch: () =>
+					Effect.sync(() => {
+						const result = probeResults.shift();
+						if (result === undefined) throw new Error("unexpected extra probe");
+						return result;
+					}),
+			}),
+		});
+		expect(renderCalls).toBe(1);
+		expect(launchCalls).toBe(0);
+		expect(probeResults).toEqual([]);
+		expect(calls).toContain(
+			"escalateLaunchPrecondition:task_execute:scope_repo:/repo:branch_mismatch",
+		);
+		expect(calls).not.toContain("runUpsert:war:run_war");
+		expect(bodies[0]).toContain("Current branch: feature");
+		expect(bodies[0]).toContain("Task Replay is the preferred repair");
+	});
+
+	it("does not re-probe a stale repo task after render and continues to later agents", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
+		const registry = await run(makeRegistry);
+		await run(upsertPandora(registry));
+		const calls: string[] = [];
+		const launches: unknown[] = [];
+		let renderCalls = 0;
+		const probePaths: string[] = [];
+		await runTick({
+			config: await parseConfig(dataDir),
+			registry,
+			pithos: makePithos(
+				calls,
+				[
+					{
+						id: "task_design",
+						scope_id: "scope_design_repo",
+						capability: "design",
+						scope_kind: "repo",
+						canonical_path: "/design-repo",
+					},
+					{
+						id: "task_execute",
+						scope_id: "scope_execute_repo",
+						capability: "execute",
+						scope_kind: "repo",
+						canonical_path: "/execute-repo",
+					},
+				],
+				{
+					taskInspect: (input) =>
+						Effect.succeed({
+							task:
+								input.taskId === "task_design"
+									? {
+											id: input.taskId,
+											status: "cancelled",
+											scope_id: "scope_design_repo",
+											capability: "design",
+											canonical_path: "/design-repo",
+										}
+									: {
+											id: input.taskId,
+											status: "queued",
+											scope_id: "scope_execute_repo",
+											capability: "execute",
+											canonical_path: "/execute-repo",
+										},
+						}),
+				},
+			),
+			spawner: Spawner.of({
+				materializeTemplates: () => Effect.void,
+				renderAgent: (launch) =>
+					Effect.sync(() => {
+						renderCalls += 1;
+						return {
+							...launch,
+							logicalName: `pdx--${launch.agent}`,
+							harness: { kind: "pi" as const, argv: ["pi", launch.runId], env: {} },
+							sessionLogPath: `/tmp/${launch.runId}.jsonl`,
+							prompt: "test prompt",
+						};
+					}),
+				launchRenderedAgent: (rendered) =>
+					Effect.sync(() => {
+						launches.push(rendered);
+						return {
+							...rendered,
+							harnessKind: rendered.harness.kind,
+							sessionLogPath: rendered.sessionLogPath,
+							afk: { pid: 456, processStartTime: "now" },
+						};
+					}),
+				renderSessionTranscript: () => Effect.succeed(""),
+			}),
+			repoLaunchChecks: fakeRepoLaunchChecks({
+				probeDefaultBranch: (path) =>
+					Effect.sync(() => {
+						probePaths.push(path);
+						return {
+							_tag: "OnDefaultBranch" as const,
+							path,
+							gitRoot: path,
+							currentBranch: "main",
+							defaultBranch: "main",
+						};
+					}),
+			}),
+		});
+		expect(renderCalls).toBe(2);
+		expect(probePaths).toEqual(["/design-repo", "/execute-repo", "/execute-repo"]);
+		expect(calls).toContain("runUpsert:war:run_war");
+		expect(calls).not.toContain("runUpsert:greed:run_war");
+		expect(launches).toEqual([expect.objectContaining({ agent: "war", cwd: "/execute-repo" })]);
+	});
+
 	it("disabled repo trunk guard does not probe repo launches", async () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
 		const registry = await run(makeRegistry);
@@ -798,7 +983,7 @@ describe("pdx reconcile spawning and capacity", () => {
 				Effect.provideService(Clock, testClock),
 			),
 		);
-		expect(probePaths).toEqual(["/repo"]);
+		expect(probePaths).toEqual(["/repo", "/repo"]);
 		expect(launches).toEqual([
 			expect.objectContaining({
 				agent: "war",

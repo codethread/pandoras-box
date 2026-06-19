@@ -87,12 +87,18 @@ describe("repo launch checks", () => {
 		expect(result).toEqual({ _tag: "NotGitWorkTree", path: "/candidate" });
 	});
 
+	it("reports non-worktree Git paths distinctly", async () => {
+		const { result } = await probeWith({
+			"git rev-parse --show-toplevel": fail("fatal: this operation must be run in a work tree"),
+		});
+
+		expect(result).toEqual({ _tag: "NotGitWorkTree", path: "/candidate" });
+	});
+
 	it("reports unknown default branch without contacting the remote", async () => {
 		const { result, calls } = await probeWith({
 			...baseResponses,
-			"git symbolic-ref --quiet --short refs/remotes/origin/HEAD": fail(
-				"refs/remotes/origin/HEAD missing",
-			),
+			"git symbolic-ref --quiet --short refs/remotes/origin/HEAD": fail(""),
 		});
 
 		expect(result).toEqual({
@@ -129,5 +135,16 @@ describe("repo launch checks", () => {
 				"git rev-parse --show-toplevel": fail("fatal: unsafe repository"),
 			}),
 		).rejects.toThrow("git rev-parse --show-toplevel failed");
+	});
+
+	it("returns a tagged error for unexpected origin HEAD failures", async () => {
+		await expect(
+			probeWith({
+				...baseResponses,
+				"git symbolic-ref --quiet --short refs/remotes/origin/HEAD": fail(
+					"fatal: cannot lock ref refs/remotes/origin/HEAD",
+				),
+			}),
+		).rejects.toThrow("git symbolic-ref --quiet --short refs/remotes/origin/HEAD failed");
 	});
 });

@@ -41,10 +41,21 @@ const unexpectedGitFailure = (path: string, command: string, stderr: string) =>
 		message: `${command} failed for ${path}: ${stderr.trim()}`,
 	});
 
-const isNotGitWorkTree = (stderr: string) => stderr.includes("not a git repository");
+const isNotGitWorkTree = (stderr: string) =>
+	stderr.includes("not a git repository") ||
+	stderr.includes("must be run in a work tree") ||
+	stderr.includes("not a git work tree");
 
 const isDetachedHead = (stderr: string) =>
 	stderr.trim().length === 0 || stderr.includes("not a symbolic ref");
+
+const isMissingDefaultBranchRef = (stderr: string) =>
+	stderr.trim().length === 0 ||
+	stderr.includes("No such ref") ||
+	stderr.includes("not a symbolic ref") ||
+	stderr.includes("not a valid ref") ||
+	stderr.includes("unknown revision") ||
+	stderr.includes("Needed a single revision");
 
 export const makeGitRepoLaunchChecks = (process: ProcessService): RepoLaunchChecksService => ({
 	probeDefaultBranch: (path) =>
@@ -74,7 +85,16 @@ export const makeGitRepoLaunchChecks = (process: ProcessService): RepoLaunchChec
 				"refs/remotes/origin/HEAD",
 			]);
 			if (defaultRef.exitCode !== 0) {
-				return { _tag: "UnknownDefaultBranch" as const, path, gitRoot, currentBranch };
+				if (isMissingDefaultBranchRef(defaultRef.stderr)) {
+					return { _tag: "UnknownDefaultBranch" as const, path, gitRoot, currentBranch };
+				}
+				return yield* Effect.fail(
+					unexpectedGitFailure(
+						gitRoot,
+						"git symbolic-ref --quiet --short refs/remotes/origin/HEAD",
+						defaultRef.stderr,
+					),
+				);
 			}
 			const defaultRefName = trimSingleLine(defaultRef.stdout);
 			if (!defaultRefName.startsWith("origin/") || defaultRefName === "origin/HEAD") {
