@@ -190,22 +190,33 @@ The supervisor launch guard is edited in `<user-data-dir>/supervisor.toml`, not 
 
 pdx-launched Agents receive `PITHOS_DB`, `PDX_USER_DATA_DIR`, and their `PITHOS_RUN_ID`, so prompt rendering and Pithos completion checks use the same user Artifact Contract file. Direct Pithos invocations without `PDX_USER_DATA_DIR` run with Artifact Contracts disabled.
 
-## Development
+## Development and validation
+
+Fast package checks:
 
 ```sh
 pnpm --filter @pdx/pdx typecheck
 pnpm --filter @pdx/pdx test
-pnpm --filter @pdx/pdx start -- --help
+pnpm --filter @pdx/pdx start --help
 ```
+
+Full repository verification runs unit tests first and Podman integration tests after the workspace build:
+
+```sh
+pnpm verify
+# lint -> typecheck -> unit tests -> build -> tmux integration -> pdx-open fagent integration
+```
+
+The pdx-open integration is the end-to-end supervisor smoke test. It uses repo-local `fagent` paths in generated user config, drives triage -> execute failure -> Repair Alert replay -> execute completion, then closes pdx. On failure, inspect the preserved artifact directory: `data/pdx.jsonl`, `data/fagent-events.jsonl`, `data/runs/*.stdout.log`, `data/runs/*.stderr.log`, and `user-config/`.
 
 Useful package-local help checks:
 
 ```sh
-pnpm --filter @pdx/pdx start -- --help
-pnpm --filter @pdx/pdx start -- daemon --help
-pnpm --filter @pdx/pdx start -- run --help
-pnpm --filter @pdx/pdx start -- task --help
-pnpm --filter @pdx/pdx start -- --help-json
+pnpm --filter @pdx/pdx start --help
+pnpm --filter @pdx/pdx start daemon --help
+pnpm --filter @pdx/pdx start run --help
+pnpm --filter @pdx/pdx start task --help
+pnpm --filter @pdx/pdx start --help-json
 ```
 
 Use injected Pithos/Spawner/Process/Tmux services in tests. Do not require real model credentials, live harness binaries, or broad mocks when a deterministic service implementation covers the behavior.

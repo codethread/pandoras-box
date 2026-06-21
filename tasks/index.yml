@@ -97,5 +97,5 @@ tasks:
   - id: 20
     description: Document integration test workflow
     task_file: tasks/020-document-integration-test-workflow.md
-    status: pending
+    status: complete
     blocked_by: [19]

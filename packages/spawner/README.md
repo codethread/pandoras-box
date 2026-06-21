@@ -102,7 +102,7 @@ Use those docs for:
 
 Read `src/spawner.ts` for exact argv construction. Stable behavior worth knowing before editing:
 
-- Supported Harness kinds are `claude`, `pi`, and the test-only `fagent`. `fagent` is for deterministic tests only; it is not bundled as a production default and should be selected only from test/user config with an explicit repo-local binary path.
+- Supported Harness kinds are `claude`, `pi`, and the test-only `fagent`. `fagent` is for deterministic tests only; select it only from test config with an explicit repo-local binary path such as `/workspace/packages/fagent/bin/fagent` after `pnpm run build`.
 - `harness.argv` in `agents.toml` is an optional escape hatch: tokens are inserted after the binary name and before all Spawner-managed flags. Spawner applies only the documented `$PDX_DATA_DIR`, `$PDX_USER_DATA_DIR`, and leading-`~` path expansion; there is no shell evaluation. For `fagent`, the first `harness.argv` token is the executable path (for example a repo-local built `packages/fagent/bin/fagent`), followed by any fagent-specific flags such as `--config`. See [`specs/agent-configuration.md`](../../specs/agent-configuration.md) for the full contract.
 - AFK mode uses Harness print mode with the message `Claim and process one task, then exit.`
 - HITL mode launches under tmux. `fagent` HITL launches run the configured fake script once and then keep the tmux session alive with `tail -f /dev/null`; if the fake script exits non-zero, the shell exits loudly instead.
@@ -115,8 +115,8 @@ Read `src/spawner.ts` for exact argv construction. Stable behavior worth knowing
 ```sh
 pnpm --filter @pdx/spawner typecheck
 pnpm --filter @pdx/spawner test
-pnpm --filter @pdx/spawner start -- --help
-pnpm --filter @pdx/spawner start -- preview --help
+pnpm --filter @pdx/spawner start --help
+pnpm --filter @pdx/spawner start preview --help
 ```
 
 Preview with an isolated DB context:
@@ -124,8 +124,8 @@ Preview with an isolated DB context:
 ```sh
 export PITHOS_DB="$(mktemp -d)/pdx/pithos.sqlite"
 mkdir -p "$(dirname "$PITHOS_DB")"
-pnpm --filter @pdx/pithos start -- init --fresh
-pnpm --filter @pdx/spawner start -- preview \
+pnpm --filter @pdx/pithos start init --fresh
+pnpm --filter @pdx/spawner start preview \
   --agent war \
   --mode afk \
   --scope scope_repo \
@@ -146,4 +146,4 @@ verbatim after the bundled prompt and generated command reference. Rule predicat
 support `path`, `path_glob`, `scope_kind`, and `agent`, and preview provenance
 reports the normalized launch path plus matched rules.
 
-Use fake services for deterministic render/launch tests. Do not require live model credentials for package tests.
+Use fake services for deterministic render/launch tests. Do not require live model credentials for package tests. Use `pnpm run test:integration:pdx-open-fagent` for the Podman Spawner/pdx Harness-boundary smoke test.

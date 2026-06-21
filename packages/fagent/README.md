@@ -1,14 +1,13 @@
 # @pdx/fagent
 
-Test-only fake Harness CLI for deterministic local and integration tests.
+Test-only fake Harness CLI for deterministic local and Podman integration tests.
 
-`fagent` is a private bin-only workspace package. Production packages do not depend on it, and it is not globally linked by the project build.
+`fagent` is a private bin-only workspace package for deterministic tests. Production packages do not depend on it, and it is not globally linked by the project build.
 
 ## Usage
 
 ```sh
-pnpm --filter @pdx/fagent start -- \
-  --config ./fagent.json \
+pnpm --filter @pdx/fagent start --config ./fagent.json \
   --session-id demo \
   --model fake \
   --system-prompt "prompt" \
@@ -41,10 +40,20 @@ The script evidence surface is the append-only JSONL file at `eventLogPath`. Eac
 
 The builtin `READ X,Y,Z` input reads files relative to the process cwd and prints `READ_RESULT` followed by deterministic `FILE <path>` sections. Malformed config, missing config paths, missing responses, unsupported argv, and unreadable files exit non-zero with clear stderr.
 
-## Development
+## Integration-test use
+
+Podman integration config selects `fagent` from `<user-data-dir>/agents.toml` with explicit repo-local binary paths such as `/workspace/packages/fagent/bin/fagent`. The `pdx open` integration writes fake-Harness evidence to `$PDX_DATA_DIR/fagent-events.jsonl` and preserves the host artifact directory on failure.
+
+Run package checks while editing `fagent`:
 
 ```sh
 pnpm --filter @pdx/fagent test
 pnpm --filter @pdx/fagent build
-pnpm --filter @pdx/fagent start -- --config ./fagent.json --print ping
+pnpm --filter @pdx/fagent start --config ./fagent.json --print ping
+```
+
+Run the full Podman-backed flow with:
+
+```sh
+pnpm run test:integration:pdx-open-fagent
 ```

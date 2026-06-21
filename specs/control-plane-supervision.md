@@ -1,7 +1,7 @@
 # Control Plane Supervision
 
 **Status:** Implemented
-**Last Updated:** 2026-06-18
+**Last Updated:** 2026-06-21
 
 ## 1. Overview
 
@@ -220,7 +220,7 @@ Spawner owns:
 - AFK process launch and HITL tmux launch
 - Harness session transcript parsing for `pdx run transcript`
 
-The required and beneficial behavior for replaceable Harness runtimes is defined in [harness-contract.md](./harness-contract.md). Spawner adapts Claude/Pi-specific mechanics to that contract; pdx supervises the normalized Run/resource metadata.
+The required and beneficial behavior for replaceable Harness runtimes is defined in [harness-contract.md](./harness-contract.md). Spawner adapts Harness-specific mechanics to that contract; pdx supervises only the normalized Run/resource metadata.
 
 Spawner does not own Pithos graph policy, live Registry state, Kill, Cleanup, Interrupt, Cancel, or Nudge policy.
 
