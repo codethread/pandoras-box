@@ -66,3 +66,7 @@ Append notes here. Do not rewrite earlier notes.
 ### Task 11-14: Supervisor repo-root trunk guard plan — 2026-06-18
 
 - Added follow-up tasks for the pdx-owned `supervisor.toml` launch policy and repo default-branch guard. These tasks deliberately reuse launch-precondition Repair Alerts and keep enforcement out of Agent prompt policy packs.
+
+### Task 15-20: fagent and Podman tmux integration plan — 2026-06-21
+
+- Added follow-up tasks for a test-only fake Harness package (`@pdx/fagent`) and Podman-backed tmux integration tests. The MVP goal is a real `pdx open` -> Pandora tmux session -> triage -> execute failure -> Repair Alert -> Pandora repair/replay -> execute completion -> `pdx close` flow. Podman is the supported container runtime for this integration path; do not add Docker-specific scripts unless a future HITL decision changes that boundary.

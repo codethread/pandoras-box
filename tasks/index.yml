@@ -69,3 +69,33 @@ tasks:
     task_file: tasks/014-document-supervisor-launch-guard.md
     status: complete
     blocked_by: [13]
+  - id: 15
+    description: Add fagent read harness
+    task_file: tasks/015-add-fagent-read-harness.md
+    status: pending
+    blocked_by: []
+  - id: 16
+    description: Launch fagent through Spawner
+    task_file: tasks/016-launch-fagent-through-spawner.md
+    status: pending
+    blocked_by: [15]
+  - id: 17
+    description: Script fagent task workflow
+    task_file: tasks/017-script-fagent-task-workflow.md
+    status: pending
+    blocked_by: [15, 16]
+  - id: 18
+    description: Add Podman tmux test container
+    task_file: tasks/018-add-podman-tmux-test-container.md
+    status: pending
+    blocked_by: []
+  - id: 19
+    description: Test pdx open fagent flow
+    task_file: tasks/019-test-pdx-open-fagent-flow.md
+    status: pending
+    blocked_by: [16, 17, 18]
+  - id: 20
+    description: Document integration test workflow
+    task_file: tasks/020-document-integration-test-workflow.md
+    status: pending
+    blocked_by: [19]
