@@ -112,7 +112,7 @@ export interface PithosClientService {
 		readonly scope: string;
 		readonly cwd: string;
 		readonly sessionId: string;
-		readonly harnessKind: "claude" | "pi" | "system";
+		readonly harnessKind: "claude" | "pi" | "fagent" | "system";
 		readonly sessionLogPath: string;
 		readonly runId?: string;
 	}) => Effect.Effect<void, PdxError>;
@@ -212,7 +212,7 @@ export interface LaunchAgentResult {
 	readonly sessionId: string;
 	readonly scopeId: string;
 	readonly logicalName: string;
-	readonly harnessKind: "claude" | "pi";
+	readonly harnessKind: "claude" | "pi" | "fagent";
 	readonly sessionLogPath: string;
 	readonly hitl?: { readonly tmuxTarget: string; readonly panePid: number | null };
 	readonly afk?: { readonly pid: number; readonly processStartTime: string };
@@ -225,7 +225,7 @@ export interface SpawnerService {
 		rendered: RenderedAgent,
 	) => Effect.Effect<LaunchAgentResult, PdxError>;
 	readonly renderSessionTranscript: (input: {
-		readonly harnessKind: "claude" | "pi";
+		readonly harnessKind: "claude" | "pi" | "fagent";
 		readonly sessionLogPath: string;
 		readonly limit: number | undefined;
 	}) => Effect.Effect<string, PdxError>;

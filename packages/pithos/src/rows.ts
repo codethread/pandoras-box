@@ -11,7 +11,7 @@ export const RunRowSchema = Schema.Struct({
 	mode: Schema.Literal("afk", "hitl"),
 	scope_id: NonEmptyString,
 	cwd: Schema.optional(Schema.String),
-	harness_kind: Schema.Literal("claude", "pi", "system"),
+	harness_kind: Schema.Literal("claude", "pi", "fagent", "system"),
 	session_log_path: NonEmptyString,
 	status: Schema.Literal("live", "ended", "failed", "cancelled", "timed_out"),
 	task_id: NullableString,

@@ -742,7 +742,12 @@ export const makePithosCommand = (ctx: CliContext) => {
 			),
 			scope: textOption("scope", "scope-id", "Pithos Scope id this Run belongs to."),
 			cwd: textOption("cwd", "path", "Working directory the Harness should run in."),
-			harnessKind: Options.choice("harness-kind", ["claude", "pi", "system"] as const).pipe(
+			harnessKind: Options.choice("harness-kind", [
+				"claude",
+				"pi",
+				"fagent",
+				"system",
+			] as const).pipe(
 				Options.withDescription("Underlying harness runtime used by the agent run."),
 			),
 			sessionLogPath: textOption(

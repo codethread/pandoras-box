@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import {
 	loadConfiguredArtifactContractSync,
 	PithosError,
@@ -48,7 +48,7 @@ export interface RenderAgentInput extends RenderAgentInputBase {
 	readonly selectedCapability?: Capability | undefined;
 }
 
-const HarnessKindSchema = Schema.Literal("claude", "pi");
+const HarnessKindSchema = Schema.Literal("claude", "pi", "fagent");
 export type HarnessKind = Schema.Schema.Type<typeof HarnessKindSchema>;
 
 interface RenderedAgentFields {
@@ -620,7 +620,9 @@ const sessionLogPathFor = (
 ): string =>
 	harnessKind === "claude"
 		? `${homedir()}/.claude/projects/${claudeProjectSlug(input.cwd, services)}/${input.sessionId}.jsonl`
-		: `${homedir()}/.pi/agent/sessions/${piSessionBucket(input.cwd)}/${input.sessionId}.jsonl`;
+		: harnessKind === "pi"
+			? `${homedir()}/.pi/agent/sessions/${piSessionBucket(input.cwd)}/${input.sessionId}.jsonl`
+			: `${homedir()}/.pdx/fagent/sessions/${input.sessionId}.jsonl`;
 
 const isMissingPathError = (error: unknown): boolean =>
 	typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
@@ -688,10 +690,12 @@ const hitlShellCommand = (rendered: RenderedAgent, services: LaunchServices): re
 		.slice(promptIndex + 1)
 		.map(shellQuote)
 		.join(" ");
+	const launch = `${beforePrompt} "$prompt"${afterPrompt === "" ? "" : ` ${afterPrompt}`}`;
+	const finalCommand = `exec ${launch}`;
 	const script = [
 		`prompt=$(cat ${shellQuote(promptPath)}) || exit $?`,
 		`rm -f ${shellQuote(promptPath)}`,
-		`exec ${beforePrompt} "$prompt"${afterPrompt === "" ? "" : ` ${afterPrompt}`}`,
+		finalCommand,
 	].join("; ");
 	return ["sh", "-c", script];
 };
@@ -729,6 +733,18 @@ const expandHarnessArgvToken = (token: string, config: SpawnerConfig): string =>
 const expandHarnessArgv = (argv: readonly string[], config: SpawnerConfig): readonly string[] =>
 	argv.map((token) => expandHarnessArgvToken(token, config));
 
+const fagentArgv = (userArgv: readonly string[]): readonly string[] => {
+	const [binary, ...rest] = userArgv;
+	if (binary === undefined || (!isAbsolute(binary) && !binary.includes("/"))) {
+		throw new SpawnerError({
+			code: "VALIDATION_ERROR",
+			message:
+				"fagent harness requires harness.argv to start with an explicit repo-local fagent executable path",
+		});
+	}
+	return [binary, ...rest];
+};
+
 const harnessArgv = (
 	input: RenderAgentInput,
 	manifest: ResolvedAgentManifest,
@@ -749,26 +765,13 @@ const harnessArgv = (
 				? []
 				: ["--tools", manifest.harness.tools.join(",")];
 	const userArgv = expandHarnessArgv(manifest.harness.argv, config);
-	if (manifest.harness.kind === "claude") {
-		const base = [
-			"claude",
-			...userArgv,
-			"--dangerously-skip-permissions",
-			"--session-id",
-			input.sessionId,
-			"--model",
-			manifest.harness.model,
-			...toolsArgs,
-			promptFlag,
-			prompt,
-		];
-		return input.mode === "afk"
-			? [...base, "--print", INITIAL_TASK_MESSAGE]
-			: [...base, HITL_STARTUP_MESSAGE];
-	}
+	const binaryAndUserArgv =
+		manifest.harness.kind === "fagent"
+			? fagentArgv(userArgv)
+			: [manifest.harness.kind, ...userArgv];
 	const base = [
-		"pi",
-		...userArgv,
+		...binaryAndUserArgv,
+		...(manifest.harness.kind === "claude" ? ["--dangerously-skip-permissions"] : []),
 		"--session-id",
 		input.sessionId,
 		"--model",
@@ -777,6 +780,9 @@ const harnessArgv = (
 		promptFlag,
 		prompt,
 	];
+	if (manifest.harness.kind === "fagent") {
+		return [...base, "--print", input.mode === "afk" ? INITIAL_TASK_MESSAGE : HITL_STARTUP_MESSAGE];
+	}
 	return input.mode === "afk"
 		? [...base, "--print", INITIAL_TASK_MESSAGE]
 		: [...base, HITL_STARTUP_MESSAGE];
@@ -1173,6 +1179,13 @@ export const renderSessionTranscript = (
 		input,
 		"renderSessionTranscript",
 	);
+	if (manifest.harnessKind === "fagent") {
+		throw new SpawnerError({
+			code: "HARNESS_ERROR",
+			message:
+				"fagent transcript rendering is unsupported; inspect the configured fagent script output instead",
+		});
+	}
 	let transcriptPath = manifest.sessionLogPath;
 	let raw: string;
 	try {

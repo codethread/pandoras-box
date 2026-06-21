@@ -241,7 +241,7 @@ agents.toil.policy.add = ["docs-release"]
 
 ### Harness configuration
 
-Harness fields are user-owned launch config and may be declared globally for an Agent or under a matching rule's Agent-specific table. Bundled config does not choose a Harness; rendering a launch whose final config lacks `agents.<kind>.harness.kind` fails, so `pdx open` fails until at least Pandora's Harness is configured.
+Harness fields are user-owned launch config and may be declared globally for an Agent or under a matching rule's Agent-specific table. Bundled config does not choose a Harness; rendering a launch whose final config lacks `agents.<kind>.harness.kind` fails, so `pdx open` fails until at least Pandora's Harness is configured. Supported production Harness kinds are `claude` and `pi`; `fagent` is accepted for deterministic tests only and requires an explicit executable path in `harness.argv`.
 
 ```toml
 [agents.greed.harness]

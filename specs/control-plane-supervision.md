@@ -1,7 +1,7 @@
 # Control Plane Supervision
 
 **Status:** Implemented
-**Last Updated:** 2026-06-18
+**Last Updated:** 2026-06-21
 
 ## 1. Overview
 
@@ -96,7 +96,7 @@ Capabilities are `intake`, `clarify`, `triage`, `design`, `execute`, `review`, a
 
 ### `pdx open`
 
-`pdx open` runs init behavior, fails if the `pdx--daemon` tmux session already exists, starts the daemon in tmux, waits for IPC readiness, and attaches the operator to Pandora's tmux session. The daemon settles deterministic old pdx-owned tmux/AFK leftovers, upserts the `pdx` system Run, starts Pandora, and begins reconciliation.
+`pdx open` runs init behavior, fails if the `pdx--daemon` tmux session already exists, starts the daemon in tmux, waits for IPC readiness, and attaches the operator to Pandora's tmux session. The daemon settles deterministic old pdx-owned tmux/AFK leftovers, upserts the `pdx` system Run, starts Pandora, and begins reconciliation. Repair Alert handling drives Pandora's existing pane; replacing it with `tmux respawn-pane` would be Same-run resurrection.
 
 ### Reconcile tick
 
@@ -144,7 +144,7 @@ Escalation routing uses typed Task edges:
 | Checkpoint escalation | `escalation --gate--> target`     | after target branch drains | Human checkpoint after successful branch completion.                                                                               |
 | Repair Alert          | `repair_alert --repair--> target` | immediate                  | Broken-work repair; Pandora should replay when the same Task is still valid, otherwise supersede, replan, or intentionally cancel. |
 
-Repair Alerts that reference one affected Task carry a `repair` edge. They do not use `after`, because failed, cancelled, and dead-lettered Tasks do not unblock downstream work. `repair` is not ordinary context: a held `repair` escalation cannot ordinary-auto-continue. Pandora repairs the Broken chain with Task Replay when the original Task definition is still valid and the failure was execution context/precondition related; otherwise she uses Supersession, explicit replanning, or intentional Cancel.
+Repair Alerts that reference one affected Task carry a `repair` edge. They do not use `after`, because failed, cancelled, and dead-lettered Tasks do not unblock downstream work. `repair` is not ordinary context: a held `repair` escalation cannot ordinary-auto-continue. Pandora repairs the Broken chain from her existing HITL session with Task Replay when the original Task definition is still valid and the failure was execution context/precondition related; otherwise she uses Supersession, explicit replanning, or intentional Cancel.
 
 Task-failure, dead-letter, and interrupt Repair Alerts are created by Pithos in the relevant Task/Run transition. pdx owns invoking Interrupt before killing the live resource, but Pithos owns the durable Alert side effect transactionally. Launch-precondition Repair Alerts are created by a Pithos atomic transition that cancels the still-queued Task, records `repair` provenance, creates the Escalation task, and emits Events in one transaction.
 
@@ -220,7 +220,7 @@ Spawner owns:
 - AFK process launch and HITL tmux launch
 - Harness session transcript parsing for `pdx run transcript`
 
-The required and beneficial behavior for replaceable Harness runtimes is defined in [harness-contract.md](./harness-contract.md). Spawner adapts Claude/Pi-specific mechanics to that contract; pdx supervises the normalized Run/resource metadata.
+The required and beneficial behavior for replaceable Harness runtimes is defined in [harness-contract.md](./harness-contract.md). Spawner adapts Harness-specific mechanics to that contract; pdx supervises only the normalized Run/resource metadata.
 
 Spawner does not own Pithos graph policy, live Registry state, Kill, Cleanup, Interrupt, Cancel, or Nudge policy.
 

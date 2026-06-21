@@ -1,13 +1,13 @@
 # Harness Contract
 
 **Status:** Implemented
-**Last Updated:** 2026-06-15
+**Last Updated:** 2026-06-21
 
 ## 1. Overview
 
 ### Purpose
 
-Pandora's Box treats a **Harness** as the replaceable AI runtime that executes an Agent prompt. The Control plane supports Claude Code and Pi today, but the durable contract is not those specific CLIs: it is the small set of runtime capabilities Spawner and pdx need in order to host Pandora, Greed, Envy, Toil, or War without lying to Pithos about where work is happening or which Run is doing it.
+Pandora's Box treats a **Harness** as the replaceable AI runtime that executes an Agent prompt. The Control plane supports Claude Code and Pi for normal use today, plus a private test-only fake Harness (`fagent`) for deterministic package and Podman integration tests. The durable contract is not any specific CLI: it is the small set of runtime capabilities Spawner and pdx need in order to host Pandora, Greed, Envy, Toil, or War without lying to Pithos about where work is happening or which Run is doing it.
 
 This spec defines the Harness boundary at contract level. Harness-specific argv flags, dynamic-skill mechanisms, log path conventions, prompt-delivery mechanics, and parser details live in `packages/spawner` documentation and tests.
 
@@ -22,7 +22,7 @@ This spec defines the Harness boundary at contract level. Harness-specific argv 
 
 ### Non-Goals
 
-- No exact Claude/Pi argv schema, permission flag inventory, dynamic-skill flag syntax, or log file path algorithm.
+- No exact Harness argv schema, permission flag inventory, dynamic-skill flag syntax, or log file path algorithm.
 - No transcript parser schema for a particular vendor log format.
 - No Harness authorization model: Pithos owns Agent kinds, Capabilities, Claims, Fencing tokens, and enqueue rules.
 - No attempt to specify non-coding or non-agent runtimes. A supported Harness is assumed to be a coding-agent style runtime that can take instructions, use tools, and continue until the Agent completes or waits.
@@ -68,7 +68,7 @@ A Harness integration is supported for a mode only when the Harness and its Spaw
 | Requirement                  | Contract                                                                                                                                                            | Why Pandora's Box needs it                                                                                                                     |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | Hostable interactive session | If the Harness is supported for HITL mode, the adapter must be able to host it in pdx's current interactive backend and keep a stable target for that live session. | Pandora and Greed are human-in-the-loop roles. Operators must be able to talk to the live Agent while pdx still supervises the associated Run. |
-| Long-lived session support   | If the Harness is supported for HITL mode, it must be able to remain live while waiting for operator input.                                                         | HITL idleness can be normal human wait time, especially for Pandora. pdx owns the policy for when non-Pandora HITL sessions are reaped.        |
+| Long-lived session support   | If the Harness is supported for HITL mode, it must remain live while waiting for operator input. Later HITL input goes to the same live target.                     | HITL idleness can be normal human wait time, especially for Pandora. pdx owns the policy for when non-Pandora HITL sessions are reaped.        |
 
 ## 4. Spawner/pdx Adapter Obligations
 

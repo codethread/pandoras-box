@@ -52,7 +52,7 @@ pnpm install
 pnpm run build
 ```
 
-`pnpm run build` links the bins onto your global PATH.
+`pnpm run build` links the public `pithos`, `pdx`, and `pandora-spawn` bins onto your global PATH. The private test-only `fagent` bin is built for repo-local integration use but is not globally linked.
 
 If `pnpm`'s global link doesn't work on your setup (Nix, restricted PATH,
 etc.), use the Makefile to symlink the bins into `~/.local/bin` directly:
@@ -174,12 +174,37 @@ When something goes sideways, she also drives the cleanup:
 - _"Go kill Greed, she's chasing the wrong plan."_
 - _"Toil's stuck — interrupt her and re-triage."_
 
-**Respawn**: an Evil killed mid-task doesn't lose the work. The supervisor
-respawns her with a fresh, blank harness context but the same claimed task,
-and she (hopefully) picks up where the previous incarnation left off. Use
-kill as a "try again from clean state" lever, not as a delete.
+**Repair after interruption**: killing an Evil mid-task interrupts the Run,
+marks the Held task failed, and creates a Repair Alert. Pandora repairs the
+Broken chain; pdx never resurrects a dead Agent as the same Run.
 
 If Pandora herself is wedged, `pdx --help` lists the raw escape hatches.
+
+## Validation and integration tests
+
+Fast local validation stays outside containers:
+
+```sh
+pnpm test
+pnpm run build
+```
+
+`pnpm test` runs the Vitest unit/package suites; it does not require real Harness credentials, Podman, or host tmux state. Use `pnpm lint` and `pnpm typecheck` for focused preflight checks.
+
+Podman-backed integration commands exercise container-local tmux and isolated pdx/Pithos data dirs without touching the host tmux server. They require Podman:
+
+```sh
+pnpm run test:integration:tmux
+pnpm run test:integration:pdx-open-fagent
+```
+
+`test:integration:tmux` builds `containers/Containerfile.integration`, mounts the current working tree into the container, sets isolated `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR`, then proves tmux can create, list, and kill a session through a container-local socket.
+
+`test:integration:pdx-open-fagent` copies the repo into the container, builds repo-local bins, configures Pandora/Toil/War with explicit `/workspace/packages/fagent/bin/fagent` argv paths, then drives `pdx open` through Toil triage, War failure, Pandora replay in the original `pdx--pandora` tmux pane, War completion, and `pdx close`. `tmux respawn-pane` is not an acceptable shortcut for this MVP path. `fagent` is test-only; normal user config should use Claude or Pi.
+
+On failure, the script prints `pdx open fagent integration artifacts preserved at <dir>`. Inspect `<dir>/data/pdx.jsonl`, `<dir>/data/fagent-events.jsonl`, `<dir>/data/runs/*.stdout.log`, `<dir>/data/runs/*.stderr.log`, and `<dir>/user-config/`.
+
+`pnpm verify` runs the full gate in this order: lint, typecheck, unit tests, workspace build, `test:integration:tmux`, then `test:integration:pdx-open-fagent`.
 
 ## Roadmap
 
@@ -189,7 +214,7 @@ Pre-v1; expect breaking changes.
 - [ ] Promote/demote an Evil between AFK and HITL mid-session
 - [ ] Interactive pickers for kill/show/transcript so you don't copy ids by hand
 - [ ] Pluggable control-plane backends — swap tmux for Zellij, remote SSH, etc. (the architecture is already decoupled)
-- [ ] Dockerized control-plane smoke tests — encapsulate tmux/harness-adjacent runs for safer end-to-end validation
+- [ ] Broader control-plane integration scenarios — extend the Podman/fagent flow beyond the current triage, execute-failure, Repair Alert replay, and completion path
 
 See [open issues](https://github.com/codethread/pandoras-box/issues).
 

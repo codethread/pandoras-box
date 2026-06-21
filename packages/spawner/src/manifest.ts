@@ -14,7 +14,7 @@ import {
 import type { RenderAgentInput } from "./spawner.js";
 import type { RenderServices } from "./services.js";
 
-const HarnessKindSchema = Schema.Literal("claude", "pi");
+const HarnessKindSchema = Schema.Literal("claude", "pi", "fagent");
 const SystemPromptModeSchema = Schema.Literal("replace", "append");
 const NonEmptyStringArray = Schema.Array(Schema.NonEmptyString);
 
@@ -586,7 +586,7 @@ const mergeArgvList = (
 
 const applyPartialHarness = (
 	current: {
-		kind: "claude" | "pi" | undefined;
+		kind: "claude" | "pi" | "fagent" | undefined;
 		model: string | undefined;
 		system_prompt_mode: "replace" | "append" | undefined;
 		tools: readonly string[] | undefined;
@@ -720,7 +720,7 @@ const buildResolvedConfig = (
 			appends: readonly string[];
 			policyIds: readonly string[];
 			harness: {
-				kind: "claude" | "pi" | undefined;
+				kind: "claude" | "pi" | "fagent" | undefined;
 				model: string | undefined;
 				system_prompt_mode: "replace" | "append" | undefined;
 				tools: readonly string[] | undefined;

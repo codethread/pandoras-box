@@ -11,7 +11,7 @@ import { makePithos, makeSpawner, parseConfig, run, runOutput } from "./support.
 describe("pdx run transcript", () => {
 	it("delegates stored Pi session log lookup to spawner", async () => {
 		const transcriptCalls: {
-			harnessKind: "claude" | "pi";
+			harnessKind: "claude" | "pi" | "fagent";
 			sessionLogPath: string;
 			limit: number | undefined;
 		}[] = [];
