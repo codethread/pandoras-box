@@ -183,13 +183,18 @@ If Pandora herself is wedged, `pdx --help` lists the raw escape hatches.
 
 ## Integration smoke tests
 
-Run the Podman-backed tmux smoke test without touching the host tmux server. This optional command requires Podman:
+Podman-backed integration commands exercise container-local tmux and isolated pdx/Pithos data dirs without touching the host tmux server. They require Podman:
 
 ```sh
 pnpm run test:integration:tmux
+pnpm run test:integration:pdx-open-fagent
 ```
 
-The script builds `containers/Containerfile.integration`, mounts the current working tree into the container, sets isolated `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR`, then proves tmux can create, list, and kill a session through a container-local socket.
+`test:integration:tmux` builds `containers/Containerfile.integration`, mounts the current working tree into the container, sets isolated `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR`, then proves tmux can create, list, and kill a session through a container-local socket.
+
+`test:integration:pdx-open-fagent` copies the repo into the container, runs `pnpm install` and the workspace build there, configures repo-local `pithos`, `pdx`, `pandora-spawn`, and `fagent` bins, then drives a minimal `pdx open` fagent flow through Toil triage, War first failure, Pandora replay, War completion, and `pdx close`. Failures preserve the isolated artifact dir path printed by the script.
+
+`pnpm verify` runs lint, typecheck, unit tests, the workspace build, then both Podman integration commands.
 
 ## Roadmap
 

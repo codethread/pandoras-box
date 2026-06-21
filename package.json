@@ -13,8 +13,9 @@
 		"test:integration:tmux": "./scripts/podman-integration-tmux.sh",
 		"format": "oxfmt",
 		"build": "pnpm -r --if-present build",
-		"verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm run build",
-		"prepare": "husky"
+		"verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm run build && pnpm run test:integration:tmux && pnpm run test:integration:pdx-open-fagent",
+		"prepare": "husky",
+		"test:integration:pdx-open-fagent": "./scripts/podman-integration-pdx-open-fagent.sh"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.27.0",

@@ -92,7 +92,7 @@ tasks:
   - id: 19
     description: Test pdx open fagent flow
     task_file: tasks/019-test-pdx-open-fagent-flow.md
-    status: pending
+    status: complete
     blocked_by: [16, 17, 18]
   - id: 20
     description: Document integration test workflow
