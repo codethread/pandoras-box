@@ -196,7 +196,7 @@ A final rendered prompt may contain a policy id only once. Adding an already-sel
 
 ## Harness settings
 
-Harness config is separate from prompt policy. Bundled config keeps the Agent templates but does **not** choose a Harness runtime for you. `pdx open` fails until the launch it needs has user Harness config, starting with Pandora.
+Harness config is separate from prompt policy. Bundled config keeps the Agent templates but does **not** choose a Harness runtime for you. `pdx open` fails until the launch it needs has user Harness config, starting with Pandora. Normal user launches should use `pi` or `claude`; `fagent` is accepted only for deterministic tests and requires an explicit repo-local executable path in `harness.argv`.
 
 ### All-Pi example
 

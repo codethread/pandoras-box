@@ -12,14 +12,14 @@ import { enforceActiveScope, scopeById } from "./scopes.js";
 import { taskSummarySelect } from "./task-read-model.js";
 import type { Engine, EngineContext } from "./types.js";
 
-const HarnessKindSchema = Schema.Literal("claude", "pi", "system");
+const HarnessKindSchema = Schema.Literal("claude", "pi", "fagent", "system");
 
 const parseHarnessKind = (value: unknown): HarnessKind =>
 	Either.match(Schema.decodeUnknownEither(HarnessKindSchema)(value), {
 		onLeft: () =>
 			fail(
 				"VALIDATION_ERROR",
-				`invalid --harness-kind: ${String(value)}. Valid values: claude, pi, system`,
+				`invalid --harness-kind: ${String(value)}. Valid values: claude, pi, fagent, system`,
 			),
 		onRight: (kind) => kind,
 	});

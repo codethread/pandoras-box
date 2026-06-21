@@ -77,7 +77,7 @@ tasks:
   - id: 16
     description: Launch fagent through Spawner
     task_file: tasks/016-launch-fagent-through-spawner.md
-    status: pending
+    status: complete
     blocked_by: [15]
   - id: 17
     description: Script fagent task workflow

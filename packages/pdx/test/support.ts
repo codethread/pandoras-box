@@ -127,7 +127,7 @@ export const runOutput = (
 		readonly status?: string;
 		readonly task_id?: string | null;
 		readonly session_id?: string;
-		readonly harness_kind?: "claude" | "pi" | "system";
+		readonly harness_kind?: "claude" | "pi" | "fagent" | "system";
 		readonly session_log_path?: string;
 		readonly has_claimed_task?: boolean;
 	} = {},

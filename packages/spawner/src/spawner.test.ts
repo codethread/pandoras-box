@@ -344,7 +344,7 @@ const tomlArray = (values: readonly string[]): string =>
 const agentsFile = (input: {
 	agent: string;
 	mode: string;
-	harnessKind: "claude" | "pi";
+	harnessKind: "claude" | "pi" | "fagent";
 	tools?: readonly string[];
 	argv?: readonly string[];
 	model?: string;
@@ -756,6 +756,95 @@ describe("renderAgent", () => {
 		expect(rendered.harness.env).not.toHaveProperty("PITHOS_BIN");
 		expect(rendered.harness.env).not.toHaveProperty("PDX_BIN");
 		expect(rendered.harness.env).not.toHaveProperty("PATH");
+	});
+
+	it("renders fagent from user-selected repo-local argv for AFK", () => {
+		const fagentBin = "/repo/packages/fagent/bin/fagent";
+		const rendered = renderAgent(
+			{ ...base, agent: "war", mode: "afk" },
+			fakeRenderServices(
+				agentsFile({
+					agent: "war",
+					mode: "afk",
+					harnessKind: "fagent",
+					argv: [fagentBin, "--config", "/tmp/fagent.json"],
+				}),
+			),
+		);
+
+		expect(rendered.harness.kind).toBe("fagent");
+		expect(rendered.harness.argv[0]).toBe(fagentBin);
+		expect(rendered.harness.argv.slice(1, 3)).toEqual(["--config", "/tmp/fagent.json"]);
+		expect(rendered.harness.argv).toContain("--session-id");
+		expect(rendered.harness.argv).toContain(base.sessionId);
+		expect(rendered.harness.argv).toContain("--model");
+		expect(rendered.harness.argv).toContain("model_test");
+		expect(rendered.harness.argv).toContain("--append-system-prompt");
+		expect(rendered.harness.argv.at(-2)).toBe("--print");
+		expect(rendered.harness.argv.at(-1)).toBe("Claim and process one task, then exit.");
+		expect(rendered.harness.env).toMatchObject({
+			PITHOS_RUN_ID: base.runId,
+			PITHOS_SESSION_ID: base.sessionId,
+			PITHOS_SCOPE_ID: base.scopeId,
+		});
+		expect(rendered.sessionLogPath).toBe(
+			`${homedir()}/.pdx/fagent/sessions/${base.sessionId}.jsonl`,
+		);
+	});
+
+	it("renders fagent from user-selected repo-local argv for Pandora HITL", () => {
+		const fagentBin = "/repo/packages/fagent/bin/fagent";
+		const rendered = renderAgent(
+			{ ...base, agent: "pandora", mode: "hitl" },
+			fakeRenderServices(
+				agentsFile({
+					agent: "pandora",
+					mode: "hitl",
+					harnessKind: "fagent",
+					harnessMode: "replace",
+					argv: [fagentBin, "--config", "/tmp/fagent-hitl.json"],
+				}),
+			),
+		);
+
+		expect(rendered.logicalName).toBe("pdx--pandora");
+		expect(rendered.harness.argv[0]).toBe(fagentBin);
+		expect(rendered.harness.argv).toContain("--system-prompt");
+		expect(rendered.harness.argv.at(-2)).toBe("--print");
+		expect(rendered.harness.argv.at(-1)).toBe("begin");
+	});
+
+	it("requires fagent harness.argv to name an explicit executable path", () => {
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				fakeRenderServices(
+					agentsFile({ agent: "war", mode: "afk", harnessKind: "fagent", argv: [] }),
+				),
+			),
+		).toThrow(
+			"fagent harness requires harness.argv to start with an explicit repo-local fagent executable path",
+		);
+
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				fakeRenderServices(
+					agentsFile({ agent: "war", mode: "afk", harnessKind: "fagent", argv: ["fagent"] }),
+				),
+			),
+		).toThrow(
+			"fagent harness requires harness.argv to start with an explicit repo-local fagent executable path",
+		);
+	});
+
+	it("marks fagent transcripts unsupported with a loud error", () => {
+		expect(() =>
+			renderSessionTranscript({
+				harnessKind: "fagent",
+				sessionLogPath: "/tmp/fagent.jsonl",
+			}),
+		).toThrow("fagent transcript rendering is unsupported");
 	});
 
 	it("matches Claude project slugging for realpath-normalized worktree paths", () => {
@@ -2616,6 +2705,47 @@ describe("launchRenderedAgent", () => {
 		expect(thrown).toMatchObject({ _tag: "SpawnerError", code: "LAUNCH_ERROR" });
 	});
 
+	it("passes fagent AFK argv, cwd, and env correlation to process launch", () => {
+		const fagentBin = "/repo/packages/fagent/bin/fagent";
+		const rendered = renderAgent(
+			{ ...base, agent: "war", mode: "afk" },
+			fakeRenderServices(
+				agentsFile({
+					agent: "war",
+					mode: "afk",
+					harnessKind: "fagent",
+					argv: [fagentBin, "--config", "/tmp/fagent.json"],
+				}),
+			),
+		);
+		let spawnCall:
+			| {
+					readonly file: string;
+					readonly args: readonly string[];
+					readonly options: { readonly cwd: string; readonly env: Record<string, string> };
+			  }
+			| undefined;
+		const launched = launchRenderedAgent(rendered, {
+			...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "fagent" })),
+			spawnProcess: (file, args, options) => {
+				spawnCall = { file, args, options };
+				return { pid: 1234 };
+			},
+			writeTempText: (prefix, content) => `/tmp/${prefix}-${content.length}.md`,
+		});
+
+		expect(launched.afk?.pid).toBe(1234);
+		expect(spawnCall?.file).toBe(fagentBin);
+		expect(spawnCall?.args.slice(0, 2)).toEqual(["--config", "/tmp/fagent.json"]);
+		expect(spawnCall?.args).toContain("--print");
+		expect(spawnCall?.options.cwd).toBe(base.cwd);
+		expect(spawnCall?.options.env).toMatchObject({
+			PITHOS_RUN_ID: base.runId,
+			PITHOS_SESSION_ID: base.sessionId,
+			PITHOS_SCOPE_ID: base.scopeId,
+		});
+	});
+
 	it("returns runtime metadata without rendered argv/env", () => {
 		const rendered = renderAgent(
 			{ ...base, agent: "war", mode: "afk" },
@@ -2667,6 +2797,35 @@ describe("launchRenderedAgent", () => {
 			expect(tmuxNewSessionArgs.join("\0")).toContain("$(cat '/tmp/pithos-spawner-prompt-");
 		},
 	);
+
+	it("keeps fagent HITL tmux sessions alive after successful startup", () => {
+		const rendered = renderAgent(
+			{ ...base, agent: "pandora", mode: "hitl" },
+			fakeRenderServices(
+				agentsFile({
+					agent: "pandora",
+					mode: "hitl",
+					harnessKind: "fagent",
+					argv: ["/repo/packages/fagent/bin/fagent", "--config", "/tmp/fagent.json"],
+				}),
+			),
+		);
+		let tmuxNewSessionArgs: readonly string[] = [];
+		launchRenderedAgent(
+			rendered,
+			makeLaunchServices("", {
+				exitCode: 0,
+				panePid: 5678,
+				onTmuxNewSession: (args) => {
+					tmuxNewSessionArgs = args;
+				},
+			}),
+		);
+		const joined = tmuxNewSessionArgs.join("\0");
+		expect(joined).toContain("/repo/packages/fagent/bin/fagent");
+		expect(joined).toContain("|| exit $?; exec tail -f /dev/null");
+		expect(joined).not.toContain(rendered.prompt);
+	});
 
 	it("user argv containing --append-system-prompt does not hijack HITL prompt delivery", () => {
 		const rendered = renderAgent(

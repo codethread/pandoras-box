@@ -29,7 +29,7 @@ Spawner owns:
 - expected Harness session transcript lookup metadata
 - AFK mode process launch mechanics
 - HITL mode tmux launch mechanics
-- Claude/Pi transcript parsing for `pdx run transcript`; malformed or message-less logs fail loudly instead of rendering empty output, Pi timeline tool-call entries render as in-flight tool summaries, and Pi harness `errorMessage` stops render as explicit error lines
+- Claude/Pi transcript parsing for `pdx run transcript`; malformed or message-less logs fail loudly instead of rendering empty output, Pi timeline tool-call entries render as in-flight tool summaries, and Pi harness `errorMessage` stops render as explicit error lines. The test-only `fagent` Harness is transcript-unsupported and fails loudly if transcript rendering is requested.
 
 Spawner does not own:
 
@@ -102,9 +102,10 @@ Use those docs for:
 
 Read `src/spawner.ts` for exact argv construction. Stable behavior worth knowing before editing:
 
-- `harness.argv` in `agents.toml` is an optional escape hatch: tokens are inserted after the binary name and before all Spawner-managed flags. Spawner applies only the documented `$PDX_DATA_DIR`, `$PDX_USER_DATA_DIR`, and leading-`~` path expansion; there is no shell evaluation. See [`specs/agent-configuration.md`](../../specs/agent-configuration.md) for the full contract.
+- Supported Harness kinds are `claude`, `pi`, and the test-only `fagent`. `fagent` is for deterministic tests only; it is not bundled as a production default and should be selected only from test/user config with an explicit repo-local binary path.
+- `harness.argv` in `agents.toml` is an optional escape hatch: tokens are inserted after the binary name and before all Spawner-managed flags. Spawner applies only the documented `$PDX_DATA_DIR`, `$PDX_USER_DATA_DIR`, and leading-`~` path expansion; there is no shell evaluation. For `fagent`, the first `harness.argv` token is the executable path (for example a repo-local built `packages/fagent/bin/fagent`), followed by any fagent-specific flags such as `--config`. See [`specs/agent-configuration.md`](../../specs/agent-configuration.md) for the full contract.
 - AFK mode uses Harness print mode with the message `Claim and process one task, then exit.`
-- HITL mode launches under tmux.
+- HITL mode launches under tmux. `fagent` HITL launches run the configured fake script once and then keep the tmux session alive with `tail -f /dev/null`; if the fake script exits non-zero, the shell exits loudly instead.
 - HITL prompt delivery uses a temp-file shell wrapper for every Harness to keep rendered prompts out of the `tmux new-session` argv.
 - Session log paths are computed before launch and stored by `pdx` on the Pithos Run. For Claude, Spawner matches Claude Code's project bucket by resolving the launch CWD through `realpath` before slugging every non-alphanumeric/non-hyphen character to `-`. For Pi, Spawner passes the Pithos Harness session id through Pi's native `--session-id` flag and stores the legacy project-local `<sessionId>.jsonl` lookup anchor; transcript rendering also resolves newer timestamp-prefixed sibling files when that exact path is absent.
 - Launch failures are surfaced as tagged Spawner failures. Spawner does not cancel tasks or enqueue escalations; pdx classifies launch-precondition failures such as missing cwd before/around launch and owns the Pithos repair workflow.
