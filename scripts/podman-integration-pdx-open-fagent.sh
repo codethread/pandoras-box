@@ -45,10 +45,7 @@ TOML
 repo_scope_id="$(pithos scope upsert --kind repo --path /workspace | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).scope.id))')"
 
 cat > "$FAGENT_CONFIG_DIR/pandora.json" <<JSON
-{"scripts":{"begin":{"agentKind":"pandora","capability":"escalate","pithosPath":"/workspace/packages/pithos/bin/pithos","eventLogPath":"$FAGENT_EVENTS","actions":[],"hitl":true}}}
-JSON
-cat > "$FAGENT_CONFIG_DIR/pandora-repair.json" <<JSON
-{"scripts":{"repair":{"agentKind":"pandora","capability":"escalate","pithosPath":"/workspace/packages/pithos/bin/pithos","eventLogPath":"$FAGENT_EVENTS","actions":["claim","repair_replay"]}}}
+{"scripts":{"begin":{"agentKind":"pandora","capability":"escalate","pithosPath":"/workspace/packages/pithos/bin/pithos","eventLogPath":"$FAGENT_EVENTS","actions":[],"hitl":true},"repair":{"agentKind":"pandora","capability":"escalate","pithosPath":"/workspace/packages/pithos/bin/pithos","eventLogPath":"$FAGENT_EVENTS","actions":["claim","repair_replay"]}}}
 JSON
 cat > "$FAGENT_CONFIG_DIR/toil.json" <<JSON
 {"scripts":{"Claim and process one task, then exit.":{"agentKind":"toil","capability":"triage","pithosPath":"/workspace/packages/pithos/bin/pithos","eventLogPath":"$FAGENT_EVENTS","executeScopeId":"$repo_scope_id","actions":["claim","enqueue_execute","complete"]}}}
@@ -108,25 +105,44 @@ throw new Error('war first failure was not observed');
 NODE
 
 sed -i 's/war-fail\.json/war-done.json/' "$PDX_USER_DATA_DIR/agents.toml"
-pandora_run_id="$(sqlite3 "$PITHOS_DB" "select id from runs where agent_kind='pandora' and status='live' order by created_at desc limit 1")"
-tmux respawn-pane -k -t pdx--pandora "PITHOS_DB='$PITHOS_DB' PDX_USER_DATA_DIR='$PDX_USER_DATA_DIR' PITHOS_RUN_ID='$pandora_run_id' PITHOS_SCOPE_ID='global' /workspace/packages/fagent/bin/fagent --config '$FAGENT_CONFIG_DIR/pandora-repair.json' --print repair; tail -f /dev/null"
+pandora_pane_pid_before="$(tmux display-message -p -t pdx--pandora '#{pane_pid}')"
+tmux send-keys -t pdx--pandora repair Enter
 
 node <<'NODE'
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
-const expected = ['hitl_startup','claim','enqueue_execute','complete','claim','fail_execute_once','claim','repair_replay','claim','complete'];
+const expected = [
+  'hitl_startup',
+  'claim',
+  'enqueue_execute',
+  'complete',
+  'claim',
+  'fail_execute_once',
+  'claim',
+  'repair_replay',
+  'claim',
+  'complete',
+];
 const deadline = Date.now() + 90000;
 let events = [];
 while (Date.now() < deadline) {
   const text = fs.existsSync(process.env.FAGENT_EVENTS) ? fs.readFileSync(process.env.FAGENT_EVENTS, 'utf8').trim() : '';
   events = text ? text.split('\n').map((line) => JSON.parse(line)) : [];
   const actions = events.map((event) => event.action);
-  if (expected.every((action, index) => actions[index] === action)) break;
+  if (actions.length === expected.length && expected.every((action, index) => actions[index] === action)) break;
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
 }
 const actions = events.map((event) => event.action);
-if (!expected.every((action, index) => actions[index] === action)) throw new Error(`fagent milestones not reached: ${JSON.stringify(actions)}`);
+if (actions.length !== expected.length || !expected.every((action, index) => actions[index] === action)) throw new Error(`fagent milestones not reached exactly: ${JSON.stringify(actions)}`);
 if (!events.every((event) => event.outcome === 'ok')) throw new Error(`fagent error event: ${JSON.stringify(events)}`);
+
+const pandoraStartup = events[0];
+for (const event of [events[6], events[7]]) {
+  if (event.agent_kind !== 'pandora') throw new Error(`repair event was not Pandora-owned: ${JSON.stringify(event)}`);
+  if (event.run_id !== pandoraStartup.run_id) throw new Error(`Pandora repair used a different Pithos run: ${JSON.stringify({ pandoraStartup, event })}`);
+  if (event.instance_id !== pandoraStartup.instance_id) throw new Error(`Pandora repair used a different fagent instance: ${JSON.stringify({ pandoraStartup, event })}`);
+  if (event.process_id !== pandoraStartup.process_id) throw new Error(`Pandora repair used a different fagent process: ${JSON.stringify({ pandoraStartup, event })}`);
+}
 
 const graph = spawnSync('/workspace/packages/pithos/bin/pithos', ['graph', 'inspect', '--all', '--json'], { encoding: 'utf8', env: process.env });
 if (graph.status !== 0) throw new Error(graph.stderr || graph.stdout);
@@ -138,6 +154,12 @@ for (const [capability, status] of [['triage', 'done'], ['execute', 'done'], ['e
   if (!statuses.some(([actualCapability, actualStatus]) => actualCapability === capability && actualStatus === status)) throw new Error(`missing terminal ${capability}/${status}: ${JSON.stringify(statuses)}`);
 }
 NODE
+
+pandora_pane_pid_after="$(tmux display-message -p -t pdx--pandora '#{pane_pid}')"
+if [ "$pandora_pane_pid_after" != "$pandora_pane_pid_before" ]; then
+	echo "Pandora pane process changed across repair input: before=$pandora_pane_pid_before after=$pandora_pane_pid_after" >&2
+	exit 1
+fi
 
 pdx close --data-dir "$PDX_DATA_DIR"
 if tmux has-session -t pdx--daemon 2>/dev/null || tmux has-session -t pdx--pandora 2>/dev/null; then

@@ -107,7 +107,7 @@ tasks:
   - id: 22
     description: Drive Pandora repair without respawn
     task_file: tasks/022-drive-pandora-repair-without-respawn.md
-    status: pending
+    status: complete
     blocked_by: [21]
   - id: 23
     description: Document Pandora HITL alignment
