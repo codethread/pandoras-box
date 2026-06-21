@@ -99,3 +99,18 @@ tasks:
     task_file: tasks/020-document-integration-test-workflow.md
     status: complete
     blocked_by: [19]
+  - id: 21
+    description: Add fagent HITL input loop
+    task_file: tasks/021-add-fagent-hitl-input-loop.md
+    status: pending
+    blocked_by: [20]
+  - id: 22
+    description: Drive Pandora repair without respawn
+    task_file: tasks/022-drive-pandora-repair-without-respawn.md
+    status: pending
+    blocked_by: [21]
+  - id: 23
+    description: Document Pandora HITL alignment
+    task_file: tasks/023-document-pandora-hitl-alignment.md
+    status: pending
+    blocked_by: [22]

@@ -76,3 +76,7 @@ Append notes here. Do not rewrite earlier notes.
 ### Task 15-20: fagent and Podman tmux integration plan — 2026-06-21
 
 - Added follow-up tasks for a test-only fake Harness package (`@pdx/fagent`) and Podman-backed tmux integration tests. The MVP goal is a real `pdx open` -> Pandora tmux session -> triage -> execute failure -> Repair Alert -> Pandora repair/replay -> execute completion -> `pdx close` flow. Podman is the supported container runtime for this integration path; do not add Docker-specific scripts unless a future HITL decision changes that boundary.
+
+### Task 21-23: Pandora HITL alignment fixes — 2026-06-21
+
+- Added follow-up tasks after alignment review found that the completed `pdx open` fagent integration manually respawned Pandora's tmux pane for repair. The fix is to make fagent's HITL mode process line-oriented input in the original pdx-launched Pandora process, then update the Podman integration to send repair input to that existing session and remove any `tmux respawn-pane` shortcut.
