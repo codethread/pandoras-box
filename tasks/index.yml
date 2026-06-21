@@ -72,7 +72,7 @@ tasks:
   - id: 15
     description: Add fagent read harness
     task_file: tasks/015-add-fagent-read-harness.md
-    status: pending
+    status: complete
     blocked_by: []
   - id: 16
     description: Launch fagent through Spawner

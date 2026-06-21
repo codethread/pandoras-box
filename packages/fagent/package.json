@@ -1,0 +1,20 @@
+{
+	"name": "@pdx/fagent",
+	"version": "0.1.0",
+	"private": true,
+	"bin": {
+		"fagent": "./bin/fagent"
+	},
+	"type": "module",
+	"scripts": {
+		"clean": "rimraf dist bin/fagent bin/fagent-dev *.tsbuildinfo",
+		"lint": "eslint .",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "vitest run --config vitest.config.ts",
+		"build": "node scripts/build.mjs",
+		"start": "node scripts/build.mjs --dev --run --"
+	},
+	"dependencies": {
+		"effect": "catalog:"
+	}
+}
