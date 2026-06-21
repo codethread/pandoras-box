@@ -44,8 +44,8 @@ TOML
 
 repo_scope_id="$(pithos scope upsert --kind repo --path /workspace | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).scope.id))')"
 
-cat > "$FAGENT_CONFIG_DIR/pandora.json" <<'JSON'
-{"responses":{"begin":"FAGENT_HITL_READY"}}
+cat > "$FAGENT_CONFIG_DIR/pandora.json" <<JSON
+{"scripts":{"begin":{"agentKind":"pandora","capability":"escalate","pithosPath":"/workspace/packages/pithos/bin/pithos","eventLogPath":"$FAGENT_EVENTS","actions":[],"hitl":true}}}
 JSON
 cat > "$FAGENT_CONFIG_DIR/pandora-repair.json" <<JSON
 {"scripts":{"repair":{"agentKind":"pandora","capability":"escalate","pithosPath":"/workspace/packages/pithos/bin/pithos","eventLogPath":"$FAGENT_EVENTS","actions":["claim","repair_replay"]}}}
@@ -114,7 +114,7 @@ tmux respawn-pane -k -t pdx--pandora "PITHOS_DB='$PITHOS_DB' PDX_USER_DATA_DIR='
 node <<'NODE'
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
-const expected = ['claim','enqueue_execute','complete','claim','fail_execute_once','claim','repair_replay','claim','complete'];
+const expected = ['hitl_startup','claim','enqueue_execute','complete','claim','fail_execute_once','claim','repair_replay','claim','complete'];
 const deadline = Date.now() + 90000;
 let events = [];
 while (Date.now() < deadline) {

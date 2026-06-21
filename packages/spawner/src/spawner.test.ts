@@ -2798,7 +2798,7 @@ describe("launchRenderedAgent", () => {
 		},
 	);
 
-	it("keeps fagent HITL tmux sessions alive after successful startup", () => {
+	it("execs fagent HITL as the resident tmux process", () => {
 		const rendered = renderAgent(
 			{ ...base, agent: "pandora", mode: "hitl" },
 			fakeRenderServices(
@@ -2823,7 +2823,8 @@ describe("launchRenderedAgent", () => {
 		);
 		const joined = tmuxNewSessionArgs.join("\0");
 		expect(joined).toContain("/repo/packages/fagent/bin/fagent");
-		expect(joined).toContain("|| exit $?; exec tail -f /dev/null");
+		expect(joined).toContain("exec '/repo/packages/fagent/bin/fagent'");
+		expect(joined).not.toContain("tail -f /dev/null");
 		expect(joined).not.toContain(rendered.prompt);
 	});
 

@@ -691,10 +691,7 @@ const hitlShellCommand = (rendered: RenderedAgent, services: LaunchServices): re
 		.map(shellQuote)
 		.join(" ");
 	const launch = `${beforePrompt} "$prompt"${afterPrompt === "" ? "" : ` ${afterPrompt}`}`;
-	const finalCommand =
-		rendered.harness.kind === "fagent"
-			? `${launch} || exit $?; exec tail -f /dev/null`
-			: `exec ${launch}`;
+	const finalCommand = `exec ${launch}`;
 	const script = [
 		`prompt=$(cat ${shellQuote(promptPath)}) || exit $?`,
 		`rm -f ${shellQuote(promptPath)}`,

@@ -102,7 +102,7 @@ tasks:
   - id: 21
     description: Add fagent HITL input loop
     task_file: tasks/021-add-fagent-hitl-input-loop.md
-    status: pending
+    status: complete
     blocked_by: [20]
   - id: 22
     description: Drive Pandora repair without respawn

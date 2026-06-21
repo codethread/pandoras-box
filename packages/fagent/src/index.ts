@@ -75,6 +75,7 @@ const parseStartup = (
 };
 
 type Action = "claim" | "enqueue_execute" | "fail_execute_once" | "repair_replay" | "complete";
+type EventAction = Action | "hitl_startup";
 
 interface Script {
 	readonly agentKind: string;
@@ -151,14 +152,27 @@ const parseConfig = (raw: unknown): Config => {
 				});
 			}
 			const executeScopeId = scriptRaw.executeScopeId;
+			if (executeScopeId !== undefined && typeof executeScopeId !== "string") {
+				throw new FagentError({
+					code: "CONFIG_ERROR",
+					message: `executeScopeId for ${input} must be a string`,
+				});
+			}
+			const hitl = scriptRaw.hitl;
+			if (hitl !== undefined && typeof hitl !== "boolean") {
+				throw new FagentError({
+					code: "CONFIG_ERROR",
+					message: `hitl for ${input} must be a boolean`,
+				});
+			}
 			scripts[input] = {
 				agentKind: requiredString(scriptRaw, "agentKind"),
 				capability: requiredString(scriptRaw, "capability"),
 				pithosPath: requiredString(scriptRaw, "pithosPath"),
 				eventLogPath: requiredString(scriptRaw, "eventLogPath"),
 				actions: parseActions(scriptRaw.actions, input),
-				...(typeof executeScopeId === "string" ? { executeScopeId } : {}),
-				hitl: scriptRaw.hitl === true,
+				...(executeScopeId === undefined ? {} : { executeScopeId }),
+				hitl: hitl === true,
 			};
 		}
 	}
@@ -221,13 +235,24 @@ const event = (
 	script: Script,
 	appendText: (path: string, text: string) => void,
 	runId: string,
-	action: Action,
+	action: EventAction,
 	taskId: string | undefined,
 	outcome: "ok" | "error",
+	services: FagentServices,
 ) => {
+	const instanceId = services.env?.FAGENT_INSTANCE_ID;
+	const processId = services.env?.FAGENT_PROCESS_ID;
 	appendText(
 		script.eventLogPath,
-		`${JSON.stringify({ run_id: runId, agent_kind: script.agentKind, action, task_id: taskId, outcome })}\n`,
+		`${JSON.stringify({
+			run_id: runId,
+			agent_kind: script.agentKind,
+			action,
+			task_id: taskId,
+			outcome,
+			...(instanceId === undefined ? {} : { instance_id: instanceId }),
+			...(processId === undefined ? {} : { process_id: processId }),
+		})}\n`,
 	);
 };
 
@@ -416,23 +441,35 @@ const runScript = (script: Script, services: FagentServices): string => {
 			outcome = "error";
 			throw error;
 		} finally {
-			event(script, appendText, runId, action, taskId, outcome);
+			event(script, appendText, runId, action, taskId, outcome, services);
 		}
 	}
 
-	return script.hitl ? "FAGENT_HITL_READY" : "FAGENT_SCRIPT_DONE";
+	if (script.hitl) {
+		event(script, appendText, runId, "hitl_startup", undefined, "ok", services);
+		return "FAGENT_HITL_READY";
+	}
+	return "FAGENT_SCRIPT_DONE";
 };
 
-export const runFagent = (
+export interface FagentResult {
+	readonly output: string;
+	readonly resident: boolean;
+	readonly configPath: string;
+}
+
+export const runFagentDetailed = (
 	argv: readonly string[],
 	cwd: string,
 	services: FagentServices,
-): string => {
+): FagentResult => {
 	const { configPath, input } = parseStartup(argv);
-	if (input.startsWith("READ ")) return readFiles(cwd, input, services);
+	if (input.startsWith("READ "))
+		return { output: readFiles(cwd, input, services), resident: false, configPath };
 	const config = readConfig(configPath, services);
 	const script = config.scripts[input];
-	if (script !== undefined) return runScript(script, services);
+	if (script !== undefined)
+		return { output: runScript(script, services), resident: script.hitl === true, configPath };
 	const response = config.responses[input];
 	if (response === undefined) {
 		throw new FagentError({
@@ -440,5 +477,8 @@ export const runFagent = (
 			message: `no configured fagent response for input: ${input}`,
 		});
 	}
-	return response;
+	return { output: response, resident: false, configPath };
 };
+
+export const runFagent = (argv: readonly string[], cwd: string, services: FagentServices): string =>
+	runFagentDetailed(argv, cwd, services).output;

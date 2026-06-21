@@ -51,11 +51,67 @@ const runScript = (
 		},
 	});
 
+const waitForStreamText = (stream: NodeJS.ReadableStream, expected: string) =>
+	new Promise<void>((resolveWait) => {
+		let text = "";
+		const onData = (chunk: Buffer) => {
+			text += chunk.toString("utf8");
+			if (text.includes(expected)) {
+				stream.off("data", onData);
+				resolveWait();
+			}
+		};
+		stream.on("data", onData);
+	});
+
 const makeFixture = async (name: string) => {
 	const root = await mkdtemp(join(tmpdir(), `fagent-${name}-`));
 	const configPath = join(root, "fagent.json");
 	await writeFile(configPath, JSON.stringify({ responses: { ping: "pong" } }), "utf8");
 	return { root, configPath };
+};
+
+const writeRepairConfig = async (root: string, eventLogPath: string, executeScopeId?: string) => {
+	const configPath = join(root, "fagent.json");
+	await writeFile(
+		configPath,
+		JSON.stringify({
+			scripts: {
+				begin: {
+					agentKind: "pandora",
+					capability: "escalate",
+					pithosPath: pithosBin,
+					eventLogPath,
+					actions: [],
+					hitl: true,
+				},
+				repair: {
+					agentKind: "pandora",
+					capability: "escalate",
+					pithosPath: pithosBin,
+					eventLogPath,
+					actions: ["claim", "repair_replay"],
+				},
+				toil: {
+					agentKind: "toil",
+					capability: "triage",
+					pithosPath: pithosBin,
+					eventLogPath,
+					...(executeScopeId === undefined ? {} : { executeScopeId }),
+					actions: ["claim", "enqueue_execute", "complete"],
+				},
+				war_fail: {
+					agentKind: "war",
+					capability: "execute",
+					pithosPath: pithosBin,
+					eventLogPath,
+					actions: ["claim", "fail_execute_once"],
+				},
+			},
+		}),
+		"utf8",
+	);
+	return configPath;
 };
 
 describe("fagent", () => {
@@ -103,7 +159,24 @@ describe("fagent", () => {
 	test("fails loudly for required MVP failure modes", async () => {
 		const { root, configPath } = await makeFixture("failures");
 		const badConfig = join(root, "bad.json");
+		const badHitlConfig = join(root, "bad-hitl.json");
 		await writeFile(badConfig, JSON.stringify({ responses: { ping: 123 } }), "utf8");
+		await writeFile(
+			badHitlConfig,
+			JSON.stringify({
+				scripts: {
+					begin: {
+						agentKind: "pandora",
+						capability: "escalate",
+						pithosPath: pithosBin,
+						eventLogPath: join(root, "events.jsonl"),
+						actions: [],
+						hitl: "true",
+					},
+				},
+			}),
+			"utf8",
+		);
 
 		expect(() => runFagent(["--print", "ping"], process.cwd(), services)).toThrow(
 			"missing required --config path",
@@ -114,6 +187,9 @@ describe("fagent", () => {
 		expect(() =>
 			runFagent(["--config", configPath, "--print", "unknown"], process.cwd(), services),
 		).toThrow("no configured fagent response for input: unknown");
+		expect(() =>
+			runFagent(["--config", badHitlConfig, "--print", "begin"], process.cwd(), services),
+		).toThrow("hitl for begin must be a boolean");
 		expect(() =>
 			runFagent(["--config", configPath, "--print", "READ missing.txt"], root, services),
 		).toThrow("failed to read missing.txt");
@@ -250,11 +326,15 @@ describe("fagent", () => {
 			"fail_execute_once",
 			"claim",
 			"repair_replay",
+			"hitl_startup",
 			"claim",
 			"complete",
 		]);
+		expect(events.every((event) => event.outcome === "ok")).toBe(true);
 		expect(
-			events.every((event) => event.outcome === "ok" && typeof event.task_id === "string"),
+			events
+				.filter((event) => event.action !== "hitl_startup")
+				.every((event) => typeof event.task_id === "string"),
 		).toBe(true);
 		expect(events.map((event) => event.agent_kind)).toEqual([
 			"toil",
@@ -262,6 +342,7 @@ describe("fagent", () => {
 			"toil",
 			"war",
 			"war",
+			"pandora",
 			"pandora",
 			"pandora",
 			"war",
@@ -273,6 +354,7 @@ describe("fagent", () => {
 			"run_toil",
 			"run_war_1",
 			"run_war_1",
+			"run_pandora",
 			"run_pandora",
 			"run_pandora",
 			"run_war_2",
@@ -287,10 +369,10 @@ describe("fagent", () => {
 			String(events.at(-1)?.task_id),
 		]).task as Record<string, unknown>;
 		expect(finalWarTask.status).toBe("done");
-	});
+	}, 10_000);
 
-	test("Pandora-style HITL CLI remains resident after scripted action", async () => {
-		const root = await mkdtemp(join(tmpdir(), "fagent-hitl-"));
+	test("HITL stdin failures exit non-zero with clear stderr", async () => {
+		const root = await mkdtemp(join(tmpdir(), "fagent-hitl-stdin-failure-"));
 		const dbPath = join(root, "pithos.sqlite");
 		const eventLogPath = join(root, "events.jsonl");
 		pithos(dbPath, ["init", "--fresh"]);
@@ -314,45 +396,10 @@ describe("fagent", () => {
 			"--session-id",
 			"p",
 		]);
-		pithos(
-			dbPath,
-			[
-				"task",
-				"enqueue",
-				"--run",
-				"run_pandora",
-				"--scope",
-				"global",
-				"--capability",
-				"escalate",
-				"--title",
-				"hello",
-				"--stdin",
-				"--chain",
-				"none",
-			],
-			"hello",
-		);
-		const configPath = join(root, "fagent.json");
-		await writeFile(
-			configPath,
-			JSON.stringify({
-				scripts: {
-					pandora: {
-						agentKind: "pandora",
-						capability: "escalate",
-						pithosPath: pithosBin,
-						eventLogPath,
-						actions: ["claim"],
-						hitl: true,
-					},
-				},
-			}),
-			"utf8",
-		);
+		const configPath = await writeRepairConfig(root, eventLogPath);
 		const child = spawn(
 			resolve(process.cwd(), "bin/fagent"),
-			["--config", configPath, "--print", "pandora"],
+			["--config", configPath, "--print", "begin"],
 			{
 				env: {
 					...process.env,
@@ -363,18 +410,110 @@ describe("fagent", () => {
 				stdio: ["pipe", "pipe", "pipe"],
 			},
 		);
-		const ready = await new Promise<string>((resolveReady) =>
-			child.stdout.once("data", (chunk: Buffer) => resolveReady(chunk.toString("utf8"))),
+		let stderr = "";
+		child.stderr.on("data", (chunk: Buffer) => {
+			stderr += chunk.toString("utf8");
+		});
+		await waitForStreamText(child.stdout, "FAGENT_HITL_READY");
+		child.stdin.write("missing\n");
+		const exitCode = await new Promise<number | null>((resolveExit) =>
+			child.once("exit", (code) => resolveExit(code)),
 		);
-		expect(ready).toContain("FAGENT_HITL_READY");
-		const exitedEarly = await Promise.race([
-			new Promise<boolean>((resolveExit) => child.once("exit", () => resolveExit(true))),
-			new Promise<boolean>((resolveTimer) => setTimeout(() => resolveTimer(false), 100)),
-		]);
-		expect(exitedEarly).toBe(false);
+
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("NO_RESPONSE: no configured fagent response for input: missing");
+	});
+
+	test("HITL stdin action runs in the original fagent process", async () => {
+		const root = await mkdtemp(join(tmpdir(), "fagent-hitl-stdin-"));
+		const dbPath = join(root, "pithos.sqlite");
+		const eventLogPath = join(root, "events.jsonl");
+		pithos(dbPath, ["init", "--fresh"]);
+		const repoScope = pithos(dbPath, ["scope", "upsert", "--kind", "repo", "--path", process.cwd()])
+			.scope as Record<string, unknown>;
+		const repoScopeId = String(repoScope.id);
+		for (const [run, agent, mode, scope] of [
+			["run_pandora", "pandora", "hitl", "global"],
+			["run_toil", "toil", "afk", "global"],
+			["run_war", "war", "afk", repoScopeId],
+		] as const) {
+			pithos(dbPath, [
+				"run",
+				"upsert",
+				"--run",
+				run,
+				"--agent",
+				agent,
+				"--mode",
+				mode,
+				"--scope",
+				scope,
+				"--cwd",
+				process.cwd(),
+				"--harness-kind",
+				"fagent",
+				"--session-log-path",
+				join(root, `${run}.jsonl`),
+				"--session-id",
+				run,
+			]);
+		}
+		pithos(
+			dbPath,
+			[
+				"task",
+				"enqueue",
+				"--run",
+				"run_pandora",
+				"--scope",
+				"global",
+				"--capability",
+				"triage",
+				"--title",
+				"triage",
+				"--stdin",
+				"--chain",
+				"none",
+			],
+			"triage body",
+		);
+		const configPath = await writeRepairConfig(root, eventLogPath, repoScopeId);
+		runScript(dbPath, ["--config", configPath, "--print", "toil"], process.cwd(), {
+			PITHOS_RUN_ID: "run_toil",
+			PITHOS_SCOPE_ID: "global",
+		});
+		runScript(dbPath, ["--config", configPath, "--print", "war_fail"], process.cwd(), {
+			PITHOS_RUN_ID: "run_war",
+			PITHOS_SCOPE_ID: repoScopeId,
+		});
+		const child = spawn(
+			resolve(process.cwd(), "bin/fagent"),
+			["--config", configPath, "--print", "begin"],
+			{
+				env: {
+					...process.env,
+					PITHOS_DB: dbPath,
+					PITHOS_RUN_ID: "run_pandora",
+					PITHOS_SCOPE_ID: "global",
+				},
+				stdio: ["pipe", "pipe", "pipe"],
+			},
+		);
+		await waitForStreamText(child.stdout, "FAGENT_HITL_READY");
+		const repaired = waitForStreamText(child.stdout, "FAGENT_SCRIPT_DONE");
+		child.stdin.write("repair\n");
+		await repaired;
 		child.kill();
 		await new Promise((resolveClose) => child.once("close", resolveClose));
-	});
+
+		const events = jsonl(eventLogPath);
+		const startup = events.find((event) => event.action === "hitl_startup");
+		const repair = events.find((event) => event.action === "repair_replay");
+		expect(startup?.instance_id).toBeTypeOf("string");
+		expect(repair?.instance_id).toBe(startup?.instance_id);
+		expect(repair?.process_id).toBe(startup?.process_id);
+		expect(repair?.process_id).toBe(String(child.pid));
+	}, 10_000);
 
 	test("CLI failures exit non-zero with clear stderr", async () => {
 		const { configPath } = await makeFixture("cli-failure");
