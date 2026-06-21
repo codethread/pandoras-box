@@ -174,10 +174,9 @@ When something goes sideways, she also drives the cleanup:
 - _"Go kill Greed, she's chasing the wrong plan."_
 - _"Toil's stuck — interrupt her and re-triage."_
 
-**Respawn**: an Evil killed mid-task doesn't lose the work. The supervisor
-respawns her with a fresh, blank harness context but the same claimed task,
-and she (hopefully) picks up where the previous incarnation left off. Use
-kill as a "try again from clean state" lever, not as a delete.
+**Repair after interruption**: killing an Evil mid-task interrupts the Run,
+marks the Held task failed, and creates a Repair Alert. Pandora repairs the
+Broken chain; pdx never resurrects a dead Agent as the same Run.
 
 If Pandora herself is wedged, `pdx --help` lists the raw escape hatches.
 
@@ -201,7 +200,7 @@ pnpm run test:integration:pdx-open-fagent
 
 `test:integration:tmux` builds `containers/Containerfile.integration`, mounts the current working tree into the container, sets isolated `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR`, then proves tmux can create, list, and kill a session through a container-local socket.
 
-`test:integration:pdx-open-fagent` copies the repo into the container, builds repo-local bins, configures Pandora/Toil/War with explicit `/workspace/packages/fagent/bin/fagent` argv paths, then drives `pdx open` through Toil triage, War failure, Pandora replay, War completion, and `pdx close`. `fagent` is test-only; normal user config should use Claude or Pi.
+`test:integration:pdx-open-fagent` copies the repo into the container, builds repo-local bins, configures Pandora/Toil/War with explicit `/workspace/packages/fagent/bin/fagent` argv paths, then drives `pdx open` through Toil triage, War failure, Pandora replay in the original `pdx--pandora` tmux pane, War completion, and `pdx close`. `tmux respawn-pane` is not an acceptable shortcut for this MVP path. `fagent` is test-only; normal user config should use Claude or Pi.
 
 On failure, the script prints `pdx open fagent integration artifacts preserved at <dir>`. Inspect `<dir>/data/pdx.jsonl`, `<dir>/data/fagent-events.jsonl`, `<dir>/data/runs/*.stdout.log`, `<dir>/data/runs/*.stderr.log`, and `<dir>/user-config/`.
 

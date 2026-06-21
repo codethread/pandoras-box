@@ -112,5 +112,5 @@ tasks:
   - id: 23
     description: Document Pandora HITL alignment
     task_file: tasks/023-document-pandora-hitl-alignment.md
-    status: pending
+    status: complete
     blocked_by: [22]

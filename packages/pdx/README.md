@@ -180,7 +180,7 @@ For a data dir `<data-dir>` (`~/.pdx` by default):
 <user-data-dir>/policies/*.md     # user-owned policy packs declared from agents.toml
 ```
 
-HITL mode runtime state lives in tmux targets. AFK mode runtime state lives in pid/stdout/stderr files plus the daemon Registry while live. Harness session transcripts live at harness-native session log paths or lookup anchors returned by Spawner and stored on Pithos Runs. For Pi, Spawner may store the legacy `<sessionId>.jsonl` anchor and resolve a newer timestamp-prefixed sibling transcript at render time.
+HITL mode runtime state lives in tmux targets. Pandora repair flows drive the existing pdx-launched pane; `tmux respawn-pane` would be Same-run resurrection. AFK mode runtime state lives in pid/stdout/stderr files plus the daemon Registry while live. Harness session transcripts live at harness-native session log paths or lookup anchors returned by Spawner and stored on Pithos Runs. For Pi, Spawner may store the legacy `<sessionId>.jsonl` anchor and resolve a newer timestamp-prefixed sibling transcript at render time.
 
 ## User config, Artifact Contracts, and supervisor launch policy
 
@@ -207,7 +207,7 @@ pnpm verify
 # lint -> typecheck -> unit tests -> build -> tmux integration -> pdx-open fagent integration
 ```
 
-The pdx-open integration is the end-to-end supervisor smoke test. It uses repo-local `fagent` paths in generated user config, drives triage -> execute failure -> Repair Alert replay -> execute completion, then closes pdx. On failure, inspect the preserved artifact directory: `data/pdx.jsonl`, `data/fagent-events.jsonl`, `data/runs/*.stdout.log`, `data/runs/*.stderr.log`, and `user-config/`.
+The pdx-open integration is the end-to-end supervisor smoke test. It uses repo-local `fagent` paths in generated user config, drives triage -> execute failure -> Repair Alert replay in the original `pdx--pandora` pane -> execute completion, then closes pdx. It must not use `tmux respawn-pane`. On failure, inspect the preserved artifact directory: `data/pdx.jsonl`, `data/fagent-events.jsonl`, `data/runs/*.stdout.log`, `data/runs/*.stderr.log`, and `user-config/`.
 
 Useful package-local help checks:
 
