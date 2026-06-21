@@ -87,7 +87,7 @@ tasks:
   - id: 18
     description: Add Podman tmux test container
     task_file: tasks/018-add-podman-tmux-test-container.md
-    status: pending
+    status: complete
     blocked_by: []
   - id: 19
     description: Test pdx open fagent flow

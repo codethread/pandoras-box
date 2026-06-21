@@ -181,6 +181,16 @@ kill as a "try again from clean state" lever, not as a delete.
 
 If Pandora herself is wedged, `pdx --help` lists the raw escape hatches.
 
+## Integration smoke tests
+
+Run the Podman-backed tmux smoke test without touching the host tmux server. This optional command requires Podman:
+
+```sh
+pnpm run test:integration:tmux
+```
+
+The script builds `containers/Containerfile.integration`, mounts the current working tree into the container, sets isolated `PDX_DATA_DIR`, `PDX_USER_DATA_DIR`, `PITHOS_DB`, and `TMUX_TMPDIR`, then proves tmux can create, list, and kill a session through a container-local socket.
+
 ## Roadmap
 
 Pre-v1; expect breaking changes.
@@ -189,7 +199,7 @@ Pre-v1; expect breaking changes.
 - [ ] Promote/demote an Evil between AFK and HITL mid-session
 - [ ] Interactive pickers for kill/show/transcript so you don't copy ids by hand
 - [ ] Pluggable control-plane backends — swap tmux for Zellij, remote SSH, etc. (the architecture is already decoupled)
-- [ ] Dockerized control-plane smoke tests — encapsulate tmux/harness-adjacent runs for safer end-to-end validation
+- [ ] Containerized control-plane integration tests — expand the Podman tmux smoke path into full harness-adjacent end-to-end validation
 
 See [open issues](https://github.com/codethread/pandoras-box/issues).
 

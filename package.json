@@ -10,6 +10,7 @@
 		"typecheck": "tsc -p tsconfig.json --noEmit && pnpm -r --if-present typecheck",
 		"test": "vitest run",
 		"test:watch": "vitest",
+		"test:integration:tmux": "./scripts/podman-integration-tmux.sh",
 		"format": "oxfmt",
 		"build": "pnpm -r --if-present build",
 		"verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm run build",
