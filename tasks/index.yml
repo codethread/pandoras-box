@@ -82,7 +82,7 @@ tasks:
   - id: 17
     description: Script fagent task workflow
     task_file: tasks/017-script-fagent-task-workflow.md
-    status: pending
+    status: complete
     blocked_by: [15, 16]
   - id: 18
     description: Add Podman tmux test container
