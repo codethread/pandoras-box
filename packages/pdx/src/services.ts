@@ -246,6 +246,7 @@ export interface RegistryEntry {
 	readonly interruptedTaskId?: string;
 	readonly killReason?: string;
 	readonly pid?: number;
+	readonly panePid?: number;
 	readonly tmuxTarget?: string;
 }
 

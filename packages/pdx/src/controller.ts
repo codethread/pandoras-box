@@ -644,6 +644,9 @@ const killEntryResource = (entry: RegistryEntry, signal: "SIGTERM" | "SIGKILL") 
 const entryAlive = (entry: RegistryEntry) =>
 	Effect.gen(function* () {
 		if (entry.mode === "hitl") {
+			if (entry.panePid !== undefined) {
+				return yield* isAfkAlive(entry.panePid);
+			}
 			const target = entry.tmuxTarget;
 			if (target === undefined) {
 				yield* Effect.fail(
@@ -1083,6 +1086,121 @@ const sendEscalateNudgeIfNeeded = () =>
 
 type RepoTrunkLaunchGuardResult = "proceed" | "blocked" | "stale";
 
+const hookOutputTail = (text: string): string | null => {
+	const trimmed = text.trim();
+	return trimmed.length === 0 ? null : trimmed.slice(-4000);
+};
+
+const runPandoraTmuxPostCreateHook = (input: {
+	readonly config: PdxConfig;
+	readonly runId: string;
+	readonly sessionId: string;
+	readonly tmuxTarget: string;
+	readonly hookPath: string;
+	readonly harnessEnv: Record<string, string>;
+}) =>
+	Effect.gen(function* () {
+		const processService = yield* Process;
+		const log = yield* SupervisorLog;
+		yield* log.write({
+			level: "info",
+			span: "pdx.launch",
+			msg: "running pandora tmux post-create hook",
+			data: {
+				run_id: input.runId,
+				session_id: input.sessionId,
+				tmux_target: input.tmuxTarget,
+				hook_path: input.hookPath,
+			},
+		});
+		const hookEnv = {
+			...input.harnessEnv,
+			PDX_PANDORA_TMUX_TARGET: input.tmuxTarget,
+			PDX_PANDORA_RUN_ID: input.runId,
+			PDX_PANDORA_SESSION_ID: input.sessionId,
+		};
+		const result = yield* processService
+			.execFile(input.hookPath, [], {
+				cwd: input.config.dataDir,
+				env: hookEnv,
+			})
+			.pipe(
+				Effect.catchAll((error) =>
+					log
+						.write({
+							level: "error",
+							span: "pdx.launch",
+							msg: "pandora tmux post-create hook failed",
+							data: {
+								run_id: input.runId,
+								session_id: input.sessionId,
+								tmux_target: input.tmuxTarget,
+								hook_path: input.hookPath,
+								error: error.message,
+							},
+						})
+						.pipe(
+							Effect.zipRight(
+								Effect.fail(
+									new PdxError({
+										code: "LAUNCH_ERROR",
+										message: `pandora tmux post-create hook failed: ${error.message}`,
+									}),
+								),
+							),
+						),
+				),
+			);
+		const stdoutTail = hookOutputTail(result.stdout);
+		const stderrTail = hookOutputTail(result.stderr);
+		if (result.exitCode !== 0) {
+			yield* log.write({
+				level: "error",
+				span: "pdx.launch",
+				msg: "pandora tmux post-create hook failed",
+				data: {
+					run_id: input.runId,
+					session_id: input.sessionId,
+					tmux_target: input.tmuxTarget,
+					hook_path: input.hookPath,
+					exit_code: result.exitCode,
+					stdout_tail: stdoutTail,
+					stderr_tail: stderrTail,
+				},
+			});
+			return yield* Effect.fail(
+				new PdxError({
+					code: "LAUNCH_ERROR",
+					message: `pandora tmux post-create hook failed: ${input.hookPath} exited with code ${result.exitCode}`,
+				}),
+			);
+		}
+		yield* log.write({
+			level: "info",
+			span: "pdx.launch",
+			msg: "pandora tmux post-create hook succeeded",
+			data: {
+				run_id: input.runId,
+				session_id: input.sessionId,
+				tmux_target: input.tmuxTarget,
+				hook_path: input.hookPath,
+				stdout_tail: stdoutTail,
+				stderr_tail: stderrTail,
+			},
+		});
+	});
+
+const settleFailedPandoraLaunch = (input: { readonly runId: string; readonly reason: string }) =>
+	Effect.gen(function* () {
+		const pithos = yield* PithosClient;
+		const run = yield* pithos.runInspect({ runId: input.runId });
+		if (run.task_id === null) {
+			yield* cleanupRun(input.runId, input.reason);
+			return;
+		}
+		yield* pithos.runInterrupt({ runId: input.runId, reason: input.reason });
+	});
+
 const applyRepoTrunkLaunchGuard = (input: {
 	readonly policy: SupervisorLaunchPolicy;
 	readonly agent: LaunchableAgent;
@@ -1304,7 +1422,10 @@ const spawnReadyAgent = (config: PdxConfig, maxAfk: number, policy: SupervisorLa
 				mode === "hitl"
 					? launched.hitl === undefined
 						? undefined
-						: { tmuxTarget: launched.hitl.tmuxTarget }
+						: {
+								tmuxTarget: launched.hitl.tmuxTarget,
+								...(launched.hitl.panePid === null ? {} : { panePid: launched.hitl.panePid }),
+							}
 					: launched.afk === undefined
 						? undefined
 						: { pid: launched.afk.pid };
@@ -1465,6 +1586,19 @@ export const reconcileTick = (
 					stderr = yield* fs.readFile(afkStderrPath(config, entry.runId));
 					yield* cleanupAfkRun(config, entry.runId, "natural_death", sessionEvidence);
 				} else {
+					if (entry.tmuxTarget !== undefined) {
+						const tmux = yield* Tmux;
+						if (yield* tmux.hasSession(entry.tmuxTarget)) {
+							yield* tmux
+								.killSession(entry.tmuxTarget)
+								.pipe(
+									Effect.catchAll((error) =>
+										isMissingTmuxSessionError(error) ? Effect.void : Effect.fail(error),
+									),
+								);
+							yield* confirmTmuxGone(tmux, entry.tmuxTarget);
+						}
+					}
 					yield* cleanupRun(entry.runId, "natural_death", sessionEvidence);
 				}
 				yield* registry.remove(entry.runId);
@@ -1567,22 +1701,47 @@ export const reconcileTick = (
 			const tmuxTarget = launched.hitl?.tmuxTarget;
 			if (tmuxTarget === undefined) {
 				yield* cleanupRun(runId, "launch_failed");
-				yield* Effect.fail(
+				return yield* Effect.fail(
 					new PdxError({ code: "PROCESS_ERROR", message: "pandora launch missing tmux target" }),
 				);
-			} else {
-				yield* registry.upsert({
-					runId,
-					agent: "pandora",
-					mode: "hitl",
-					scopeId: "global",
-					state: "live",
-					logicalName: launched.logicalName,
-					launchedAt,
-					everClaimed: false,
-					tmuxTarget,
-				});
 			}
+			if (rendered.pandoraTmuxPostCreateHook !== undefined) {
+				const hookResult = yield* runPandoraTmuxPostCreateHook({
+					config,
+					runId,
+					sessionId,
+					tmuxTarget,
+					hookPath: rendered.pandoraTmuxPostCreateHook,
+					harnessEnv: rendered.harness.env,
+				}).pipe(Effect.either);
+				if (Either.isLeft(hookResult)) {
+					const tmux = yield* Tmux;
+					yield* tmux
+						.killSession(tmuxTarget)
+						.pipe(
+							Effect.catchAll((error) =>
+								isMissingTmuxSessionError(error) ? Effect.void : Effect.fail(error),
+							),
+						);
+					yield* confirmTmuxGone(tmux, tmuxTarget);
+					yield* settleFailedPandoraLaunch({ runId, reason: "launch_failed" });
+					return yield* Effect.fail(hookResult.left);
+				}
+			}
+			yield* registry.upsert({
+				runId,
+				agent: "pandora",
+				mode: "hitl",
+				scopeId: "global",
+				state: "live",
+				logicalName: launched.logicalName,
+				launchedAt,
+				everClaimed: false,
+				tmuxTarget,
+				...(launched.hitl?.panePid === null || launched.hitl?.panePid === undefined
+					? {}
+					: { panePid: launched.hitl.panePid }),
+			});
 			yield* log.write({
 				level: "info",
 				span: "pdx.reconcile",

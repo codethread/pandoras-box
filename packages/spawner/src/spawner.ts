@@ -60,6 +60,7 @@ interface RenderedAgentFields {
 	};
 	readonly sessionLogPath: string;
 	readonly prompt: string;
+	readonly pandoraTmuxPostCreateHook?: string;
 	readonly provenance?: {
 		readonly layers: readonly {
 			readonly kind: "bundled" | "user";
@@ -869,6 +870,9 @@ export const renderAgent = (
 		},
 		sessionLogPath,
 		prompt,
+		...(manifest.tmux_post_create_hook === undefined
+			? {}
+			: { pandoraTmuxPostCreateHook: manifest.tmux_post_create_hook }),
 		provenance: {
 			layers: resolved.layers.map((layer) => ({
 				kind: layer.kind,

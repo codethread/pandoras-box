@@ -96,6 +96,7 @@ Use those docs for:
 - policy declarations and `policy.add` / `policy.remove` selection
 - Agent-specific policy selection and ordered match rules
 - Harness settings, rule-targeted Harness overrides, and supported argv path expansion
+- Pandora's optional `agents.pandora.tmux_post_create_hook` config validation/resolution
 - preview provenance fields for matched rules, selected policy ids, policy files, Harness config, and rendered prompt
 
 ## Harness notes

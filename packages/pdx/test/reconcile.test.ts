@@ -102,13 +102,66 @@ describe("pdx reconcile liveness and cleanup", () => {
 					hitl: { tmuxTarget: PANDORA_TARGET, panePid: 123 },
 				}),
 		});
-		let probes = 0;
-		const tmux = fakeTmux({ hasSession: () => Effect.sync(() => ++probes > 1) });
+		const tmux = fakeTmux({ hasSession: () => Effect.succeed(false) });
 		const config = await parseConfig(dataDir);
 		await runTick({ config, registry, pithos, ids, spawner, tmux });
 		const entries = await run(registry.list);
 		expect(entries.map((entry) => entry.runId)).toEqual(["run_new"]);
 		expect(pithosCalls).toContain("runCleanup:run_old:natural_death");
+	});
+
+	it("kills a leftover HITL tmux session when the tracked pane pid is dead", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-hitl-pane-death-"));
+		const registry = await run(makeRegistry);
+		await run(
+			registry.upsert({
+				runId: "run_old",
+				agent: "pandora",
+				scopeId: "global",
+				mode: "hitl",
+				state: "live",
+				logicalName: PANDORA_TARGET,
+				tmuxTarget: PANDORA_TARGET,
+				panePid: 123,
+			}),
+		);
+		const pithosCalls: string[] = [];
+		const pithos = makePithos(pithosCalls);
+		const ids = Ids.of({
+			nextRunId: Effect.succeed("run_new"),
+			nextSessionId: Effect.succeed("session_new"),
+		});
+		const spawner = makeSpawner({
+			launchAgent: (input) =>
+				Effect.succeed({
+					...input,
+					logicalName: PANDORA_TARGET,
+					hitl: { tmuxTarget: PANDORA_TARGET, panePid: 456 },
+				}),
+		});
+		let sessionExists = true;
+		const killedTargets: string[] = [];
+		const tmux = fakeTmux({
+			hasSession: () => Effect.succeed(sessionExists),
+			killSession: (target) =>
+				Effect.sync(() => {
+					killedTargets.push(target);
+					sessionExists = false;
+				}),
+		});
+		const config = await parseConfig(dataDir);
+		await runTick({
+			config,
+			registry,
+			pithos,
+			ids,
+			spawner,
+			tmux,
+			process: fakeProcess({ isAlive: () => Effect.succeed(false) }),
+		});
+		expect(killedTargets).toEqual([PANDORA_TARGET]);
+		expect(pithosCalls).toContain("runCleanup:run_old:natural_death");
+		expect((await run(registry.list)).map((entry) => entry.runId)).toEqual(["run_new"]);
 	});
 
 	it("passes transcript evidence into AFK natural-death cleanup", async () => {

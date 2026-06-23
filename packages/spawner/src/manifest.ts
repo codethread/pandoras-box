@@ -49,6 +49,7 @@ const PartialAgentSchema = Schema.Struct({
 	includes: Schema.optional(ListOpsSchema),
 	appends: Schema.optional(ListOpsSchema),
 	policy: Schema.optional(PolicyListOpsSchema),
+	tmux_post_create_hook: Schema.optional(Schema.NonEmptyString),
 	harness: Schema.optional(PartialHarnessSchema),
 });
 
@@ -88,6 +89,7 @@ const ResolvedAgentSchema = Schema.Struct({
 	template: Schema.NonEmptyString,
 	includes: Schema.optionalWith(NonEmptyStringArray, { default: () => [] }),
 	appends: Schema.optionalWith(NonEmptyStringArray, { default: () => [] }),
+	tmux_post_create_hook: Schema.optional(Schema.NonEmptyString),
 	harness: ResolvedHarnessSchema,
 });
 
@@ -459,7 +461,8 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 			if (
 				partial?.template !== undefined ||
 				partial?.includes !== undefined ||
-				partial?.appends !== undefined
+				partial?.appends !== undefined ||
+				partial?.tmux_post_create_hook !== undefined
 			) {
 				throw new SpawnerError({
 					code: "VALIDATION_ERROR",
@@ -469,6 +472,18 @@ const validatePartialFile = (file: PartialAgentsFile, layer: ConfigLayer): void 
 		}
 	});
 	for (const [agent, partial] of Object.entries(file.agents ?? {})) {
+		if (partial?.tmux_post_create_hook !== undefined && agent !== "pandora") {
+			throw new SpawnerError({
+				code: "VALIDATION_ERROR",
+				message: `${layer.agentsPath}: only agents.pandora may configure tmux_post_create_hook`,
+			});
+		}
+		if (partial?.tmux_post_create_hook !== undefined && layer.kind !== "user") {
+			throw new SpawnerError({
+				code: "VALIDATION_ERROR",
+				message: `${layer.agentsPath}: bundled manifest may not configure agents.pandora.tmux_post_create_hook`,
+			});
+		}
 		if (partial === undefined) continue;
 		if (partial.includes !== undefined) {
 			validateListOps(partial.includes, `agents.${agent}.includes`, layer.agentsPath, true, false);
@@ -622,6 +637,55 @@ const resolvePolicyPath = (reference: string, layer: ConfigLayer): string => {
 	return join(layer.rootDir, reference);
 };
 
+const expandConfiguredPathVariables = (
+	reference: string,
+	services: RenderServices,
+	layer: ConfigLayer,
+	field: string,
+): string =>
+	reference.replace(
+		/\$\{([A-Z_][A-Z0-9_]*)\}|\$([A-Z_][A-Z0-9_]*)/g,
+		(match, bracedName: string | undefined, bareName: string | undefined) => {
+			const name = bracedName ?? bareName;
+			const value =
+				name === "PDX_DATA_DIR"
+					? services.env("PDX_DATA_DIR")
+					: name === "PDX_USER_DATA_DIR"
+						? services.env("PDX_USER_DATA_DIR")
+						: undefined;
+			if (value === undefined) {
+				throw new SpawnerError({
+					code: "VALIDATION_ERROR",
+					message: `${layer.agentsPath}: unsupported or unset ${field} variable ${match}`,
+				});
+			}
+			return value;
+		},
+	);
+
+const resolveHookPath = (
+	reference: string,
+	layer: ConfigLayer,
+	services: RenderServices,
+): string => {
+	const expanded = expandConfiguredPathVariables(
+		reference,
+		services,
+		layer,
+		"agents.pandora.tmux_post_create_hook",
+	);
+	if (expanded === "~") return homedir();
+	if (expanded.startsWith("~/")) return join(homedir(), expanded.slice(2));
+	if (isAbsolute(expanded)) return normalize(expanded);
+	if (expanded.split("/").includes("..")) {
+		throw new SpawnerError({
+			code: "VALIDATION_ERROR",
+			message: `${layer.agentsPath}: agents.pandora.tmux_post_create_hook must resolve under ${layer.rootDir}`,
+		});
+	}
+	return normalize(join(layer.rootDir, expanded));
+};
+
 const resolveLayer = (
 	rootDir: string,
 	scopeKind: ScopeKind,
@@ -701,6 +765,7 @@ const buildResolvedConfig = (
 				template: bundledAgent.template,
 				includes: bundledAgent.includes?.replace ?? [],
 				appends: bundledAgent.appends?.replace ?? [],
+				tmuxPostCreateHook: bundledAgent.tmux_post_create_hook,
 				policyIds: [] as readonly string[],
 				harness: {
 					kind: bundledAgent.harness?.kind,
@@ -718,6 +783,7 @@ const buildResolvedConfig = (
 			template: string | undefined;
 			includes: readonly string[];
 			appends: readonly string[];
+			tmuxPostCreateHook: string | undefined;
 			policyIds: readonly string[];
 			harness: {
 				kind: "claude" | "pi" | "fagent" | undefined;
@@ -757,6 +823,13 @@ const buildResolvedConfig = (
 					`agents.${agent}.policy`,
 					layer.agentsPath,
 				);
+				if (partial.tmux_post_create_hook !== undefined) {
+					current.tmuxPostCreateHook = resolveHookPath(
+						partial.tmux_post_create_hook,
+						layer,
+						services,
+					);
+				}
 				applyPartialHarness(
 					current.harness,
 					partial.harness,
@@ -849,6 +922,7 @@ const buildResolvedConfig = (
 					template: current.template,
 					includes: current.includes,
 					appends: current.appends,
+					tmux_post_create_hook: current.tmuxPostCreateHook,
 					harness: {
 						kind: current.harness.kind ?? "pi",
 						model: current.harness.model ?? "unconfigured",

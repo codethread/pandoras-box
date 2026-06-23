@@ -1273,6 +1273,102 @@ remove = ["global-flow"]
 		);
 	});
 
+	it("resolves agents.pandora.tmux_post_create_hook relative to the user data dir", () => {
+		const dataDir = "/tmp/pdx-pandora-hook-data";
+		const userDir = "/tmp/pdx-pandora-hook-user";
+		const rendered = renderAgent(
+			{ ...base, agent: "pandora", mode: "hitl" },
+			{
+				...fakeRenderServices(
+					agentsFile({
+						agent: "pandora",
+						mode: "hitl",
+						harnessKind: "pi",
+						harnessMode: "replace",
+					}),
+				),
+				readText: (path: string) => {
+					if (path === `${dataDir}/agents.toml`) {
+						return agentsFile({
+							agent: "pandora",
+							mode: "hitl",
+							harnessKind: "pi",
+							harnessMode: "replace",
+						});
+					}
+					if (path === `${userDir}/agents.toml`) {
+						return `
+[agents.pandora]
+tmux_post_create_hook = "hooks/pandora-dashboard.nu"
+
+[agents.pandora.harness]
+kind = "pi"
+model = "model_test"
+system_prompt_mode = "replace"
+`;
+					}
+					if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+					if (path === `${dataDir}/templates/pandora.md`) {
+						return "{{claim_command}}\n{{command_cards}}";
+					}
+					throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+						code: "ENOENT",
+					});
+				},
+				env: (key: string) => {
+					if (key === "PDX_DATA_DIR") return dataDir;
+					if (key === "PDX_USER_DATA_DIR") return userDir;
+					if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+					return undefined;
+				},
+			},
+		);
+
+		expect(rendered.pandoraTmuxPostCreateHook).toBe(`${userDir}/hooks/pandora-dashboard.nu`);
+	});
+
+	it("fails loudly when non-Pandora agents configure tmux_post_create_hook", () => {
+		const dataDir = "/tmp/pdx-pandora-hook-invalid-data";
+		const userDir = "/tmp/pdx-pandora-hook-invalid-user";
+		expect(() =>
+			renderAgent(
+				{ ...base, agent: "war", mode: "afk" },
+				{
+					...fakeRenderServices(agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" })),
+					readText: (path: string) => {
+						if (path === `${dataDir}/agents.toml`) {
+							return agentsFile({ agent: "war", mode: "afk", harnessKind: "pi" });
+						}
+						if (path === `${userDir}/agents.toml`) {
+							return `
+[agents.war]
+tmux_post_create_hook = "/tmp/not-allowed"
+
+[agents.war.harness]
+kind = "pi"
+model = "model_test"
+system_prompt_mode = "append"
+`;
+						}
+						if (path === `${dataDir}/templates/_common.md`) return "COMMON";
+						if (path === `${dataDir}/templates/war.md`) {
+							return "{{claim_command}}\n{{command_cards}}";
+						}
+						throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+							code: "ENOENT",
+						});
+					},
+					env: (key: string) => {
+						if (key === "PDX_DATA_DIR") return dataDir;
+						if (key === "PDX_USER_DATA_DIR") return userDir;
+						if (key === "PITHOS_DB") return `${dataDir}/pithos.sqlite`;
+						return undefined;
+					},
+				},
+			),
+		).toThrow("only agents.pandora may configure tmux_post_create_hook");
+	});
+
 	it("renders selected-capability Artifact Contract guidance as minified normalized JSON", () => {
 		const dataDir = "/tmp/pdx-artifacts-selected-data";
 		const userDir = "/tmp/pdx-artifacts-selected-user";

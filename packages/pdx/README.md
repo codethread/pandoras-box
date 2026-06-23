@@ -188,6 +188,8 @@ HITL mode runtime state lives in tmux targets. Pandora repair flows drive the ex
 
 The supervisor launch guard is edited in `<user-data-dir>/supervisor.toml`, not in Agent prompt policy packs or shell snippets. Set `enforce_repo_root_trunk = false` under `[launch_preconditions]` to disable the repo Scope default-branch check. When enabled, only repo-scoped ready tasks are checked; global and worktree scopes are exempt. Guard failures cancel the queued Task through Pithos' atomic `launch_precondition` Repair Alert path with Git evidence so Pandora can switch the repo back to its default branch and replay the Task when still valid, or supersede/replan/cancel when it is not.
 
+`agents.pandora.tmux_post_create_hook` is an optional user-manifest path for a Pandora-only executable that pdx runs once after Pandora's tmux target exists. The hook inherits the normal pdx/Pithos runtime env and also receives `PDX_PANDORA_TMUX_TARGET`, `PDX_PANDORA_RUN_ID`, and `PDX_PANDORA_SESSION_ID`. Hook failures fail Pandora launch loudly; pdx does not retry the hook or recreate deleted windows.
+
 pdx-launched Agents receive `PITHOS_DB`, `PDX_USER_DATA_DIR`, and their `PITHOS_RUN_ID`, so prompt rendering and Pithos completion checks use the same user Artifact Contract file. Direct Pithos invocations without `PDX_USER_DATA_DIR` run with Artifact Contracts disabled.
 
 ## Development and validation

@@ -339,6 +339,23 @@ agents.war.harness.kind = "pi"
 agents.war.harness.model = "openai-codex/gpt-5.4"
 ```
 
+### Pandora tmux post-create hook
+
+Pandora can run one optional user-owned executable after her tmux target exists:
+
+```toml
+[agents.pandora]
+tmux_post_create_hook = "$PDX_USER_DATA_DIR/hooks/pandora-dashboard.nu"
+```
+
+Use this for Pandora-only tmux setup such as creating a dashboard window inside the existing target. The hook runs once per Pandora launch, inherits the normal pdx/Pithos runtime env, and also receives:
+
+- `PDX_PANDORA_TMUX_TARGET`
+- `PDX_PANDORA_RUN_ID`
+- `PDX_PANDORA_SESSION_ID`
+
+Path resolution supports relative paths under `<user-data-dir>`, absolute paths, `~/...`, `$PDX_DATA_DIR`, and `$PDX_USER_DATA_DIR`. Other `$VARS` fail render. Rules do not override this field, and other Agents must not configure it. Non-zero exit or launch failure fails Pandora's launch loudly.
+
 Required scalar fields for a launched Agent are `kind`, `model`, and `system_prompt_mode`. Top-level Agent Harness config is applied first, then matching rules are applied in file order, so narrower path rules can replace earlier scalar values for the actual launch:
 
 - `agents.<kind>.harness.kind`

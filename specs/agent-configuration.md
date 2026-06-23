@@ -276,6 +276,24 @@ List fields use operation tables:
 
 Spawner applies only path-oriented expansion for `$PDX_DATA_DIR`, `${PDX_DATA_DIR}`, `$PDX_USER_DATA_DIR`, `${PDX_USER_DATA_DIR}`, `~`, and `~/...`; unsupported or unset `$VARS` fail render loudly. No shell evaluation, globbing, command substitution, or quote parsing is performed.
 
+### Pandora tmux post-create hook
+
+`agents.pandora.tmux_post_create_hook` is an optional user-owned path to an executable script that pdx runs once after Pandora's tmux target exists.
+
+```toml
+[agents.pandora]
+tmux_post_create_hook = "$PDX_USER_DATA_DIR/hooks/pandora-dashboard.nu"
+```
+
+Contract:
+
+- only `[agents.pandora]` may configure it
+- bundled defaults must not configure it
+- rules do not override it; rule-scoped Agent tables still only configure policy or Harness fields
+- path resolution supports relative paths under `$PDX_USER_DATA_DIR`, absolute paths, `~/...`, `$PDX_DATA_DIR`, and `$PDX_USER_DATA_DIR`; other `$VARS` fail validation
+- the hook inherits the normal pdx/Pithos runtime environment and also receives `PDX_PANDORA_TMUX_TARGET`, `PDX_PANDORA_RUN_ID`, and `PDX_PANDORA_SESSION_ID`
+- non-zero exit or launch failure fails Pandora's launch loudly; pdx does not retry the hook or recreate deleted windows
+
 ### External intake
 
 External intake is not configured in `agents.toml`. While `pdx open` is running, pdx owns `<data-dir>/intake.sock`; producers write newline-delimited JSON `{ title, body }` events to that socket. Each valid event creates a global `intake` Task for Envy. Producer process lifecycle belongs to the user rather than Spawner or pdx manifest configuration.

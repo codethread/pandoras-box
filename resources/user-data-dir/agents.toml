@@ -71,6 +71,17 @@
 # system_prompt_mode = "append"
 # argv.add = ["--effort", "high", "--name", "Envy"]
 
+# --- Pandora tmux post-create hook ------------------------------------------
+# Optional Pandora-only executable that runs once after pdx creates Pandora's
+# tmux target. Good for adding a dashboard window inside that target.
+# Inherits normal pdx/Pithos runtime env plus:
+#   PDX_PANDORA_TMUX_TARGET
+#   PDX_PANDORA_RUN_ID
+#   PDX_PANDORA_SESSION_ID
+#
+# [agents.pandora]
+# tmux_post_create_hook = "$PDX_USER_DATA_DIR/hooks/pandora-dashboard.nu"
+
 # --- Policy packs -----------------------------------------------------------
 # Declare policies before selecting them. Relative files resolve from this
 # <user-data-dir>. files is a non-empty ordered array.

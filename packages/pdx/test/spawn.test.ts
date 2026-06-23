@@ -24,6 +24,7 @@ import {
 	run,
 	parseConfig,
 	makePithos,
+	runOutput,
 	testLog,
 	testLifecycle,
 	testClock,
@@ -39,6 +40,302 @@ import {
 } from "./support.js";
 
 describe("pdx reconcile spawning and capacity", () => {
+	it("runs the Pandora tmux post-create hook after the tmux target exists", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
+		const registry = await run(makeRegistry);
+		const pithosCalls: string[] = [];
+		const order: string[] = [];
+		const hookCalls: {
+			file: string;
+			args: readonly string[];
+			cwd: string | undefined;
+			env: Record<string, string> | undefined;
+		}[] = [];
+		const sessionId = "123e4567-e89b-12d3-a456-426614174000";
+		const spawner = Spawner.of({
+			materializeTemplates: () => Effect.void,
+			renderAgent: () =>
+				Effect.succeed({
+					agent: "pandora",
+					mode: "hitl",
+					runId: "run_pandora",
+					sessionId,
+					scopeId: "global",
+					cwd: dataDir,
+					logicalName: PANDORA_TARGET,
+					harness: {
+						kind: "pi" as const,
+						argv: ["pi", "begin"],
+						env: {
+							PITHOS_DB: `${dataDir}/pithos.sqlite`,
+							PDX_DATA_DIR: dataDir,
+							PDX_USER_DATA_DIR: `${dataDir}/config`,
+						},
+					},
+					sessionLogPath: "/tmp/pandora.jsonl",
+					prompt: "prompt",
+					pandoraTmuxPostCreateHook: "/tmp/pandora-hook",
+				}),
+			launchRenderedAgent: (rendered) =>
+				Effect.sync(() => {
+					order.push("launch");
+					return {
+						...rendered,
+						harnessKind: rendered.harness.kind,
+						sessionLogPath: rendered.sessionLogPath,
+						hitl: { tmuxTarget: PANDORA_TARGET, panePid: 1 },
+					};
+				}),
+			renderSessionTranscript: () => Effect.succeed(""),
+		});
+		await run(
+			reconcileTick(await parseConfig(dataDir)).pipe(
+				Effect.provideService(Registry, registry),
+				Effect.provideService(PithosClient, makePithos(pithosCalls, [])),
+				Effect.provideService(
+					Ids,
+					Ids.of({
+						nextRunId: Effect.succeed("run_pandora"),
+						nextSessionId: Effect.succeed(sessionId),
+					}),
+				),
+				Effect.provideService(Spawner, spawner),
+				Effect.provideService(Tmux, fakeTmux()),
+				Effect.provideService(
+					Process,
+					fakeProcess({
+						execFile: (file, args, options) =>
+							Effect.sync(() => {
+								order.push("hook");
+								hookCalls.push({ file, args, cwd: options?.cwd, env: options?.env });
+								return { exitCode: 0, stdout: "", stderr: "" };
+							}),
+					}),
+				),
+				Effect.provideService(RepoLaunchChecks, fakeRepoLaunchChecks()),
+				Effect.provideService(SupervisorLog, testLog),
+				Effect.provideService(LifecycleReporter, testLifecycle),
+				Effect.provideService(FileSystem, noopFs),
+				Effect.provideService(Clock, testClock),
+			),
+		);
+
+		expect(order).toEqual(["launch", "hook"]);
+		expect(hookCalls).toHaveLength(1);
+		const hookCall = hookCalls[0];
+		if (hookCall === undefined) throw new Error("missing hook call");
+		expect(hookCall.file).toBe("/tmp/pandora-hook");
+		expect(hookCall.args).toEqual([]);
+		expect(hookCall.cwd).toBe(dataDir);
+		expect(hookCall.env?.PITHOS_DB).toBe(`${dataDir}/pithos.sqlite`);
+		expect(hookCall.env?.PDX_DATA_DIR).toBe(dataDir);
+		expect(hookCall.env?.PDX_USER_DATA_DIR).toBe(`${dataDir}/config`);
+		expect(hookCall.env?.PDX_PANDORA_TMUX_TARGET).toBe(PANDORA_TARGET);
+		expect(hookCall.env?.PDX_PANDORA_RUN_ID).toBe("run_pandora");
+		expect(hookCall.env?.PDX_PANDORA_SESSION_ID).toBe(sessionId);
+		expect(pithosCalls).toContain("runUpsert:pandora:run_pandora");
+		expect(await run(registry.list)).toContainEqual(
+			expect.objectContaining({
+				runId: "run_pandora",
+				agent: "pandora",
+				state: "live",
+				tmuxTarget: PANDORA_TARGET,
+			}),
+		);
+	});
+
+	it("fails loudly and cleans up Pandora when the tmux post-create hook exits non-zero", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
+		const registry = await run(makeRegistry);
+		const pithosCalls: string[] = [];
+		const logRecords: { readonly level: string; readonly msg: string; readonly data?: unknown }[] =
+			[];
+		let sessionExists = true;
+		const sessionId = "123e4567-e89b-12d3-a456-426614174001";
+		const spawner = Spawner.of({
+			materializeTemplates: () => Effect.void,
+			renderAgent: () =>
+				Effect.succeed({
+					agent: "pandora",
+					mode: "hitl",
+					runId: "run_pandora",
+					sessionId,
+					scopeId: "global",
+					cwd: dataDir,
+					logicalName: PANDORA_TARGET,
+					harness: { kind: "pi" as const, argv: ["pi", "begin"], env: {} },
+					sessionLogPath: "/tmp/pandora.jsonl",
+					prompt: "prompt",
+					pandoraTmuxPostCreateHook: "/tmp/pandora-hook",
+				}),
+			launchRenderedAgent: (rendered) =>
+				Effect.succeed({
+					...rendered,
+					harnessKind: rendered.harness.kind,
+					sessionLogPath: rendered.sessionLogPath,
+					hitl: { tmuxTarget: PANDORA_TARGET, panePid: 1 },
+				}),
+			renderSessionTranscript: () => Effect.succeed(""),
+		});
+		const effect = reconcileTick(await parseConfig(dataDir)).pipe(
+			Effect.provideService(Registry, registry),
+			Effect.provideService(PithosClient, makePithos(pithosCalls, [])),
+			Effect.provideService(
+				Ids,
+				Ids.of({
+					nextRunId: Effect.succeed("run_pandora"),
+					nextSessionId: Effect.succeed(sessionId),
+				}),
+			),
+			Effect.provideService(Spawner, spawner),
+			Effect.provideService(
+				Tmux,
+				fakeTmux({
+					hasSession: () => Effect.succeed(sessionExists),
+					killSession: (target) =>
+						Effect.sync(() => {
+							expect(target).toBe(PANDORA_TARGET);
+							sessionExists = false;
+						}),
+				}),
+			),
+			Effect.provideService(
+				Process,
+				fakeProcess({
+					execFile: () =>
+						Effect.succeed({ exitCode: 23, stdout: "hook stdout", stderr: "hook stderr" }),
+				}),
+			),
+			Effect.provideService(RepoLaunchChecks, fakeRepoLaunchChecks()),
+			Effect.provideService(
+				SupervisorLog,
+				SupervisorLog.of({
+					write: (record) =>
+						Effect.sync(() => {
+							logRecords.push(record);
+							return { ts: "now", ...record };
+						}),
+				}),
+			),
+			Effect.provideService(LifecycleReporter, testLifecycle),
+			Effect.provideService(FileSystem, noopFs),
+			Effect.provideService(Clock, testClock),
+		);
+
+		await expect(run(effect)).rejects.toThrow(
+			"pandora tmux post-create hook failed: /tmp/pandora-hook exited with code 23",
+		);
+		expect(pithosCalls).toEqual(
+			expect.arrayContaining([
+				"runUpsert:pandora:run_pandora",
+				"runCleanup:run_pandora:launch_failed",
+			]),
+		);
+		expect(sessionExists).toBe(false);
+		expect(await run(registry.list)).toEqual([]);
+		const hookFailureLog = logRecords.find(
+			(record) => record.level === "error" && record.msg === "pandora tmux post-create hook failed",
+		);
+		expect(hookFailureLog).toBeDefined();
+		if (hookFailureLog === undefined) throw new Error("missing hook failure log");
+		if (typeof hookFailureLog.data !== "object" || hookFailureLog.data === null) {
+			throw new Error("hook failure log missing structured data");
+		}
+		expect(hookFailureLog.data).toMatchObject({
+			hook_path: "/tmp/pandora-hook",
+			exit_code: 23,
+			stdout_tail: "hook stdout",
+			stderr_tail: "hook stderr",
+		});
+	});
+
+	it("interrupts a claimed Pandora run when the tmux post-create hook fails", async () => {
+		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
+		const registry = await run(makeRegistry);
+		let sessionExists = true;
+		const sessionId = "123e4567-e89b-12d3-a456-426614174002";
+		const pithosCalls: string[] = [];
+		const spawner = Spawner.of({
+			materializeTemplates: () => Effect.void,
+			renderAgent: () =>
+				Effect.succeed({
+					agent: "pandora",
+					mode: "hitl",
+					runId: "run_pandora",
+					sessionId,
+					scopeId: "global",
+					cwd: dataDir,
+					logicalName: PANDORA_TARGET,
+					harness: { kind: "pi" as const, argv: ["pi", "begin"], env: {} },
+					sessionLogPath: "/tmp/pandora.jsonl",
+					prompt: "prompt",
+					pandoraTmuxPostCreateHook: "/tmp/pandora-hook",
+				}),
+			launchRenderedAgent: (rendered) =>
+				Effect.succeed({
+					...rendered,
+					harnessKind: rendered.harness.kind,
+					sessionLogPath: rendered.sessionLogPath,
+					hitl: { tmuxTarget: PANDORA_TARGET, panePid: 1 },
+				}),
+			renderSessionTranscript: () => Effect.succeed(""),
+		});
+		const effect = reconcileTick(await parseConfig(dataDir)).pipe(
+			Effect.provideService(Registry, registry),
+			Effect.provideService(
+				PithosClient,
+				makePithos(pithosCalls, [], {
+					runInspect: () =>
+						Effect.succeed(
+							runOutput({
+								id: "run_pandora",
+								agent: "pandora",
+								mode: "hitl",
+								scope_id: "global",
+								task_id: "task_escalation",
+							}),
+						),
+				}),
+			),
+			Effect.provideService(
+				Ids,
+				Ids.of({
+					nextRunId: Effect.succeed("run_pandora"),
+					nextSessionId: Effect.succeed(sessionId),
+				}),
+			),
+			Effect.provideService(Spawner, spawner),
+			Effect.provideService(
+				Tmux,
+				fakeTmux({
+					hasSession: () => Effect.succeed(sessionExists),
+					killSession: () =>
+						Effect.sync(() => {
+							sessionExists = false;
+						}),
+				}),
+			),
+			Effect.provideService(
+				Process,
+				fakeProcess({
+					execFile: () =>
+						Effect.succeed({ exitCode: 23, stdout: "hook stdout", stderr: "hook stderr" }),
+				}),
+			),
+			Effect.provideService(RepoLaunchChecks, fakeRepoLaunchChecks()),
+			Effect.provideService(SupervisorLog, testLog),
+			Effect.provideService(LifecycleReporter, testLifecycle),
+			Effect.provideService(FileSystem, noopFs),
+			Effect.provideService(Clock, testClock),
+		);
+
+		await expect(run(effect)).rejects.toThrow(
+			"pandora tmux post-create hook failed: /tmp/pandora-hook exited with code 23",
+		);
+		expect(pithosCalls).toContain("runInterrupt:run_pandora:launch_failed");
+		expect(pithosCalls).not.toContain("runCleanup:run_pandora:launch_failed");
+	});
+
 	it("reconcile spawns one non-Pandora agent in seeded order without pre-claiming", async () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "pdx-test-"));
 		const registry = await run(makeRegistry);
